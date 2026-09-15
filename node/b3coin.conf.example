@@ -1,0 +1,25 @@
+# B3Hive node configuration template
+# Copy to b3coin.conf and fill in credentials. NEVER commit b3coin.conf.
+
+# Network
+txindex=1
+listen=1
+listenonion=0
+
+# RPC — bind to internal interface only (Docker network)
+rpcbind=0.0.0.0
+rpcallowip=0.0.0.0/0
+rpcport=32647
+# Set credentials via env or docker secret, not here in production:
+rpcuser=SET_VIA_ENV
+rpcpassword=SET_VIA_ENV
+
+# Staking (enable on staking nodes only)
+staking=1
+#stakingefficiency=100
+
+# Wallet
+disablewallet=0
+
+# Modern B3 (do not change these — they are chain consensus)
+# confdir is set via the -confdir flag on the daemon command line

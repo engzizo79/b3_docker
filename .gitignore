@@ -1,0 +1,34 @@
+# Secrets and wallet data — NEVER commit
+.env
+*.env
+!*.env.example
+b3coin.conf
+*.conf
+!b3coin.conf.example
+wallet.dat
+*.wallet
+.passphrase
+secrets/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Node.js
+node_modules/
+dist/
+.vite/
+
+# Docker volumes (local dev)
+data/
+*.data/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
