@@ -6,7 +6,7 @@ import pathlib
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.deps import AppState, create_app_state
@@ -51,6 +51,12 @@ def create_app(state: AppState | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def _security_headers(request: Request, call_next):
+        from app.session import client_is_localhost
+        state0 = request.app.state.app_state
+        if state0 is not None and state0.setup_mode() and not client_is_localhost(request):
+            if request.url.path.startswith("/api/"):
+                return JSONResponse(status_code=403, content={"detail": "setup required: finish first-run setup from the local machine"})
+            return HTMLResponse(status_code=403, content="<h1>B3 Hive — setup required</h1><p>Finish the first-run setup from the local machine (localhost). This service is locked to local access until a password is set.</p>")
         response = await call_next(request)
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -60,20 +66,21 @@ def create_app(state: AppState | None = None) -> FastAPI:
         # QR lib served same-origin). 'unsafe-inline' is required by
         # Alpine.js in-page templates and inline styles.
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
             "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
             "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; "
             "form-action 'self'"
         )
         return response
 
-    from app.routers import auth, chain, wallet, wallet_extra, batch, alerts
+    from app.routers import auth, chain, wallet, wallet_extra, batch, alerts, setup
     app.include_router(auth.router)
     app.include_router(chain.router)
     app.include_router(wallet.router)
     app.include_router(wallet_extra.router)
     app.include_router(batch.router)
     app.include_router(alerts.router)
+    app.include_router(setup.router)
 
     @app.get("/api/health")
     async def health():

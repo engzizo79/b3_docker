@@ -9,6 +9,33 @@ B3_DATA_DIR="${B3_DATA_DIR:-/data}"
 CONF="${B3_DATA_DIR}/b3coin.conf"
 RUN_UI="${RUN_UI:-true}"
 
+# Deferred daemon (fresh chain, first UI run): the daemon intentionally
+# stays DOWN until the setup wizard picks a sync method (bootstrap download
+# or sync-from-scratch). Healthy as long as the backend (wizard) responds.
+DEFERRED="${B3_DEFERRED_FILE:-${B3_DATA_DIR}/.daemon_deferred}"
+if [ -f "${DEFERRED}" ] && [ "${RUN_UI}" != "false" ]; then
+    WEB_PORT="${WEB_PORT:-8080}"
+    if curl -sf --max-time 10 "http://127.0.0.1:${WEB_PORT}/api/health" > /dev/null; then
+        echo "daemon deferred (setup wizard pending) — backend healthy"
+        exit 0
+    fi
+    echo "backend not responding while daemon deferred" >&2
+    exit 1
+fi
+
+# Bootstrap in progress: the daemon is intentionally stopped while the
+# setup wizard applies a chain bootstrap. Container stays healthy.
+PROGRESS="${B3_BOOTSTRAP_PROGRESS:-/data/bootstrap.progress.json}"
+if [ -f "${PROGRESS}" ]; then
+    PHASE=$(python3 -c "import json;print(json.load(open('${PROGRESS}')).get('phase',''))" 2>/dev/null || true)
+    case "${PHASE}" in
+        stopping|downloading|verifying|extracting)
+            echo "bootstrap in progress (${PHASE}) — healthy by design"
+            exit 0
+            ;;
+    esac
+fi
+
 # Effective RPC settings come from the conf (source of truth).
 RPC_USER="$(grep -E '^rpcuser=' "${CONF}" | tail -1 | cut -d= -f2-)"
 RPC_PASSWORD="$(grep -E '^rpcpassword=' "${CONF}" | tail -1 | cut -d= -f2-)"

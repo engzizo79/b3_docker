@@ -33,10 +33,27 @@ async def chain_summary(request: Request):
         mempool = await state.rpc.call("getmempoolinfo")
     except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
         raise _translate(exc)
+    # Honest sync progress: local blocks vs last known explorer tip
+    # (verificationprogress alone reports ~1.0 early on this chain).
+    from pathlib import Path
+    blocks = info.get("blocks", 0)
+    headers = info.get("headers", blocks)
+    tip = None
+    try:
+        tip_path = Path(state.settings.explorer_tip_file)
+        if tip_path.is_file():
+            tip = int(tip_path.read_text().strip())
+    except Exception:
+        tip = None
+    sync = {"blocks": blocks, "headers": headers, "tip": tip}
+    if tip and tip > 0:
+        sync["percent"] = round(min(100.0, blocks / tip * 100), 1)
+        sync["behind"] = max(0, tip - blocks)
     return {
         "blockchain": info,
         "network": net,
         "mempool": mempool,
+        "sync": sync,
     }
 
 

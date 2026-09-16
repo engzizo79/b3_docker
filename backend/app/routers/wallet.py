@@ -72,6 +72,7 @@ async def unlock_wallet(body: dict, request: Request):
     unlocked window; the node-side unlock time mirrors it."""
     state = _state(request)
     sess = state.require_csrf(request)
+    state.require_persistent_data()  # block unlock if /data not persistent
     ip = request.headers.get("x-forwarded-for", "") or (
         request.client.host if request.client else "")
     if not limiter.allow("unlock", ip, limit=5, window_s=60):

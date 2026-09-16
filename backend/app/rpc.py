@@ -57,7 +57,7 @@ ALLOWED: dict[str, set[str]] = {
 	"wallet_security": { "walletpassphrasechange" },
 	"network_read": {"getpeerinfo"},
 	"staking_read": {"getstakinginfo"},
-    "node_control": {"loadwallet"},
+    "wallet_lifecycle": {"createwallet", "loadwallet", "listwallets", "unloadwallet"},
 }
 
 ALLOWED_METHODS: set[str] = set().union(*ALLOWED.values())

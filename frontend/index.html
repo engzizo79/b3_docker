@@ -16,16 +16,16 @@
 
     <!-- LOGIN SCREEN -->
     <template x-if="!session.authenticated">
-      <div class="app-main" style="display:flex;align-items:center;justify-content:center;min-height:80vh">
-        <div class="card" style="max-width:360px;width:100%">
-          <div style="text-align:center;margin-bottom:1.5rem">
-            <svg width="48" height="48" viewBox="0 0 512 512" style="margin:0 auto">
+      <div class="app-main login-hero">
+        <div class="card mw-narrow w-full">
+          <div class="text-center mb-5">
+            <svg width="48" height="48" viewBox="0 0 512 512" class="mx-auto">
               <rect width="512" height="512" rx="96" fill="var(--bg)"/>
               <path d="M256,56 L82.79,156 L82.79,356 L256,456 L429.21,356 L429.21,156 Z" fill="none" stroke="var(--accent)" stroke-width="22" stroke-linejoin="round"/>
               <text x="234" y="272" font-family="Inter,sans-serif" font-weight="700" font-size="200" fill="var(--accent)" text-anchor="middle" dominant-baseline="central">B</text>
               <text x="330" y="190" font-family="Inter,sans-serif" font-weight="700" font-size="118" fill="var(--accent)" text-anchor="middle" dominant-baseline="central">3</text>
             </svg>
-            <h1 style="margin-top:0.75rem;color:var(--accent)">B3 Hive</h1>
+            <h1 class="mt-3 text-accent">B3 Hive</h1>
             <p class="text-muted text-sm">Web Wallet</p>
           </div>
 
@@ -36,7 +36,7 @@
                 <label>Password</label>
                 <input class="input" type="password" x-model="loginPw" placeholder="Enter password" autofocus>
               </div>
-              <p x-show="loginErr" class="text-danger text-sm" style="margin-bottom:0.5rem" x-text="loginErr"></p>
+              <p x-show="loginErr" class="text-danger text-sm mb-2" x-text="loginErr"></p>
               <button class="btn btn-primary btn-block" type="submit" :disabled="loginBusy">
                 <span x-show="loginBusy" class="spinner"></span> Login
               </button>
@@ -50,7 +50,7 @@
                 <label>Authenticator Code</label>
                 <input class="input" type="text" inputmode="numeric" pattern="[0-9]*" x-model="totpCode" placeholder="6-digit code" autofocus>
               </div>
-              <p x-show="loginErr" class="text-danger text-sm" style="margin-bottom:0.5rem" x-text="loginErr"></p>
+              <p x-show="loginErr" class="text-danger text-sm mb-2" x-text="loginErr"></p>
               <button class="btn btn-primary btn-block" type="submit" :disabled="loginBusy">
                 <span x-show="loginBusy" class="spinner"></span> Verify
               </button>
@@ -139,7 +139,9 @@
             <div class="grid-2" style="margin-bottom:0.75rem">
               <div class="card">
                 <div class="stat-label">Sync Progress</div>
-                <div class="stat-value" x-text="chain.progress != null ? (chain.progress*100).toFixed(2)+'%' : '—'"></div>
+<div class="stat-value" x-text="chain.sync? chain.sync.percent.toFixed(1)+'% ('+chain.sync.blocks.toLocaleString()+' / '+chain.sync.tip.toLocaleString()+')': —"></div>
+<p x-show="chain.sync && chain.sync.behind > 0" class="text-warning text-sm" style="margin:0.3rem 0 0" x-text="chain.sync? chain.sync.behind.toLocaleString()+' blocks behind — syncing': ''"></p>
+<p x-show="chain.sync && chain.sync.behind === 0" class="text-success text-sm" style="margin:0.3rem 0 0">Up to date</p>
               </div>
               <div class="card">
                 <div class="stat-label">Mempool</div>
@@ -148,12 +150,30 @@
             </div>
             <div class="card">
               <div class="card-header"><h3>Finality</h3></div>
-              <pre class="mono text-sm" x-text="JSON.stringify(chain.finality||{},null,2)"></pre>
+<div class="grid-2" style="margin-bottom:0.5rem">
+<div><span class="stat-label">Epoch</span><br><span class="stat-value text-sm" x-text="chain.finality && chain.finality.epoch != null ? chain.finality.epoch : '—'"></span></div>
+<div><span class="stat-label">Validators</span><br><span class="stat-value text-sm" x-text="chain.finality && chain.finality.validator_set && chain.finality.validator_set.size != null ? chain.finality.validator_set.size + ' validators' : '—'"></span></div>
+</div>
+<p class="text-sm" style="margin:0.5rem 0" x-show="chain.finality && chain.finality.active === true">Finality is <span class="badge badge-success">Active</span> — BLS checkpoints are being finalized.</p>
+<p class="text-sm text-muted" style="margin:0.5rem 0" x-show="chain.finality && chain.finality.active !== true">Modern-PoS finality is not active yet (pre-activation corridor).</p>
+<details style="margin-top:0.5rem"><summary class="text-muted text-sm" style="cursor:pointer">Raw details</summary><pre class="mono text-xs" x-text="JSON.stringify(chain.finality||{},null,2)"></pre></details>
             </div>
           </div>
 
           <!-- WALLET -->
           <div x-show="view==='wallet'">
+<template x-if="wallet.loaded === false">
+<div class="card" style="text-align:center;padding:1.5rem">
+<h3>No wallet loaded</h3>
+<p class="text-muted">Create a new wallet or load an existing wallet.dat to use the wallet features.</p>
+<div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;margin-top:0.75rem">
+<button class="btn btn-primary" @click="view='wizard';checkWizard()" type="button">Open Setup Wizard</button>
+<button class="btn btn-secondary" @click="view='settings'" type="button">Wallet Settings</button>
+</div>
+</div>
+</template>
+<template x-if="wallet.loaded !== false">
+<div>
             <div class="grid-2" style="margin-bottom:0.75rem">
               <div class="card">
                 <div class="stat-label">Confirmed Balance</div>
@@ -202,8 +222,7 @@
                 </table>
               </div>
             </div>
-          </div>
- <div class="card" style="margin-bottom:0.75rem">
+          <div class="card" style="margin-bottom:0.75rem">
  <div class="card-header">
  <h3>Coin Control (UTXOs)</h3>
  <button class="btn btn-sm btn-secondary" @click="utxos.open=!utxos.open;refreshUtxos()" type="button" x-text="utxos.open? 'Hide':'Show'"></button>
@@ -235,6 +254,9 @@
  <pre class="mono text-xs" x-text="JSON.stringify(txDetail,null,2)"></pre>
  </div>
  </template>
+</div>
+</template>
+ </div>
 <!-- RECEIVE -->
  <div x-show="view==='receive'">
  <div class="card" style="margin-bottom:0.75rem">
@@ -340,6 +362,15 @@
 
           <!-- STAKING -->
           <div x-show="view==='staking'">
+<template x-if="wallet.loaded === false">
+<div class="card" style="text-align:center;padding:1.5rem">
+<h3>No wallet loaded</h3>
+<p class="text-muted">Staking requires a loaded wallet. Create or load a wallet first.</p>
+<button class="btn btn-primary" style="margin-top:0.75rem" @click="view='wizard';checkWizard()" type="button">Open Setup Wizard</button>
+</div>
+</template>
+<template x-if="wallet.loaded !== false">
+<div>
             <div class="card" style="margin-bottom:0.75rem">
               <div class="card-header"><h3>Staking Status</h3></div>
               <template x-if="staking.loading">
@@ -362,6 +393,8 @@
               </div>
               <p x-show="!session.wallet_unlocked" class="text-warning text-sm" style="margin-top:0.5rem">Unlock the wallet to start staking.</p>
             </div>
+</div>
+</template>
           </div>
 
           <!-- BATCH (user-definable batch actions) -->
@@ -608,7 +641,193 @@
                 <button class="btn btn-sm" :class="theme==='light'?'btn-primary':'btn-secondary'" @click="setTheme('light')" type="button">Light</button>
               </div>
             </div>
+ <div class="card">
+ <h3>Setup Wizard</h3>
+ <p class="text-muted" style="margin-bottom:0.5rem">Re-run the first-use setup wizard (bootstrap sync choice + node configuration).</p>
+ <button class="btn btn-sm btn-secondary" @click="view='wizard';checkWizard()" type="button">Open Setup Wizard</button>
+ </div>
           </div>
+
+ <!-- SETUP WIZARD (first-run bootstrap + node config) -->
+ <div x-show="view==='wizard'" class="card">
+ <h2>Setup Wizard</h2>
+ <p class="text-muted" style="margin-bottom:1rem">
+ Welcome! Your node is starting with a fresh chain. Choose how to sync:
+ download a trusted bootstrap (fast, ~10 min) or sync from scratch (slow, hours).
+ </p>
+
+ <!-- Step 1: sync method -->
+ <div class="card" style="margin-bottom:1rem">
+ <h3>1. Sync Method</h3>
+ <template x-if="wizard.progress.phase==='idle' && !wizard.starting">
+ <div>
+ <p style="margin-bottom:0.5rem"><strong>Option A:</strong> Download a bootstrap snapshot</p>
+ <button class="btn btn-primary" @click="loadBootstraps()" :disabled="wizard.manifestBusy" type="button">
+ <span x-show="wizard.manifestBusy" class="spinner"></span> Show available bootstraps
+ </button>
+ <table x-show="wizard.bootstraps.length" class="table" style="margin-top:0.5rem">
+ <thead><tr><th>Height</th><th>Size</th><th>Created</th><th></th></tr></thead>
+ <tbody>
+ <template x-for="b in wizard.bootstraps" :key="b.height">
+ <tr>
+ <td x-text="b.height"></td>
+ <td x-text="Math.round(b.size/1048576)+' MB'"></td>
+ <td x-text="b.created_utc"></td>
+ <td><button class="btn btn-sm btn-primary" @click="startBootstrap(b)" type="button">Download &amp; Apply</button></td>
+ </tr>
+ </template>
+ </tbody>
+ </table>
+ <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border)">
+ <p style="margin-bottom:0.5rem"><strong>Option B:</strong> Sync from scratch</p>
+ <button class="btn btn-secondary" @click="completeWizard(true)" type="button">Skip bootstrap, sync from scratch</button>
+ </div>
+ </template>
+ </div>
+
+ <!-- Step 2: bootstrap progress -->
+ <div class="card" style="margin-bottom:1rem" x-show="wizard.progress.phase && wizard.progress.phase!=='idle'">
+ <h3>2. Bootstrap Progress</h3>
+ <p><strong x-text="wizard.progress.phase ? wizard.progress.phase.charAt(0).toUpperCase()+wizard.progress.phase.slice(1) : ''"></strong></p>
+ <template x-if="wizard.progress.phase==='downloading'">
+ <div>
+ <div class="progress"><div class="progress-bar" :style="'width:'+((wizard.progress.bytes||0)/(wizard.progress.size||1)*100)+'%'"></div></div>
+ <p class="text-muted" x-text="Math.round((wizard.progress.bytes||0)/1048576)+' / '+Math.round((wizard.progress.size||0)/1048576)+' MB'"></p>
+ </div>
+ </template>
+ <template x-if="wizard.progress.phase==='done'">
+ <p class="text-success">Bootstrap applied at height <span x-text="wizard.progress.height"></span>. The node is now syncing from there.</p>
+ </template>
+ <template x-if="wizard.progress.phase==='failed'">
+ <p class="text-danger">Bootstrap failed: <span x-text="wizard.progress.error || 'unknown'"></span></p>
+ </template>
+ </div>
+
+ <!-- Step 3: wallet create / migrate -->
+ <div class="card" style="margin-bottom:1rem" x-show="wizard.progress.phase==='idle' || wizard.progress.phase==='done'">
+ <h3>3. Wallet</h3>
+
+ <!-- persistence warning -->
+ <template x-if="wizard.status && wizard.status.data_persistent===false">
+   <div class="card" style="background:var(--danger-bg);border:1px solid var(--danger);margin-bottom:1rem">
+     <p class="text-danger" style="font-weight:bold;margin-bottom:0.5rem">⚠ Data directory is not persistent!</p>
+     <p class="text-danger" style="margin-bottom:0">
+       Your data directory is not mapped to a persistent volume. If the container is removed,
+       your wallet and funds will be lost. Map a host directory in docker-compose.yml
+       (e.g. <code>-v ~/.B3-CoinV2:/data</code>) before creating a wallet.
+     </p>
+   </div>
+ </template>
+
+ <!-- loaded wallets -->
+ <template x-if="wizard.wallet.loaded && wizard.wallet.loaded.length">
+   <div style="margin-bottom:1rem">
+     <p class="text-muted" style="margin-bottom:0.3rem">Loaded wallets:</p>
+     <template x-for="w in wizard.wallet.loaded" :key="w">
+       <span class="badge" x-text="w" style="margin-right:0.3rem"></span>
+     </template>
+   </div>
+ </template>
+
+ <!-- create wallet -->
+ <div style="margin-bottom:1rem">
+   <p style="margin-bottom:0.5rem"><strong>Create a new wallet</strong></p>
+   <div class="form-row">
+     <label>Wallet name</label>
+     <input x-model="wizard.wallet.createName" placeholder="my_wallet">
+   </div>
+   <div class="form-row">
+     <label>Passphrase <span class="text-muted">(min 8 chars)</span></label>
+     <input type="password" x-model="wizard.wallet.createPw" placeholder="strong passphrase">
+   </div>
+   <div class="form-row">
+     <label>Repeat passphrase</label>
+     <input type="password" x-model="wizard.wallet.createPw2" placeholder="repeat">
+   </div>
+   <button class="btn btn-primary" @click="createWallet()" :disabled="wizard.wallet.busy || wizard.status.data_persistent===false" type="button">
+     <span x-show="wizard.wallet.busy" class="spinner"></span> Create Wallet
+   </button>
+ </div>
+
+ <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border)">
+
+ <!-- migrate / load existing -->
+ <div>
+   <p style="margin-bottom:0.5rem"><strong>Migrate / load existing wallet</strong></p>
+   <p class="text-muted" style="margin-bottom:0.5rem">
+     If you already have a wallet file in your data directory, enter its filename to load it.
+   </p>
+   <div class="form-row">
+     <label>Wallet filename</label>
+     <input x-model="wizard.wallet.loadName" placeholder="wallet.dat">
+   </div>
+   <button class="btn btn-secondary" @click="loadWallet()" :disabled="wizard.wallet.busy || wizard.status.data_persistent===false" type="button">
+     <span x-show="wizard.wallet.busy" class="spinner"></span> Load Wallet
+   </button>
+ </div>
+ </div>
+
+ <!-- Step 4: security (first run only) -->
+ <div class="card" style="margin-bottom:1rem" x-show="wizard.status && wizard.status.setup_required">
+ <h3>4. Security</h3>
+ <template x-if="!wizard.secSet">
+ <div>
+ <p class="text-muted" style="margin-bottom:0.5rem">
+ First run: no password is needed from this local machine. Set a login password to enable
+ remote (internet) access. Until then, the UI is locked to localhost.
+ </p>
+ <div class="form-row">
+ <label>Login password <span class="text-muted">(min 8 chars)</span></label>
+ <input type="password" x-model="wizard.secPw" placeholder="strong password">
+ </div>
+ <div class="form-row">
+ <label>Repeat password</label>
+ <input type="password" x-model="wizard.secPw2" placeholder="repeat">
+ </div>
+ <p x-show="wizard.secErr" class="text-danger text-sm" style="margin-bottom:0.5rem" x-text="wizard.secErr"></p>
+ <button class="btn btn-primary" @click="setSecurityPassword()" :disabled="wizard.secBusy" type="button">
+ <span x-show="wizard.secBusy" class="spinner"></span> Set Password
+ </button>
+ </div>
+ </template>
+ <template x-if="wizard.secSet">
+ <p class="text-success">✓ Password set — remote access is now enabled.</p>
+ </template>
+ </div>
+
+ <!-- Step 5: node config -->
+ <div class="card" x-show="wizard.conf && wizard.conf.editable">
+ <h3>5. Node Configuration</h3>
+ <p class="text-muted" style="margin-bottom:0.5rem">Safe subset of b3coin.conf options. RPC and consensus keys are locked.</p>
+ <div class="form-row">
+ <label>txindex <span class="text-muted">(0/1)</span></label>
+ <input x-model="wizard.confForm.txindex" placeholder="1">
+ </div>
+ <div class="form-row">
+ <label>listen <span class="text-muted">(0/1)</span></label>
+ <input x-model="wizard.confForm.listen" placeholder="1">
+ </div>
+ <div class="form-row">
+ <label>maxconnections</label>
+ <input x-model="wizard.confForm.maxconnections" placeholder="125">
+ </div>
+ <div class="form-row">
+ <label>proxy</label>
+ <input x-model="wizard.confForm.proxy" placeholder="host:port">
+ </div>
+ <div class="form-row">
+ <label>bantime</label>
+ <input x-model="wizard.confForm.bantime" placeholder="86400">
+ </div>
+ <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem">
+ <button class="btn btn-primary" @click="applyConf()" :disabled="wizard.confBusy" type="button">
+ <span x-show="wizard.confBusy" class="spinner"></span> Save Config
+ </button>
+ <button class="btn btn-secondary" @click="restartNode()" :disabled="wizard.restartBusy" type="button">Restart Node</button>
+ <button class="btn btn-success" @click="completeWizard()" :disabled="wizard.status && wizard.status.setup_required && !wizard.secSet" type="button">Finish Setup</button>
+ </div>
+ </div>
+ </div>
 
         </main>
       </div>

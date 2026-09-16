@@ -113,6 +113,13 @@ Every UTXO-selection path (consolidation, send) filters to **plain P2PKH only** 
 
 ## Features
 
+### First-Use Setup Wizard (bootstrap + node config)
+
+- [x] Wizard auto-opens on first login (`.wizard_complete` marker in data dir); re-openable from Settings.
+- [x] Bootstrap sync: fetches the explorer's live manifest (`/api/setup/bootstraps`), user picks a snapshot, entrypoint worker stops the daemon, downloads, SHA256-verifies, extracts, restarts; progress polled from `bootstrap.progress.json`; rollback restarts with the previous chain on failure.
+- [x] Node config editor: safe subset of `b3coin.conf` keys (txindex, listen, maxconnections, proxy, bantime); RPC/consensus keys locked; per-key validation; atomic rewrite preserving unrecognized lines; restart-node wired to the supervisor recovery command.
+- [x] Backend guarded by session/2FA/CSRF; all wizard actions audited.
+
 ### 1. Dashboard (chain-state overview)
 
 - Dashboard: block height, sync progress, peer count, finality epoch/quorum, bridge status, supply, mempool size.

@@ -219,3 +219,24 @@ def delete_recipe(db_path: str, recipe_id: int) -> bool:
     with _lock, _connect(db_path) as conn:
         cur = conn.execute("DELETE FROM batch_recipes WHERE id=?", (recipe_id,))
         return cur.rowcount > 0
+
+
+def user_exists(db_path: str, username: str) -> bool:
+    """Setup mode: True once the operator account exists (password set)."""
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
+        return row is not None
+
+
+def set_password(db_path: str, username: str, password: str) -> None:
+    """Create the operator account or change its password (setup step).
+    This exits setup mode: login is required for subsequent starts."""
+    new_hash = _ph.hash(password)
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()
+        if row is None:
+            conn.execute("INSERT INTO users (username, password_hash) VALUES (?,?)",
+                         (username, new_hash))
+        else:
+            conn.execute("UPDATE users SET password_hash=? WHERE username=?",
+                         (new_hash, username))

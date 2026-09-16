@@ -112,9 +112,19 @@ async def verify_2fa(body: TOTPBody, request: Request, response: Response):
 @router.get("/status")
 async def auth_status(request: Request):
     state: AppState = request.app.state.app_state
+    if state.setup_mode():
+        # Local client in setup mode: full access, no login step.
+        return {
+            "authenticated": True,
+            "username": state.username,
+            "setup_required": True,
+            "totp_required": False,
+            "totp_configured": False,
+            "wallet_unlocked": False,
+        }
     pair = state.session_from_request(request)
     if pair is None:
-        return {"authenticated": False}
+        return {"authenticated": False, "setup_required": False}
     sid, sess = pair
     return {
         "authenticated": True,
@@ -124,6 +134,7 @@ async def auth_status(request: Request):
             (db.get_user(state.settings.db_path, state.username) or {}).get("totp_enabled")
         ),
         "wallet_unlocked": sess.wallet_unlocked(),
+        "setup_required": False,
     }
 
 
@@ -155,3 +166,24 @@ async def logout(request: Request, response: Response):
     response.delete_cookie(CSRF_COOKIE, path="/")
     db.audit(state.settings.db_path, "logout", state.username)
     return {"ok": True}
+
+
+class SetPasswordBody(BaseModel):
+    password: str
+
+
+@router.post("/setup-password")
+async def setup_password(body: SetPasswordBody, request: Request):
+    """First-run security step: set the login password. Local client only,
+
+    exits setup mode. Length is enforced; the audit log records the event."""
+    state: AppState = request.app.state.app_state
+    if not state.setup_mode():
+        raise HTTPException(status_code=400, detail="password already set")
+    state.require_local(request)
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="password must be at least 8 characters")
+    db.set_password(state.settings.db_path, state.username, body.password)
+    db.audit(state.settings.db_path, "security.password_set", state.username,
+        _client_ip(request), success=True)
+    return {"ok": True, "setup_required": False}

@@ -11,9 +11,9 @@ function b3app() {
     loginPw: '', loginStep2: false, loginBusy: false, loginErr: '', totpCode: '',
     // Wallet
     unlockPw: '', unlockBusy: false,
-    wallet: { balance: null, pending: null, txs: [] },
+    wallet: { balance: null, pending: null, txs: [], loaded: false },
     // Chain
-    chain: { blocks: null, connections: null, progress: null, mempool: null, finality: null },
+    chain: { blocks: null, connections: null, progress: null, mempool: null, finality: null, sync: null, syncErr: false },
     // Staking
     staking: { loading: false, busy: false, active: false, weight: null, info: null },
     // Send
@@ -40,6 +40,12 @@ function b3app() {
     // Toast
     toast: null, toastType: 'success',
  alerts: [], showAlerts: false, alertCount: 0,
+ // Setup wizard (first-run bootstrap + node config)
+ wizard: { status: null, bootstraps: [], manifestBusy: false, starting: false,
+ progress: { phase: 'idle' }, progressTimer: null,
+ conf: null, confForm: {}, confBusy: false, restartBusy: false,
+ secPw: '', secPw2: '', secBusy: false, secSet: false, secErr: '',
+ wallet: { loaded: [], reachable: false, createName: '', createPw: '', createPw2: '', loadName: '', busy: false } },
 
     // -- Init ----------------------------------------------------------------
     init() {
@@ -110,6 +116,7 @@ function b3app() {
       this.refreshWallet();
       this.refreshStaking();
       this.refreshSession();
+      this.checkWizard();
     },
 
     async refreshSession() {
@@ -122,6 +129,8 @@ function b3app() {
         this.chain.blocks = d.blockchain.blocks;
         this.chain.connections = d.network.connections;
         this.chain.progress = d.blockchain.verificationprogress;
+ if (d.sync) { this.chain.sync = d.sync; this.chain.syncErr = false; }
+ else { this.chain.sync = null; this.chain.syncErr = true; }
         this.chain.mempool = d.mempool.size;
       } catch (e) {}
       try {
@@ -131,6 +140,10 @@ function b3app() {
     },
 
     async refreshWallet() {
+ try {
+ const d = await this.api('/api/setup/wallet/status');
+ this.wallet.loaded = (d.reachable && d.loaded && d.loaded.length > 0);
+ } catch (e) { this.wallet.loaded = false; }
       try {
         const d = await this.api('/api/wallet/info');
         this.wallet.balance = d.balances.mine.trusted;
@@ -500,7 +513,141 @@ function b3app() {
  } catch (e) { this.showToast(e.message, 'danger'); }
  },
 
-    // -- Toast ---------------------------------------------------------------
+    // -- Setup wizard --------------------------------------------------------
+ async checkWizard() {
+ if (!this.session.authenticated) return;
+ try {
+ this.wizard.status = await this.api('/api/setup/status');
+ if (this.wizard.status.wallet) this.wizard.wallet.loaded = this.wizard.status.wallet.loaded || [];
+ if (!this.wizard.status.wizard_done) {
+ this.view = 'wizard';
+ this.wizard.conf = this.wizard.status.conf || null;
+ if (this.wizard.status.conf && this.wizard.status.conf.editable
+ && Object.keys(this.wizard.confForm).length === 0) {
+ this.wizard.confForm = Object.assign({}, this.wizard.status.conf.editable);
+ }
+ }
+ } catch (e) { /* setup status is best-effort */ }
+ },
+ async loadBootstraps() {
+ this.wizard.manifestBusy = true;
+ try {
+ const r = await this.api('/api/setup/bootstraps');
+ this.wizard.bootstraps = r.bootstraps || [];
+ } catch (e) { this.showToast(e.message, 'danger'); }
+ this.wizard.manifestBusy = false;
+ },
+ async startBootstrap(b) {
+ if (!confirm('Download bootstrap at height ' + b.height + '? ~' +
+ Math.round(b.size / 1048576) + ' MB. The daemon will be stopped during download.')) return;
+ this.wizard.starting = true;
+ try {
+ await this.api('/api/setup/bootstrap/start', {
+ method: 'POST', body: JSON.stringify({ height: b.height, sha256: b.sha256, url: b.url, size: b.size })
+ });
+ this.showToast('Bootstrap started');
+ this.pollProgress();
+ this.wizard.progressTimer = setInterval(() => this.pollProgress(), 2000);
+ } catch (e) { this.showToast(e.message, 'danger'); }
+ this.wizard.starting = false;
+ },
+ async pollProgress() {
+ try {
+ const p = await this.api('/api/setup/bootstrap/progress');
+ this.wizard.progress = p;
+ if (p.phase === 'done' || p.phase === 'failed') {
+ clearInterval(this.wizard.progressTimer);
+ this.wizard.progressTimer = null;
+ if (p.phase === 'done') this.showToast('Bootstrap applied — node syncing from height ' + p.height);
+ if (p.phase === 'failed') this.showToast('Bootstrap failed: ' + (p.error || 'unknown'), 'danger');
+ }
+ } catch (e) { /* progress poll is best-effort */ }
+ },
+ async applyConf() {
+ this.wizard.confBusy = true;
+ try {
+ await this.api('/api/setup/conf/apply', {
+ method: 'POST', body: JSON.stringify({ conf: this.wizard.confForm })
+ });
+ this.showToast('Configuration applied — restart the node to take effect');
+ } catch (e) { this.showToast(e.message, 'danger'); }
+ this.wizard.confBusy = false;
+ },
+ async restartNode() {
+ if (!confirm('Restart b3coind to apply configuration changes?')) return;
+ this.wizard.restartBusy = true;
+ try {
+ await this.api('/api/setup/restart-node', { method: 'POST' });
+ this.showToast('Node restart queued');
+ } catch (e) { this.showToast(e.message, 'danger'); }
+ this.wizard.restartBusy = false;
+ },
+ async createWallet() {
+ if (this.wizard.wallet.createPw !== this.wizard.wallet.createPw2) {
+ this.showToast('Passphrases do not match', 'danger'); return;
+ }
+ if (this.wizard.wallet.createPw.length < 8) {
+ this.showToast('Passphrase must be at least 8 characters', 'danger'); return;
+ }
+ this.wizard.wallet.busy = true;
+ try {
+ await this.api('/api/setup/wallet/create', {
+ method: 'POST', body: JSON.stringify({
+ wallet_name: this.wizard.wallet.createName, passphrase: this.wizard.wallet.createPw
+ })
+ });
+ this.showToast('Wallet created: ' + this.wizard.wallet.createName);
+ this.wizard.wallet.loaded.push(this.wizard.wallet.createName);
+ this.wizard.wallet.createName = ''; this.wizard.wallet.createPw = ''; this.wizard.wallet.createPw2 = '';
+ } catch (e) { this.showToast(e.message, 'danger'); }
+ this.wizard.wallet.busy = false;
+ },
+ async loadWallet() {
+ this.wizard.wallet.busy = true;
+ try {
+ await this.api('/api/setup/wallet/load', {
+ method: 'POST', body: JSON.stringify({ filename: this.wizard.wallet.loadName })
+ });
+ this.showToast('Wallet loaded: ' + this.wizard.wallet.loadName);
+ this.wizard.wallet.loaded.push(this.wizard.wallet.loadName);
+ this.wizard.wallet.loadName = '';
+ } catch (e) { this.showToast(e.message, 'danger'); }
+ this.wizard.wallet.busy = false;
+ },
+ async setSecurityPassword() {
+ this.wizard.secErr = "";
+ if (this.wizard.secPw.length < 8) { this.wizard.secErr = "Password must be at least 8 characters"; return; }
+ if (this.wizard.secPw !== this.wizard.secPw2) { this.wizard.secErr = "Passwords do not match"; return; }
+ this.wizard.secBusy = true;
+ try {
+ await this.api("/api/auth/setup-password", { method: "POST", body: JSON.stringify({ password: this.wizard.secPw }) });
+ this.wizard.secSet = true;
+ // Auto-login: setting the password exits setup mode, closing the
+ // passwordless local window. Establish a REAL session right away so
+ // the rest of the wizard (complete) works without a login screen.
+ await this.api("/api/auth/login", { method: "POST", body: JSON.stringify({ password: this.wizard.secPw }) });
+ this.wizard.secPw = ""; this.wizard.secPw2 = "";
+ this.showToast("Password set — remote access enabled");
+ this.session.authenticated = true;
+ this.poll();
+ } catch (e) { this.wizard.secErr = e.message; }
+ this.wizard.secBusy = false;
+ },
+
+ async completeWizard(startNode) {
+ if (this.wizard.status && this.wizard.status.setup_required && !this.wizard.secSet) {
+ this.showToast("Set a login password in the Security step first", "danger"); return;
+ }
+ try {
+ if (startNode) await this.api('/api/setup/start-node', { method: 'POST' });
+ await this.api('/api/setup/complete', { method: 'POST' });
+ this.wizard.status.wizard_done = true;
+ this.view = 'dashboard';
+ this.showToast('Setup complete — welcome to B3 Hive!');
+ } catch (e) { this.showToast(e.message, 'danger'); }
+ },
+
+ // -- Toast ---------------------------------------------------------------
     showToast(msg, type) {
       this.toast = msg; this.toastType = type || 'success';
       clearTimeout(this._toastTimer);

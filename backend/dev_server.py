@@ -17,6 +17,7 @@ from app.deps import AppState
 from app.session import SessionStore
 from app.main import create_app
 from tests.conftest import MockRPC
+DEV_RPC_PASS = "devpass"  # dev-only dummy value, never a real node credential
 
 
 def main() -> None:
@@ -36,9 +37,40 @@ def main() -> None:
     s.wallet_unlock_timeout = 300
     s.auth_required = True
     s.stall_alert_minutes = 10
+    s.stall_level = "alert"
+    s.explorer_url = "https://explorer.b3hive.io"
+    s.webhook_url = ""
+    s.monitor_interval = 3600
+    s.recovery_cmd_file = str(tmp / "recovery.cmd")
+    s.b3_data_dir = str(tmp)
+    s.daemon_deferred_file = str(tmp / ".daemon_deferred")
+    s.explorer_tip_file = str(tmp / "explorer_tip_height")
+    s.start_node_cmd_file = str(tmp / "start-node.cmd")
+    s.bootstrap_cmd_file = str(tmp / "bootstrap.cmd")
+    s.bootstrap_progress_file = str(tmp / "bootstrap.progress.json")
+    s.wizard_marker_file = str(tmp / ".wizard_complete")
+    s.bootstrap_manifest_url = "https://explorer.b3hive.io/bootstraps/manifest.json"
+    s.allow_ephemeral_data = True  # dev server uses temp dir (not a mount)
+
+    # Dev-only sample node conf so the wizard config view has content.
+    (tmp / "b3coin.conf").write_text(
+    	"# dev sample\n"
+    	"txindex=1\n"
+    	"listen=1\n"
+    	"listenonion=0\n"
+    	"rpcbind=127.0.0.1\n"
+    	"rpcallowip=127.0.0.1\n"
+    	"rpcport=32647\n"
+    	"rpcuser=dev\n"
+    	f"rpcpassword={DEV_RPC_PASS}\n"
+    	"disablewallet=0\n")
 
     db.init_db(s.db_path)
-    db.ensure_user(s.db_path, "admin", s.ui_password)
+    # B3DEV_SETUP_MODE=1 boots with NO operator account: passwordless first
+    # run, local-only (setup mode) — for E2E-verifying the wizard Security step.
+    import os
+    if not os.environ.get("B3DEV_SETUP_MODE"):
+        db.ensure_user(s.db_path, "admin", s.ui_password)
 
     state = AppState(s, MockRPC(), SessionStore(s.session_secret), username="admin")
     app = create_app(state)

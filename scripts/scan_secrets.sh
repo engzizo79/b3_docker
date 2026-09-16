@@ -21,7 +21,7 @@ PLACEHOLDER_RE='(SET_ME|GENERATE_AT_DEPLOY|SET_BY_ENTRYPOINT|^[[:space:]]*$|b3co
 is_placeholder() {
     # Shell variable references (${VAR}, $VAR) are placeholders, not secrets
     case "$1" in
-        *'${'*|*'$'*) return 0 ;;
+        *'${'*|*'$'*|*'{'*) return 0 ;;
     esac
     echo "$1" | grep -Eqi "$PLACEHOLDER_RE"
 }

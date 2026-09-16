@@ -19,6 +19,18 @@ from app.rpc import B3RPCClient
 logger = logging.getLogger("b3hive.monitor")
 
 
+def _read_progress(settings: Settings) -> dict | None:
+    """Read the setup-wizard bootstrap progress JSON, if present."""
+    import json
+    p = Path(settings.bootstrap_progress_file)
+    if not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return None
+
+
 class ChainMonitor:
     """Periodic chain-health checker."""
 
@@ -56,6 +68,19 @@ class ChainMonitor:
             await asyncio.sleep(self.settings.monitor_interval)
 
     async def _check(self) -> None:
+        # Pause during an active setup-wizard bootstrap: the daemon is
+        # intentionally stopped then; stall detection would false-fire.
+        prog = _read_progress(self.settings)
+        if prog and prog.get("phase") in ("stopping", "downloading",
+                                           "verifying", "extracting"):
+            logger.info("monitor paused during bootstrap (phase=%s)",
+                        prog.get("phase"))
+            return
+        # Daemon deferred (fresh chain, first UI run): the wizard holds the node
+        # down until a sync method is chosen; RPC is down by design.
+        if Path(self.settings.daemon_deferred_file).is_file():
+            logger.debug("monitor paused: daemon deferred (setup pending)")
+            return
         info = await self.rpc.call("getblockchaininfo")
         blocks = info.get("blocks", 0)
         now = time.time()
@@ -90,6 +115,12 @@ class ChainMonitor:
                 r = await client.get(f"{url}/api/blocks/tip/height")
                 if r.status_code == 200:
                     explorer_blocks = int(r.text.strip())
+                    try:
+                        tip_path = Path(self.settings.explorer_tip_file)
+                        tip_path.parent.mkdir(parents=True, exist_ok=True)
+                        tip_path.write_text(str(explorer_blocks))
+                    except Exception:
+                        pass
                     lag = explorer_blocks - local_blocks
                     if lag > 10:
                         msg = (f"Sync lag: local={local_blocks} explorer={explorer_blocks} "

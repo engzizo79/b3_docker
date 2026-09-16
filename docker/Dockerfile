@@ -12,7 +12,7 @@ ARG B3_ASSET=b3-hive-${B3_VERSION}-unsigned-linux-x86_64-static-headless.tar.gz
 ARG B3_DOWNLOAD_URL=https://github.com/B3-Coin/B3-CoinV2/releases/download/${B3_VERSION}/${B3_ASSET}
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl gosu \
+ && apt-get install -y --no-install-recommends ca-certificates curl gosu zstd \
  && rm -rf /var/lib/apt/lists/*
 
 # Download, verify, and install the official node binaries
@@ -55,7 +55,8 @@ RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh
 # Node data dir (host-mapped); conf lives at /data/b3coin.conf
 ENV B3_DATA_DIR=/data \
     RUN_UI=true \
-    WEB_PORT=8080
+    WEB_PORT=8080 \
+    ALLOW_EPHEMERAL_DATA=false
 VOLUME ["/data"]
 
 EXPOSE 8080

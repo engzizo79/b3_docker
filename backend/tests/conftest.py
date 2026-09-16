@@ -64,6 +64,11 @@ class MockRPC:
                                              "txid": "deadbeef"},
             "testmempoolaccept": [{"allowed": True}],
             "sendrawtransaction": "deadbeef",
+            # Wallet lifecycle (setup wizard create/migrate)
+            "listwallets": [],
+            "createwallet": {"name": "wallet"},
+            "loadwallet": {"name": "wallet"},
+            "unloadwallet": None,
         }
 
     async def call(self, method: str, *params):
@@ -105,6 +110,12 @@ def settings(tmp_path: Path) -> Settings:
     s.webhook_url = ""
     s.monitor_interval = 3600
     s.recovery_cmd_file = str(tmp_path / "recovery.cmd")
+    s.b3_data_dir = str(tmp_path)
+    s.bootstrap_cmd_file = str(tmp_path / "bootstrap.cmd")
+    s.bootstrap_progress_file = str(tmp_path / "bootstrap.progress.json")
+    s.wizard_marker_file = str(tmp_path / ".wizard_complete")
+    s.bootstrap_manifest_url = ""
+    s.allow_ephemeral_data = True  # tests use tmp_path (not a mount)
     return s
 
 

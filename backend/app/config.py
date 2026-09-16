@@ -1,6 +1,7 @@
 """Backend configuration from environment variables."""
 
 import os
+from pathlib import Path
 
 
 class Settings:
@@ -29,6 +30,24 @@ class Settings:
         self.recovery_cmd_file: str = os.environ.get("RECOVERY_CMD_FILE", "/data/recovery.cmd")
         # Cookie Secure flag: auto (default, HTTPS-aware via X-Forwarded-Proto), true, false
         self.cookie_secure: str = os.environ.get("COOKIE_SECURE", "auto")
+        # Setup wizard / bootstrap
+        self.b3_data_dir: str = os.environ.get("B3_DATA_DIR", "/data")
+        # Set by the entrypoint while the daemon is deferred (fresh chain, first UI run).
+        self.daemon_deferred_file: str = os.environ.get("B3_DEFERRED_FILE", str(Path(self.b3_data_dir) / ".daemon_deferred"))
+        self.bootstrap_cmd_file: str = os.environ.get("BOOTSTRAP_CMD_FILE", "/data/bootstrap.cmd")
+        self.bootstrap_progress_file: str = os.environ.get("BOOTSTRAP_PROGRESS_FILE", "/data/bootstrap.progress.json")
+        # Last known explorer tip height (written by the monitor; read by the
+        # chain summary for an honest sync-progress number).
+        self.explorer_tip_file: str = os.environ.get("EXPLORER_TIP_FILE", "/data/explorer_tip_height")
+        # Setup wizard: user chose sync-from-scratch -> start the node.
+        self.start_node_cmd_file: str = os.environ.get("START_NODE_CMD_FILE", "/data/start-node.cmd")
+        self.wizard_marker_file: str = os.environ.get("WIZARD_MARKER_FILE", "/data/.wizard_complete")
+        self.bootstrap_manifest_url: str = os.environ.get(
+            "BOOTSTRAP_MANIFEST_URL", "https://explorer.b3hive.io/bootstraps/manifest.json")
+        # Safety: block wallet actions if /data is not a persistent mount.
+        # Set to true ONLY for testing — never in production with real funds.
+        self.allow_ephemeral_data: bool = os.environ.get(
+            "ALLOW_EPHEMERAL_DATA", "false").strip().lower() == "true"
 
 
 settings = Settings()
