@@ -6,6 +6,7 @@ function b3app() {
     session: { authenticated: false, wallet_unlocked: false, totp_configured: false },
     view: 'dashboard',
     theme: localStorage.getItem('b3-theme') || 'dark',
+		mode: localStorage.getItem('b3-mode') || 'simple',
 
     // Login form
     loginPw: '', loginStep2: false, loginBusy: false, loginErr: '', totpCode: '',
@@ -50,6 +51,7 @@ function b3app() {
     // -- Init ----------------------------------------------------------------
     init() {
       this.setTheme(this.theme);
+		this.setMode(this.mode);
       this.checkSession();
       this._poll = setInterval(() => this.poll(), 15000);
     this._alertPoll = setInterval(() => { if (this.session.authenticated) this.loadAlerts(); }, 30000);
@@ -477,6 +479,14 @@ function b3app() {
  this.pwchange.busy = false;
  },
 
+
+ // -- Simple/Advanced mode (single global toggle) --------------------------
+ setMode(m) {
+  this.mode = m;
+  localStorage.setItem('b3-mode', m);
+  document.documentElement.setAttribute('data-mode', m);
+ },
+ toggleMode() { this.setMode(this.mode === 'simple' ? 'advanced' : 'simple'); },
  // -- Theme ---------------------------------------------------------------
     setTheme(t) {
       this.theme = t;
