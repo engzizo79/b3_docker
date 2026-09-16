@@ -6,7 +6,7 @@ Containerize the B3Hive daemon (b3coind) and provide a modern, mobile-friendly w
 
 ## B3Hive Node Facts (verified against B3-CoinV2 v1.1.5 source and live nodes)
 
-- B3Hive v1.1.5 is Bitcoin-Core-31.1-derived. Binaries: b3coind, b3coin-cli, b3coin-wallet, b3coin-qt. Requires the confdir flag -confdir=.B3-CoinV2; config file b3coin.conf.
+- B3Hive is Bitcoin-Core-31.1-derived. Binaries: b3coind, b3coin-cli, b3coin-wallet (static Linux builds on GitHub releases, repo B3-Coin/B3-CoinV2). v1.1.4 uses -datadir (conf at <datadir>/b3coin.conf, default dir ~/.B3-CoinV2) and REJECTS the -confdir flag (that flag belongs to older VPS-era v1.1.3).
 - RPC: JSON-RPC 2.0 over HTTP with Basic auth (rpcuser/rpcpassword or rpcauth). Wallet-scoped RPCs (listunspent, getaddressesbylabel, listflowmeshmarkets, getstakinginfo) require a loaded wallet (loadwallet).
 - Amounts: 9 decimals, 1 B3 = 1e9 base units. Parse with Decimal, never float.
 - Addresses: legacy P2PKH only, version byte 0x3F (S prefix). Witness/bech32 is rejected.
@@ -29,7 +29,7 @@ Containerize the B3Hive daemon (b3coind) and provide a modern, mobile-friendly w
 
 ## Ownership
 
-- docker/ — container build: node image, web image, compose files, entrypoints
+- docker/ — single all-in-one image build (b3coind + backend + SPA), compose files, entrypoint, process supervision
 - node/ — b3coin.conf template, data layout docs
 - backend/ — FastAPI (or equivalent) proxy: auth, RPC allowlist, monitoring, recovery, batch actions
 - frontend/ — mobile-friendly SPA
@@ -38,7 +38,7 @@ Containerize the B3Hive daemon (b3coind) and provide a modern, mobile-friendly w
 
 ## Verification (project-wide)
 
-- Docker: images build clean; compose up brings node + web; healthchecks green after sync window.
+- Docker: image builds clean; compose up brings the single b3hive container (daemon + UI, or daemon-only with RUN_UI=false); healthchecks green after sync window.
 - Backend: pytest suite with a mocked RPC layer; no test requires a funded wallet.
 - Frontend: unit tests for pure helpers; real-browser screenshot verification at mobile 375px AND desktop widths for layout-affecting changes (SSR-blind bug class — see b3_monitoring AGENTS.md lessons).
 - Security: secrets scan before every commit; auth/CSRF/rate-limit tests in the backend suite.

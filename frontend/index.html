@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>B3 Hive</title>
+  <meta name="theme-color" content="#111318">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/theme.css">
+</head>
+<body>
+  <div class="app-layout" x-data="b3app" x-init="init()">
+
+    <!-- LOGIN SCREEN -->
+    <template x-if="!session.authenticated">
+      <div class="app-main" style="display:flex;align-items:center;justify-content:center;min-height:80vh">
+        <div class="card" style="max-width:360px;width:100%">
+          <div style="text-align:center;margin-bottom:1.5rem">
+            <svg width="48" height="48" viewBox="0 0 512 512" style="margin:0 auto">
+              <rect width="512" height="512" rx="96" fill="var(--bg)"/>
+              <path d="M256,56 L82.79,156 L82.79,356 L256,456 L429.21,356 L429.21,156 Z" fill="none" stroke="var(--accent)" stroke-width="22" stroke-linejoin="round"/>
+              <text x="234" y="272" font-family="Inter,sans-serif" font-weight="700" font-size="200" fill="var(--accent)" text-anchor="middle" dominant-baseline="central">B</text>
+              <text x="330" y="190" font-family="Inter,sans-serif" font-weight="700" font-size="118" fill="var(--accent)" text-anchor="middle" dominant-baseline="central">3</text>
+            </svg>
+            <h1 style="margin-top:0.75rem;color:var(--accent)">B3 Hive</h1>
+            <p class="text-muted text-sm">Web Wallet</p>
+          </div>
+
+          <!-- Step 1: Password -->
+          <template x-if="!loginStep2">
+            <form @submit.prevent="doLogin">
+              <div class="form-group">
+                <label>Password</label>
+                <input class="input" type="password" x-model="loginPw" placeholder="Enter password" autofocus>
+              </div>
+              <p x-show="loginErr" class="text-danger text-sm" style="margin-bottom:0.5rem" x-text="loginErr"></p>
+              <button class="btn btn-primary btn-block" type="submit" :disabled="loginBusy">
+                <span x-show="loginBusy" class="spinner"></span> Login
+              </button>
+            </form>
+          </template>
+
+          <!-- Step 2: TOTP -->
+          <template x-if="loginStep2">
+            <form @submit.prevent="do2fa">
+              <div class="form-group">
+                <label>Authenticator Code</label>
+                <input class="input" type="text" inputmode="numeric" pattern="[0-9]*" x-model="totpCode" placeholder="6-digit code" autofocus>
+              </div>
+              <p x-show="loginErr" class="text-danger text-sm" style="margin-bottom:0.5rem" x-text="loginErr"></p>
+              <button class="btn btn-primary btn-block" type="submit" :disabled="loginBusy">
+                <span x-show="loginBusy" class="spinner"></span> Verify
+              </button>
+            </form>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <!-- AUTHENTICATED LAYOUT -->
+    <template x-if="session.authenticated">
+      <div>
+        <!-- Header -->
+        <header class="app-header">
+          <a class="logo" href="#dashboard">
+            <svg width="28" height="28" viewBox="0 0 512 512">
+              <rect width="512" height="512" rx="96" fill="var(--bg)"/>
+              <path d="M256,56 L82.79,156 L82.79,356 L256,456 L429.21,356 L429.21,156 Z" fill="none" stroke="var(--accent)" stroke-width="22" stroke-linejoin="round"/>
+              <text x="234" y="272" font-family="Inter,sans-serif" font-weight="700" font-size="200" fill="var(--accent)" text-anchor="middle" dominant-baseline="central">B</text>
+              <text x="330" y="190" font-family="Inter,sans-serif" font-weight="700" font-size="118" fill="var(--accent)" text-anchor="middle" dominant-baseline="central">3</text>
+            </svg>
+            <span class="hide-mobile">B3 Hive</span>
+          </a>
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <template x-if="session.wallet_unlocked">
+              <span class="badge badge-success">Unlocked</span>
+            </template>
+            <template x-if="!session.wallet_unlocked">
+              <span class="badge badge-warning">Locked</span>
+            </template>
+ <div class="alerts-bell" style="position:relative">
+ <button class="theme-toggle" @click="toggleAlerts()" title="Alerts" type="button">🔔<template x-if="alertCount>0"><span class="alert-badge" x-text="alertCount"></span></template></button>
+ <template x-if="showAlerts">
+ <div class="alerts-dropdown card" @click.away="showAlerts=false" style="position:absolute;right:0;top:100%;min-width:320px;max-width:90vw;z-index:200">
+ <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+ <h3>Alerts</h3>
+ <button class="btn btn-sm" @click="ackAllAlerts()" type="button">Ack all</button>
+ </div>
+ <template x-if="alerts.length===0">
+ <p style="padding:1rem;color:var(--text-muted)">No alerts</p>
+ </template>
+ <template x-for="al in alerts" :key="al.id">
+ <div style="padding:0.6rem 1rem;border-bottom:1px solid var(--border)">
+ <div style="display:flex;justify-content:space-between;align-items:start;gap:0.5rem">
+ <span class="badge" :class="al.level==='stall'?'badge-warning':al.level==='recovery'?'badge-success':'badge-info'" x-text="al.level"></span>
+ <button class="btn btn-sm" @click="ackAlert(al.id)" type="button">✓</button>
+ </div>
+ <p style="margin:0.4rem 0 0;font-size:0.85rem" x-text="al.message"></p>
+ <p style="margin:0.2rem 0 0;font-size:0.7rem;color:var(--text-muted)" x-text="al.ts"></p>
+ </div>
+ </template>
+ </div>
+ </template>
+ </div>
+            <button class="theme-toggle" @click="toggleTheme()" :title="theme==='dark'?'Light mode':'Dark mode'" x-text="theme==='dark'?'☀':'🌙'" type="button"></button>
+            <button class="btn btn-sm btn-secondary" @click="doLogout" type="button">Logout</button>
+          </div>
+        </header>
+
+        <!-- Nav -->
+        <nav class="app-nav">
+          <button class="nav-tab" :class="{'active':view==='dashboard'}" @click="view='dashboard'">Dashboard</button>
+          <button class="nav-tab" :class="{'active':view==='wallet'}" @click="view='wallet'">Wallet</button>
+ <button class="nav-tab" :class="{'active:view==='receive'}" @click="view='receive';refreshBook()">Receive</button>
+          <button class="nav-tab" :class="{'active':view==='send'}" @click="view='send'">Send</button>
+          <button class="nav-tab" :class="{'active':view==='staking'}" @click="view='staking'">Staking</button>
+<button class="nav-tab" :class="{'active':view==='batch'}" @click="view='batch';refreshBatch()">Batch</button>
+          <button class="nav-tab" :class="{'active':view==='settings'}" @click="view='settings'">Settings</button>
+        </nav>
+
+        <!-- Main content -->
+        <main class="app-main">
+
+          <!-- DASHBOARD -->
+          <div x-show="view==='dashboard'">
+            <div class="grid-2" style="margin-bottom:0.75rem">
+              <div class="card">
+                <div class="stat-label">Block Height</div>
+                <div class="stat-value" x-text="chain.blocks ?? '—'"></div>
+              </div>
+              <div class="card">
+                <div class="stat-label">Connections</div>
+                <div class="stat-value" x-text="chain.connections ?? '—'"></div>
+              </div>
+            </div>
+            <div class="grid-2" style="margin-bottom:0.75rem">
+              <div class="card">
+                <div class="stat-label">Sync Progress</div>
+                <div class="stat-value" x-text="chain.progress != null ? (chain.progress*100).toFixed(2)+'%' : '—'"></div>
+              </div>
+              <div class="card">
+                <div class="stat-label">Mempool</div>
+                <div class="stat-value" x-text="chain.mempool ?? '—'"></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-header"><h3>Finality</h3></div>
+              <pre class="mono text-sm" x-text="JSON.stringify(chain.finality||{},null,2)"></pre>
+            </div>
+          </div>
+
+          <!-- WALLET -->
+          <div x-show="view==='wallet'">
+            <div class="grid-2" style="margin-bottom:0.75rem">
+              <div class="card">
+                <div class="stat-label">Confirmed Balance</div>
+                <div class="stat-value text-accent" x-text="wallet.balance ?? '—'"></div>
+              </div>
+              <div class="card">
+                <div class="stat-label">Pending</div>
+                <div class="stat-value" x-text="wallet.pending ?? '—'"></div>
+              </div>
+            </div>
+            <div class="card" style="margin-bottom:0.75rem">
+              <div class="card-header">
+                <h3>Wallet Lock</h3>
+                <template x-if="session.wallet_unlocked">
+                  <button class="btn btn-sm btn-danger" @click="doLock" type="button">Lock</button>
+                </template>
+              </div>
+              <template x-if="!session.wallet_unlocked">
+                <form @submit.prevent="doUnlock" style="display:flex;gap:0.5rem;align-items:end">
+                  <div class="form-group" style="flex:1;margin:0">
+                    <label>Passphrase</label>
+                    <input class="input" type="password" x-model="unlockPw" placeholder="Wallet passphrase">
+                  </div>
+                  <button class="btn btn-primary" type="submit" :disabled="unlockBusy">
+                    <span x-show="unlockBusy" class="spinner"></span> Unlock
+                  </button>
+                </form>
+              </template>
+            </div>
+            <div class="card">
+              <div class="card-header"><h3>Recent Transactions</h3></div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>Time</th><th>Direction</th><th>Amount</th><th>TXID</th></tr></thead>
+                  <tbody>
+                    <tr x-show="wallet.txs.length===0"><td colspan="4" class="text-muted">No transactions</td></tr>
+                    <template x-for="tx in wallet.txs" :key="tx.txid+tx.timereceived">
+                      <tr>
+                        <td class="text-sm" x-text="new Date(tx.timereceived*1000).toLocaleString()"></td>
+                        <td><span class="badge" :class="tx.category==='send'?'badge-danger':tx.category==='receive'?'badge-success':'badge-warning'" x-text="tx.category"></span></td>
+                        <td class="mono" x-text="tx.amount"></td>
+                        <td class="mono text-xs truncate" style="max-width:120px;cursor:pointer" @click="openTx(tx.txid)" title="Show details" x-text="tx.txid"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+ <div class="card" style="margin-bottom:0.75rem">
+ <div class="card-header">
+ <h3>Coin Control (UTXOs)</h3>
+ <button class="btn btn-sm btn-secondary" @click="utxos.open=!utxos.open;refreshUtxos()" type="button" x-text="utxos.open? 'Hide':'Show'"></button>
+ </div>
+ <div class="table-wrap" x-show="utxos.open">
+ <table>
+ <thead><tr><th>Txid:vout</th><th>Address</th><th>Amount</th><th>Confirms</th><th>Spendable</th></tr></thead>
+ <tbody>
+ <tr x-show="utxos.list.length===0"><td colspan="5" class="text-muted">No UTXOs</td></tr>
+ <template x-for="u in utxos.list" :key="u.txid+':'+u.vout">
+ <tr>
+ <td class="mono text-xs truncate" style="max-width:120px" x-text="u.txid+':'+u.vout"></td>
+ <td class="mono text-xs truncate" style="max-width:120px" x-text="u.address"></td>
+ <td class="mono text-sm" x-text="u.amount"></td>
+ <td class="text-sm" x-text="u.confirmations"></td>
+ <td class="text-sm" x-text="u.spendable? 'yes':'no'"></td>
+ </tr>
+ </template>
+ </tbody>
+ </table>
+ </div>
+ </div>
+ <template x-if="txDetail">
+ <div class="card">
+ <div class="card-header">
+ <h3>Transaction Detail</h3>
+ <button class="btn btn-sm btn-secondary" @click="txDetail=null" type="button">Close</button>
+ </div>
+ <pre class="mono text-xs" x-text="JSON.stringify(txDetail,null,2)"></pre>
+ </div>
+ </template>
+<!-- RECEIVE -->
+ <div x-show="view==='receive'">
+ <div class="card" style="margin-bottom:0.75rem">
+ <div class="card-header"><h3>Get New Address</h3></div>
+ <form @submit.prevent="doReceive" style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap">
+ <div class="form-group" style="flex:1;min-width:180px;margin:0">
+ <label>Label (optional)</label>
+ <input class="input" x-model="receive.label" placeholder="e.g. mining payouts">
+ </div>
+ <button class="btn btn-primary" type="submit" :disabled="receive.busy">
+ <span x-show="receive.busy" class="spinner"></span> Generate Address
+ </button>
+ </form>
+ <template x-if="receive.generated">
+ <div style="margin-top:1rem;text-align:center">
+ <p class="mono text-sm" style="word-break:break-all" x-text="receive.generated.address"></p>
+ <div class="qr-wrap"><div id="addr-qr"></div></div>
+ <button class="btn btn-sm btn-secondary" @click="copyText(receive.generated.address)" type="button">Copy Address</button>
+ </div>
+ </template>
+ </div>
+ <div class="card">
+ <div class="card-header"><h3>Address Book</h3></div>
+ <div class="table-wrap">
+ <table>
+ <thead><tr><th>Label</th><th>Address</th><th>Amount</th><th></th></tr></thead>
+ <tbody>
+ <tr x-show="book.addresses.length===0"><td colspan="4" class="text-muted">No addresses yet</td></tr>
+ <template x-for="a in book.addresses" :key="a.address">
+ <tr>
+ <td class="text-sm" x-text="a.label || '(no label)'"></td>
+ <td class="mono text-xs truncate" style="max-width:140px" x-text="a.address"></td>
+ <td class="mono text-sm" x-text="a.amount"></td>
+ <td><button class="btn btn-sm btn-secondary" @click="copyText(a.address)" type="button">Copy</button></td>
+ </tr>
+ </template>
+ </tbody>
+ </table>
+ </div>
+ </div>
+ </div>
+
+
+          <!-- SEND -->
+          <div x-show="view==='send'">
+            <template x-if="!session.wallet_unlocked">
+              <div class="card" style="text-align:center">
+                <p class="text-muted">Unlock the wallet first to send funds.</p>
+                <button class="btn btn-primary" style="margin-top:0.75rem" @click="view='wallet'" type="button">Go to Wallet</button>
+              </div>
+            </template>
+            <template x-if="session.wallet_unlocked">
+              <div class="card">
+                <h2 style="margin-bottom:1rem">Send B3</h2>
+                <form @submit.prevent="doSendPreview">
+                  <div class="form-group">
+                    <label>Recipient Address</label>
+                    <input class="input" x-model="sendAddr" placeholder="S..." required>
+                  </div>
+                  <div class="form-group">
+                    <label>Amount (B3)</label>
+                    <input class="input" type="text" inputmode="decimal" x-model="sendAmt" placeholder="0.000000000" required>
+                  </div>
+                  <p x-show="sendErr" class="text-danger text-sm" style="margin-bottom:0.5rem" x-text="sendErr"></p>
+                  <button class="btn btn-primary btn-block" type="submit" :disabled="sendBusy">
+                    <span x-show="sendBusy" class="spinner"></span> Preview Transaction
+                  </button>
+                </form>
+
+                <!-- Preview result -->
+                <template x-if="sendPreview">
+                  <div style="margin-top:1rem;padding:1rem;background:var(--accent-bg);border:1px solid var(--border-focus);border-radius:var(--radius-md)">
+                    <h3 class="text-accent">Transaction Preview</h3>
+                    <p class="text-sm" style="margin:0.5rem 0">TXID: <span class="mono" x-text="sendPreview.txid"></span></p>
+                    <p class="text-sm" style="margin:0.5rem 0" x-show="sendPreview.recipients">
+                      Sending <span class="mono font-bold" x-text="sendPreview.recipients?.[0]?.amount"></span> B3
+                      to <span class="mono" x-text="sendPreview.recipients?.[0]?.address"></span>
+                    </p>
+                    <template x-if="sendPreview.mempool_ok">
+                      <div style="margin-top:0.75rem">
+                        <button class="btn btn-primary" @click="doSendConfirm" :disabled="sendBusy" type="button">
+                          <span x-show="sendBusy" class="spinner"></span> Confirm & Broadcast
+                        </button>
+                      </div>
+                    </template>
+                    <template x-if="!sendPreview.mempool_ok">
+                      <p class="text-danger text-sm" style="margin-top:0.5rem" x-text="'Rejected: '+(sendPreview.rejection||'unknown')"></p>
+                    </template>
+                  </div>
+                </template>
+
+                <!-- Sent result -->
+                <template x-if="sendResult">
+                  <div style="margin-top:1rem;padding:1rem;background:var(--success-bg);border:1px solid var(--success-border);border-radius:var(--radius-md)">
+                    <h3 class="text-success">Transaction Sent!</h3>
+                    <p class="text-sm mono" style="margin-top:0.5rem" x-text="sendResult.txid"></p>
+                    <button class="btn btn-sm btn-secondary" style="margin-top:0.75rem" @click="sendResult=null;sendPreview=null;sendAddr='';sendAmt=''" type="button">New Transaction</button>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+
+          <!-- STAKING -->
+          <div x-show="view==='staking'">
+            <div class="card" style="margin-bottom:0.75rem">
+              <div class="card-header"><h3>Staking Status</h3></div>
+              <template x-if="staking.loading">
+                <div style="text-align:center;padding:1rem"><span class="spinner"></span></div>
+              </template>
+              <template x-if="!staking.loading">
+                <div>
+                  <div class="grid-2" style="margin-bottom:0.5rem">
+                    <div><span class="stat-label">Staking</span><br><span class="badge" :class="staking.active?'badge-success':'badge-warning'" x-text="staking.active?'Active':'Inactive'"></span></div>
+                    <div><span class="stat-label">Weight</span><br><span class="stat-value text-sm" x-text="staking.weight ?? '—'"></span></div>
+                  </div>
+                  <pre class="mono text-xs" x-text="JSON.stringify(staking.info||{},null,2)"></pre>
+                </div>
+              </template>
+            </div>
+            <div class="card">
+              <div style="display:flex;gap:0.5rem">
+                <button class="btn btn-primary" @click="doStartStaking" :disabled="staking.busy||!session.wallet_unlocked" type="button">Start Staking</button>
+                <button class="btn btn-danger" @click="doStopStaking" :disabled="staking.busy" type="button">Stop Staking</button>
+              </div>
+              <p x-show="!session.wallet_unlocked" class="text-warning text-sm" style="margin-top:0.5rem">Unlock the wallet to start staking.</p>
+            </div>
+          </div>
+
+          <!-- BATCH (user-definable batch actions) -->
+<div x-show="view==='batch'">
+ <div class="card" style="margin-bottom:0.75rem">
+  <div class="card-header"><h3>Batch Actions</h3></div>
+  <p class="text-sm text-muted">Recipes are declarative: pick source addresses or labels, a destination, and limits. Carriers (B3S1/B3A1/B3MC) are never spent. Preview always runs first; execution needs an unlocked wallet and a fresh preview.</p>
+  <template x-if="batch.loading">
+   <div style="text-align:center;padding:1rem"><span class="spinner"></span></div>
+  </template>
+  <template x-if="!batch.loading && batch.recipes.length === 0">
+   <p class="text-muted text-sm" style="margin-top:0.5rem">No recipes yet — create one below.</p>
+  </template>
+  <div class="table-wrap" x-show="batch.recipes.length > 0" style="margin-top:0.5rem">
+   <table class="table">
+    <thead><tr><th>Name</th><th>Sources</th><th>Destination</th><th></th></tr></thead>
+    <tbody>
+     <template x-for="r in batch.recipes" :key="r.id">
+      <tr>
+       <td x-text="r.name"></td>
+       <td class="text-xs" x-text="(r.recipe.filters.sources||[]).length"></td>
+       <td class="mono text-xs truncate" style="max-width:110px" x-text="r.recipe.action.destination"></td>
+       <td style="white-space:nowrap">
+        <button class="btn btn-sm btn-secondary" @click="doBatchPreview(r)" :disabled="batch.busy" type="button">Preview</button>
+        <button class="btn btn-sm btn-secondary" @click="batchEdit(r)" type="button">Edit</button>
+        <button class="btn btn-sm btn-danger" @click="batchDelete(r)" :disabled="batch.busy" type="button">Delete</button>
+       </td>
+      </tr>
+     </template>
+    </tbody>
+   </table>
+  </div>
+  <p x-show="batch.err" class="text-danger text-sm" style="margin-top:0.5rem" x-text="batch.err"></p>
+
+  <!-- Preview panel -->
+  <template x-if="batch.preview">
+   <div style="margin-top:0.75rem;padding:1rem;background:var(--accent-bg);border:1px solid var(--border-focus);border-radius:var(--radius-md)">
+    <h3 class="text-accent">Plan Preview</h3>
+    <p class="text-sm">Eligible UTXOs: <span class="mono font-bold" x-text="batch.preview.eligible_utxos"></span>
+     · Fee: <span class="mono" x-text="batch.preview.total_fee"></span> B3
+     · Output: <span class="mono" x-text="batch.preview.total_output"></span> B3</p>
+    <p class="text-xs text-muted">Fee rate <span class="mono" x-text="batch.preview.fee_rate"></span> (<span x-text="batch.preview.fee_source"></span>)
+     · Skipped: <span x-text="batch.preview.skipped.script"></span> non-P2PKH, <span x-text="batch.preview.skipped.unspendable"></span> unspendable</p>
+    <div class="table-wrap" style="margin-top:0.5rem">
+     <table class="table">
+      <thead><tr><th>Batch</th><th>Inputs</th><th>Total in</th><th>Fee</th><th>Output</th></tr></thead>
+      <tbody>
+       <template x-for="(b, i) in batch.preview.batches" :key="i">
+        <tr>
+         <td x-text="i+1"></td>
+         <td x-text="b.inputs"></td>
+         <td class="mono text-xs" x-text="b.total_input"></td>
+         <td class="mono text-xs" x-text="b.fee"></td>
+         <td class="mono text-xs" x-text="b.output"></td>
+        </tr>
+       </template>
+      </tbody>
+     </table>
+    </div>
+    <p x-show="!session.wallet_unlocked" class="text-warning text-sm" style="margin-top:0.5rem">Unlock the wallet (Wallet view) to execute.</p>
+    <button class="btn btn-primary" style="margin-top:0.5rem" @click="doBatchExecute(batch.recipes.find(r => batch.preview.recipe_name === r.name))" :disabled="batch.busy || !session.wallet_unlocked" type="button">
+     <span x-show="batch.busy" class="spinner"></span> Confirm & Execute
+    </button>
+   </div>
+  </template>
+
+  <!-- Results panel -->
+  <template x-if="batch.results">
+   <div style="margin-top:0.75rem;padding:1rem;background:var(--success-bg);border:1px solid var(--success-border);border-radius:var(--radius-md)">
+    <h3 class="text-success">Batch Executed</h3>
+    <template x-for="(res, i) in batch.results.results" :key="i">
+     <p class="text-sm mono" x-text="(res.skipped ? 'Batch '+(res.batch+1)+' skipped: '+res.reason : 'Batch '+(res.batch+1)+': '+res.txid)"></p>
+    </template>
+    <button class="btn btn-sm btn-secondary" style="margin-top:0.5rem" @click="batch.results=null;batch.preview=null" type="button">Done</button>
+   </div>
+  </template>
+ </div>
+
+ <!-- Recipe editor -->
+ <div class="card">
+  <div class="card-header"><h3 x-text="batch.editing ? 'Edit Recipe' : 'New Recipe'"></h3></div>
+  <form @submit.prevent="doBatchSave">
+   <div class="form-group">
+    <label>Name</label>
+    <input class="input" x-model="batch.form.name" placeholder="Dust sweep" required maxlength="64">
+   </div>
+   <div class="form-group">
+    <label>Source addresses or label:NAME (one per line)</label>
+    <textarea class="input" x-model="batch.form.sources" rows="3" placeholder="S...&#10;label:mining"></textarea>
+   </div>
+   <div class="form-group">
+    <label>Destination (P2PKH)</label>
+    <input class="input" x-model="batch.form.destination" placeholder="S..." required>
+   </div>
+   <div class="grid-2">
+    <div class="form-group">
+     <label>Sort</label>
+     <select class="input" x-model="batch.form.sort">
+      <option value="smallest">Smallest first</option>
+      <option value="largest">Largest first</option>
+      <option value="oldest">Oldest first</option>
+     </select>
+    </div>
+    <div class="form-group">
+     <label>Min UTXO value (B3)</label>
+     <input class="input" x-model="batch.form.min_utxo_value" inputmode="decimal" placeholder="0">
+    </div>
+   </div>
+   <div class="grid-2">
+    <div class="form-group">
+     <label>Inputs per tx (max 675)</label>
+     <input class="input" x-model="batch.form.inputs_per_tx" inputmode="numeric" placeholder="50">
+    </div>
+    <div class="form-group">
+     <label>Max batches</label>
+     <input class="input" x-model="batch.form.max_batches" inputmode="numeric" placeholder="5">
+    </div>
+   </div>
+   <div class="grid-2">
+    <div class="form-group">
+     <label>Min output per tx (B3)</label>
+     <input class="input" x-model="batch.form.min_output" inputmode="decimal" placeholder="0.010000000">
+    </div>
+    <div class="form-group">
+     <label>Fee mode</label>
+     <select class="input" x-model="batch.form.fee_mode">
+      <option value="estimate">Estimate (node)</option>
+      <option value="fixed">Fixed rate</option>
+     </select>
+    </div>
+   </div>
+   <div class="form-group" x-show="batch.form.fee_mode==='fixed'">
+    <label>Fee rate (B3/kB)</label>
+    <input class="input" x-model="batch.form.fee_rate" inputmode="decimal" placeholder="0.00010000">
+   </div>
+   <p x-show="batch.err" class="text-danger text-sm" x-text="batch.err"></p>
+   <div style="display:flex;gap:0.5rem">
+    <button class="btn btn-primary" type="submit" :disabled="batch.busy">
+     <span x-show="batch.busy" class="spinner"></span> <span x-text="batch.editing ? 'Save Changes' : 'Create Recipe'"></span>
+    </button>
+    <button class="btn btn-secondary" x-show="batch.editing" @click="batch.editing=false;batch.editId=null" type="button">Cancel</button>
+   </div>
+  </form>
+ </div>
+</div>
+
+<!-- SETTINGS -->
+          <div x-show="view==='settings'">
+            <div class="card" style="margin-bottom:0.75rem">
+              <div class="card-header"><h3>2FA Setup</h3></div>
+              <template x-if="!totpSetup">
+                <button class="btn btn-secondary" @click="doTotpSetup" :disabled="totpBusy" type="button">
+                  <span x-show="totpBusy" class="spinner"></span> Configure Authenticator
+                </button>
+              </template>
+              <template x-if="totpSetup">
+                <div>
+                  <p class="text-sm text-muted" style="margin-bottom:0.75rem">Scan this QR code with your authenticator app. Recovery codes are shown once — save them securely.</p>
+                  <div class="qr-wrap"><div id="totp-qr"></div></div>
+                  <details style="margin-top:0.5rem">
+                    <summary class="text-sm text-accent" style="cursor:pointer">Recovery Codes</summary>
+                    <div style="margin-top:0.5rem;display:flex;flex-wrap:wrap;gap:0.5rem">
+                      <template x-for="code in totpSetup.recovery_codes" :key="code">
+                        <code class="mono text-sm" style="background:var(--bg-input);padding:0.25rem 0.5rem;border-radius:var(--radius-sm)" x-text="code"></code>
+                      </template>
+                    </div>
+                  </details>
+                </div>
+              </template>
+            </div>
+<div class="card" style="margin-bottom:0.75rem">
+ <div class="card-header"><h3>Sign Message</h3></div>
+ <form @submit.prevent="doSignMessage">
+ <div class="form-group"><label>Address</label>
+ <input class="input" x-model="signv.address" placeholder="S..." required></div>
+ <div class="form-group"><label>Message</label>
+ <textarea class="input" x-model="signv.message" rows="3" required></textarea></div>
+ <button class="btn btn-primary" type="submit" :disabled="signv.busy || !session.wallet_unlocked">
+ <span x-show="signv.busy" class="spinner"></span> Sign
+ </button>
+ <p class="text-xs text-muted" x-show="!session.wallet_unlocked" style="margin-top:0.5rem">Unlock the wallet to sign.</p>
+ <template x-if="signv.sig">
+ <div style="margin-top:0.75rem">
+ <p class="text-sm">Signature:</p>
+ <p class="mono text-xs" style="word-break:break-all" x-text="signv.sig"></p>
+ <button class="btn btn-sm btn-secondary" @click="copyText(signv.sig)" type="button">Copy Signature</button>
+ </div>
+ </template>
+ </form>
+ </div>
+ <div class="card" style="margin-bottom:0.75rem">
+ <div class="card-header"><h3>Verify Message</h3></div>
+ <form @submit.prevent="doVerifyMessage">
+ <div class="form-group"><label>Address</label>
+ <input class="input" x-model="signv.vaddress" placeholder="S..." required></div>
+ <div class="form-group"><label>Signature</label>
+ <input class="input" x-model="signv.vsig" placeholder="base64 signature" required></div>
+ <div class="form-group"><label>Message</label>
+ <textarea class="input" x-model="signv.vmessage" rows="3" required></textarea></div>
+ <button class="btn btn-primary" type="submit" :disabled="signv.busy"><span x-show="signv.busy" class="spinner"></span> Verify</button>
+ <template x-if="signv.verified !== null">
+ <p class="text-sm" style="margin-top:0.5rem" x-text="signv.verified? 'Signature is VALID':'Signature is INVALID'"></p>
+ </template>
+ </form>
+ </div>
+ <div class="card" style="margin-bottom:0.75rem">
+ <div class="card-header"><h3>Change Wallet Passphrase</h3></div>
+ <form @submit.prevent="doPassphraseChange">
+ <div class="form-group"><label>Current passphrase</label>
+ <input class="input" type="password" x-model="pwchange.old" required></div>
+ <div class="form-group"><label>New passphrase (min 8 chars)</label>
+ <input class="input" type="password" x-model="pwchange.new" required></div>
+ <div class="form-group"><label>Repeat new passphrase</label>
+ <input class="input" type="password" x-model="pwchange.repeat" required></div>
+ <button class="btn btn-primary" type="submit" :disabled="pwchange.busy"><span x-show="pwchange.busy" class="spinner"></span> Change Passphrase</button>
+ </form>
+ </div>
+ <div class="card" style="margin-bottom:0.75rem">
+ <div class="card-header">
+ <h3>Network Peers</h3>
+ <button class="btn btn-sm btn-secondary" @click="peers.open=!peers.open;refreshPeers()" type="button" x-text="peers.open? 'Hide':'Show'"></button>
+ </div>
+ <div class="table-wrap" x-show="peers.open">
+ <table>
+ <thead><tr><th>Address</th><th>Version</th><th>Ping</th><th>Direction</th></tr></thead>
+ <tbody>
+ <tr x-show="peers.list.length===0"><td colspan="4" class="text-muted">No peers</td></tr>
+ <template x-for="p in peers.list" :key="p.addr">
+ <tr>
+ <td class="mono text-sm" x-text="p.addr"></td>
+ <td class="text-sm" x-text="p.subver"></td>
+ <td class="text-sm" x-text="p.ping != null? (p.ping*1000).toFixed(0)+' ms':'-'"></td>
+ <td class="text-sm" x-text="p.inbound? 'inbound':'outbound'"></td>
+ </tr>
+ </template>
+ </tbody>
+ </table>
+ </div>
+ </div>
+            <div class="card">
+              <h3>Theme</h3>
+              <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+                <button class="btn btn-sm" :class="theme==='dark'?'btn-primary':'btn-secondary'" @click="setTheme('dark')" type="button">Dark</button>
+                <button class="btn btn-sm" :class="theme==='light'?'btn-primary':'btn-secondary'" @click="setTheme('light')" type="button">Light</button>
+              </div>
+            </div>
+          </div>
+
+        </main>
+      </div>
+    </template>
+
+    <!-- Toast -->
+    <div x-show="toast" x-transition class="toast" :class="toastType==='danger'?'toast-danger':'toast-success'" x-text="toast" style="position:fixed;bottom:1rem;right:1rem;z-index:200"></div>
+  </div>
+
+  <script src="/js/alpine.min.js" defer></script>
+  <script src="/js/qrcode.min.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

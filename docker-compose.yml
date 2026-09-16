@@ -1,0 +1,30 @@
+# B3 Hive — single all-in-one container.
+# Quick start:
+#   cp .env.example .env   # fill in UI_PASSWORD etc.
+#   docker compose up -d
+# Upgrade:
+#   docker compose pull && docker compose up -d
+
+services:
+  b3hive:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: b3hive:latest
+    container_name: b3hive
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Data dir inside the container; the host side of this mapping holds
+      # chain state, wallet, and b3coin.conf across upgrades.
+      B3_DATA_DIR: /data
+    ports:
+      # Only the UI port is published. The node RPC binds to 127.0.0.1
+      # inside the container and is NEVER published.
+      - "${WEB_PORT:-8080}:8080"
+    volumes:
+      # Map a host directory (default: ~/.B3-CoinV2).
+      - ${B3_DATA_DIR:-~/.B3-CoinV2}:/data
+    # Resource sanity limits (optional; tune per host)
+    # mem_limit: 4g
+    stop_grace_period: 10m   # give b3coind time for a clean shutdown

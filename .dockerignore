@@ -1,0 +1,27 @@
+# Keep tests, dev tooling, and local state OUT of the production image.
+backend/tests
+backend/venv
+backend/.venv
+backend/.pytest_cache
+backend/dev_server.py
+backend/backend
+venv
+.venv
+node_modules
+.git
+.gitignore
+.env
+.env.example
+docker-compose*.yml
+docs
+*.md
+!backend/README.md
+scripts
+
+# Data and secrets — NEVER bake into an image
+data
+*.db
+*.sqlite
+secrets
+wallet.dat
+b3coin.conf

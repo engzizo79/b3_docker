@@ -1,0 +1,24 @@
+# B3 Hive production TLS layer.
+# Caddy terminates HTTPS with automatic Let's Encrypt certificates for
+# ${B3_DOMAIN} and proxies everything to the b3hive container.
+# HSTS pins browsers to HTTPS for one year.
+
+{$B3_DOMAIN} {
+	encode gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
+
+	reverse_proxy b3hive:8080 {
+		# Preserve client scheme so backend cookies get the Secure flag
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output stdout
+	}
+}

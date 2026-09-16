@@ -1,0 +1,43 @@
+# B3 Hive — production deployment with automatic HTTPS (Caddy).
+# Usage:
+#   cp .env.example .env          # set UI_PASSWORD, secrets, B3_DOMAIN
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Requires: DNS A record for B3_DOMAIN pointing at this host, ports 80+443 open.
+
+services:
+  b3hive:
+    image: b3hive:latest
+    container_name: b3hive
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      B3_DATA_DIR: /data
+      # Behind Caddy: cookies get the Secure flag via X-Forwarded-Proto
+      COOKIE_SECURE: auto
+    volumes:
+      - ${B3_DATA_DIR:-~/.B3-CoinV2}:/data
+    # No ports published — ONLY Caddy reaches the backend; the node RPC
+    # stays loopback-only inside the container.
+    stop_grace_period: 10m
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: b3hive-caddy
+    restart: unless-stopped
+    depends_on:
+      - b3hive
+    environment:
+      B3_DOMAIN: ${B3_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

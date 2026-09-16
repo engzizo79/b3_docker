@@ -32,3 +32,6 @@ data/
 .idea/
 .DS_Store
 *.swp
+
+# Agent Zero project runtime metadata — never commit
+.a0proj/
