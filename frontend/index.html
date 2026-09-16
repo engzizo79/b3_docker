@@ -363,22 +363,22 @@
           <!-- STAKING -->
           <div x-show="view==='staking'">
 <template x-if="wallet.loaded === false">
-<div class="card" style="text-align:center;padding:1.5rem">
+<div class="card text-center p-5">
 <h3>No wallet loaded</h3>
 <p class="text-muted">Staking requires a loaded wallet. Create or load a wallet first.</p>
-<button class="btn btn-primary" style="margin-top:0.75rem" @click="view='wizard';checkWizard()" type="button">Open Setup Wizard</button>
+<button class="btn btn-primary mt-3" @click="view='wizard';checkWizard()" type="button">Open Setup Wizard</button>
 </div>
 </template>
 <template x-if="wallet.loaded !== false">
 <div>
-            <div class="card" style="margin-bottom:0.75rem">
+            <div class="card mb-3">
               <div class="card-header"><h3>Staking Status</h3></div>
               <template x-if="staking.loading">
-                <div style="text-align:center;padding:1rem"><span class="spinner"></span></div>
+                <div class="text-center p-4"><span class="spinner"></span></div>
               </template>
               <template x-if="!staking.loading">
                 <div>
-                  <div class="grid-2" style="margin-bottom:0.5rem">
+                  <div class="grid-2 mb-2">
                     <div><span class="stat-label">Staking</span><br><span class="badge" :class="staking.active?'badge-success':'badge-warning'" x-text="staking.active?'Active':'Inactive'"></span></div>
                     <div><span class="stat-label">Weight</span><br><span class="stat-value text-sm" x-text="staking.weight ?? '—'"></span></div>
                   </div>
@@ -387,11 +387,11 @@
               </template>
             </div>
             <div class="card">
-              <div style="display:flex;gap:0.5rem">
+              <div class="flex gap-2">
                 <button class="btn btn-primary" @click="doStartStaking" :disabled="staking.busy||!session.wallet_unlocked" type="button">Start Staking</button>
                 <button class="btn btn-danger" @click="doStopStaking" :disabled="staking.busy" type="button">Stop Staking</button>
               </div>
-              <p x-show="!session.wallet_unlocked" class="text-warning text-sm" style="margin-top:0.5rem">Unlock the wallet to start staking.</p>
+              <p x-show="!session.wallet_unlocked" class="text-warning text-sm mt-2">Unlock the wallet to start staking.</p>
             </div>
 </div>
 </template>
