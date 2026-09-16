@@ -399,16 +399,16 @@
 
           <!-- BATCH (user-definable batch actions) -->
 <div x-show="view==='batch'">
- <div class="card" style="margin-bottom:0.75rem">
+ <div class="card mb-3">
   <div class="card-header"><h3>Batch Actions</h3></div>
   <p class="text-sm text-muted">Recipes are declarative: pick source addresses or labels, a destination, and limits. Carriers (B3S1/B3A1/B3MC) are never spent. Preview always runs first; execution needs an unlocked wallet and a fresh preview.</p>
   <template x-if="batch.loading">
-   <div style="text-align:center;padding:1rem"><span class="spinner"></span></div>
+   <div class="text-center p-4"><span class="spinner"></span></div>
   </template>
   <template x-if="!batch.loading && batch.recipes.length === 0">
-   <p class="text-muted text-sm" style="margin-top:0.5rem">No recipes yet — create one below.</p>
+   <p class="text-muted text-sm mt-2">No recipes yet — create one below.</p>
   </template>
-  <div class="table-wrap" x-show="batch.recipes.length > 0" style="margin-top:0.5rem">
+  <div class="table-wrap mt-2" x-show="batch.recipes.length > 0">
    <table class="table">
     <thead><tr><th>Name</th><th>Sources</th><th>Destination</th><th></th></tr></thead>
     <tbody>
@@ -416,8 +416,8 @@
       <tr>
        <td x-text="r.name"></td>
        <td class="text-xs" x-text="(r.recipe.filters.sources||[]).length"></td>
-       <td class="mono text-xs truncate" style="max-width:110px" x-text="r.recipe.action.destination"></td>
-       <td style="white-space:nowrap">
+       <td class="mono text-xs truncate w-truncate" x-text="r.recipe.action.destination"></td>
+       <td class="nowrap">
         <button class="btn btn-sm btn-secondary" @click="doBatchPreview(r)" :disabled="batch.busy" type="button">Preview</button>
         <button class="btn btn-sm btn-secondary" @click="batchEdit(r)" type="button">Edit</button>
         <button class="btn btn-sm btn-danger" @click="batchDelete(r)" :disabled="batch.busy" type="button">Delete</button>
@@ -427,18 +427,18 @@
     </tbody>
    </table>
   </div>
-  <p x-show="batch.err" class="text-danger text-sm" style="margin-top:0.5rem" x-text="batch.err"></p>
+  <p x-show="batch.err" class="text-danger text-sm mt-2" x-text="batch.err"></p>
 
   <!-- Preview panel -->
   <template x-if="batch.preview">
-   <div style="margin-top:0.75rem;padding:1rem;background:var(--accent-bg);border:1px solid var(--border-focus);border-radius:var(--radius-md)">
+   <div class="callout callout--info mt-3">
     <h3 class="text-accent">Plan Preview</h3>
     <p class="text-sm">Eligible UTXOs: <span class="mono font-bold" x-text="batch.preview.eligible_utxos"></span>
      · Fee: <span class="mono" x-text="batch.preview.total_fee"></span> B3
      · Output: <span class="mono" x-text="batch.preview.total_output"></span> B3</p>
     <p class="text-xs text-muted">Fee rate <span class="mono" x-text="batch.preview.fee_rate"></span> (<span x-text="batch.preview.fee_source"></span>)
      · Skipped: <span x-text="batch.preview.skipped.script"></span> non-P2PKH, <span x-text="batch.preview.skipped.unspendable"></span> unspendable</p>
-    <div class="table-wrap" style="margin-top:0.5rem">
+    <div class="table-wrap mt-2">
      <table class="table">
       <thead><tr><th>Batch</th><th>Inputs</th><th>Total in</th><th>Fee</th><th>Output</th></tr></thead>
       <tbody>
@@ -454,8 +454,8 @@
       </tbody>
      </table>
     </div>
-    <p x-show="!session.wallet_unlocked" class="text-warning text-sm" style="margin-top:0.5rem">Unlock the wallet (Wallet view) to execute.</p>
-    <button class="btn btn-primary" style="margin-top:0.5rem" @click="doBatchExecute(batch.recipes.find(r => batch.preview.recipe_name === r.name))" :disabled="batch.busy || !session.wallet_unlocked" type="button">
+    <p x-show="!session.wallet_unlocked" class="text-warning text-sm mt-2">Unlock the wallet (Wallet view) to execute.</p>
+    <button class="btn btn-primary mt-2" @click="doBatchExecute(batch.recipes.find(r => batch.preview.recipe_name === r.name))" :disabled="batch.busy || !session.wallet_unlocked" type="button">
      <span x-show="batch.busy" class="spinner"></span> Confirm & Execute
     </button>
    </div>
@@ -463,12 +463,12 @@
 
   <!-- Results panel -->
   <template x-if="batch.results">
-   <div style="margin-top:0.75rem;padding:1rem;background:var(--success-bg);border:1px solid var(--success-border);border-radius:var(--radius-md)">
+   <div class="callout callout--success mt-3">
     <h3 class="text-success">Batch Executed</h3>
     <template x-for="(res, i) in batch.results.results" :key="i">
      <p class="text-sm mono" x-text="(res.skipped ? 'Batch '+(res.batch+1)+' skipped: '+res.reason : 'Batch '+(res.batch+1)+': '+res.txid)"></p>
     </template>
-    <button class="btn btn-sm btn-secondary" style="margin-top:0.5rem" @click="batch.results=null;batch.preview=null" type="button">Done</button>
+    <button class="btn btn-sm btn-secondary mt-2" @click="batch.results=null;batch.preview=null" type="button">Done</button>
    </div>
   </template>
  </div>
@@ -531,7 +531,7 @@
     <input class="input" x-model="batch.form.fee_rate" inputmode="decimal" placeholder="0.00010000">
    </div>
    <p x-show="batch.err" class="text-danger text-sm" x-text="batch.err"></p>
-   <div style="display:flex;gap:0.5rem">
+   <div class="flex gap-2">
     <button class="btn btn-primary" type="submit" :disabled="batch.busy">
      <span x-show="batch.busy" class="spinner"></span> <span x-text="batch.editing ? 'Save Changes' : 'Create Recipe'"></span>
     </button>
