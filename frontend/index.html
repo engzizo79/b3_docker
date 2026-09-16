@@ -163,10 +163,10 @@
           <!-- WALLET -->
           <div x-show="view==='wallet'">
 <template x-if="wallet.loaded === false">
-<div class="card" style="text-align:center;padding:1.5rem">
+<div class="card text-center p-5">
 <h3>No wallet loaded</h3>
 <p class="text-muted">Create a new wallet or load an existing wallet.dat to use the wallet features.</p>
-<div style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;margin-top:0.75rem">
+<div class="flex flex-center flex-wrap gap-2 mt-3">
 <button class="btn btn-primary" @click="view='wizard';checkWizard()" type="button">Open Setup Wizard</button>
 <button class="btn btn-secondary" @click="view='settings'" type="button">Wallet Settings</button>
 </div>
@@ -174,7 +174,7 @@
 </template>
 <template x-if="wallet.loaded !== false">
 <div>
-            <div class="grid-2" style="margin-bottom:0.75rem">
+            <div class="grid-2 mb-3">
               <div class="card">
                 <div class="stat-label">Confirmed Balance</div>
                 <div class="stat-value text-accent" x-text="wallet.balance ?? '—'"></div>
@@ -184,7 +184,7 @@
                 <div class="stat-value" x-text="wallet.pending ?? '—'"></div>
               </div>
             </div>
-            <div class="card" style="margin-bottom:0.75rem">
+            <div class="card mb-3">
               <div class="card-header">
                 <h3>Wallet Lock</h3>
                 <template x-if="session.wallet_unlocked">
@@ -192,8 +192,8 @@
                 </template>
               </div>
               <template x-if="!session.wallet_unlocked">
-                <form @submit.prevent="doUnlock" style="display:flex;gap:0.5rem;align-items:end">
-                  <div class="form-group" style="flex:1;margin:0">
+                <form @submit.prevent="doUnlock" class="flex gap-2 items-end">
+                  <div class="form-group flex-1 m-0">
                     <label>Passphrase</label>
                     <input class="input" type="password" x-model="unlockPw" placeholder="Wallet passphrase">
                   </div>
@@ -215,14 +215,14 @@
                         <td class="text-sm" x-text="new Date(tx.timereceived*1000).toLocaleString()"></td>
                         <td><span class="badge" :class="tx.category==='send'?'badge-danger':tx.category==='receive'?'badge-success':'badge-warning'" x-text="tx.category"></span></td>
                         <td class="mono" x-text="tx.amount"></td>
-                        <td class="mono text-xs truncate" style="max-width:120px;cursor:pointer" @click="openTx(tx.txid)" title="Show details" x-text="tx.txid"></td>
+                        <td class="mono text-xs truncate w-truncate clickable" @click="openTx(tx.txid)" title="Show details" x-text="tx.txid"></td>
                       </tr>
                     </template>
                   </tbody>
                 </table>
               </div>
             </div>
-          <div class="card" style="margin-bottom:0.75rem">
+          <div class="card mb-3">
  <div class="card-header">
  <h3>Coin Control (UTXOs)</h3>
  <button class="btn btn-sm btn-secondary" @click="utxos.open=!utxos.open;refreshUtxos()" type="button" x-text="utxos.open? 'Hide':'Show'"></button>
@@ -234,8 +234,8 @@
  <tr x-show="utxos.list.length===0"><td colspan="5" class="text-muted">No UTXOs</td></tr>
  <template x-for="u in utxos.list" :key="u.txid+':'+u.vout">
  <tr>
- <td class="mono text-xs truncate" style="max-width:120px" x-text="u.txid+':'+u.vout"></td>
- <td class="mono text-xs truncate" style="max-width:120px" x-text="u.address"></td>
+ <td class="mono text-xs truncate w-truncate" x-text="u.txid+':'+u.vout"></td>
+ <td class="mono text-xs truncate w-truncate" x-text="u.address"></td>
  <td class="mono text-sm" x-text="u.amount"></td>
  <td class="text-sm" x-text="u.confirmations"></td>
  <td class="text-sm" x-text="u.spendable? 'yes':'no'"></td>

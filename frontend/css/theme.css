@@ -466,6 +466,7 @@ min-height: 80vh;
 .flex-start { display: flex; align-items: center; gap: var(--space-2); }
 .flex-wrap { flex-wrap: wrap; }
 .flex-1 { flex: 1; }
+.items-end { align-items: end; }
 
 /* ---- Utility: Gap ---- */
 .gap-1 { gap: var(--space-1); }
@@ -492,6 +493,7 @@ min-height: 80vh;
 /* ---- Utility: Padding ---- */
 .p-3 { padding: var(--space-3); }
 .p-4 { padding: var(--space-4); }
+.p-5 { padding: var(--space-5); }
 
 /* ---- Utility: Text ---- */
 .text-center { text-align: center; }
