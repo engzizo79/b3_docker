@@ -126,7 +126,7 @@
 
           <!-- DASHBOARD -->
           <div x-show="view==='dashboard'">
-            <div class="grid-2" style="margin-bottom:0.75rem">
+            <div class="grid-2 mb-3">
               <div class="card">
                 <div class="stat-label">Block Height</div>
                 <div class="stat-value" x-text="chain.blocks ?? '—'"></div>
@@ -136,12 +136,12 @@
                 <div class="stat-value" x-text="chain.connections ?? '—'"></div>
               </div>
             </div>
-            <div class="grid-2" style="margin-bottom:0.75rem">
+            <div class="grid-2 mb-3">
               <div class="card">
                 <div class="stat-label">Sync Progress</div>
 <div class="stat-value" x-text="chain.sync? chain.sync.percent.toFixed(1)+'% ('+chain.sync.blocks.toLocaleString()+' / '+chain.sync.tip.toLocaleString()+')': —"></div>
-<p x-show="chain.sync && chain.sync.behind > 0" class="text-warning text-sm" style="margin:0.3rem 0 0" x-text="chain.sync? chain.sync.behind.toLocaleString()+' blocks behind — syncing': ''"></p>
-<p x-show="chain.sync && chain.sync.behind === 0" class="text-success text-sm" style="margin:0.3rem 0 0">Up to date</p>
+<p x-show="chain.sync && chain.sync.behind > 0" class="text-warning text-sm" class="m-0 mt-1" x-text="chain.sync? chain.sync.behind.toLocaleString()+' blocks behind — syncing': ''"></p>
+<p x-show="chain.sync && chain.sync.behind === 0" class="text-success text-sm" class="m-0 mt-1">Up to date</p>
               </div>
               <div class="card">
                 <div class="stat-label">Mempool</div>
@@ -150,13 +150,13 @@
             </div>
             <div class="card">
               <div class="card-header"><h3>Finality</h3></div>
-<div class="grid-2" style="margin-bottom:0.5rem">
+<div class="grid-2 mb-2">
 <div><span class="stat-label">Epoch</span><br><span class="stat-value text-sm" x-text="chain.finality && chain.finality.epoch != null ? chain.finality.epoch : '—'"></span></div>
 <div><span class="stat-label">Validators</span><br><span class="stat-value text-sm" x-text="chain.finality && chain.finality.validator_set && chain.finality.validator_set.size != null ? chain.finality.validator_set.size + ' validators' : '—'"></span></div>
 </div>
-<p class="text-sm" style="margin:0.5rem 0" x-show="chain.finality && chain.finality.active === true">Finality is <span class="badge badge-success">Active</span> — BLS checkpoints are being finalized.</p>
-<p class="text-sm text-muted" style="margin:0.5rem 0" x-show="chain.finality && chain.finality.active !== true">Modern-PoS finality is not active yet (pre-activation corridor).</p>
-<details style="margin-top:0.5rem"><summary class="text-muted text-sm" style="cursor:pointer">Raw details</summary><pre class="mono text-xs" x-text="JSON.stringify(chain.finality||{},null,2)"></pre></details>
+<p class="text-sm" class="m-0 mt-2 mb-2" x-show="chain.finality && chain.finality.active === true">Finality is <span class="badge badge-success">Active</span> — BLS checkpoints are being finalized.</p>
+<p class="text-sm text-muted" class="m-0 mt-2 mb-2" x-show="chain.finality && chain.finality.active !== true">Modern-PoS finality is not active yet (pre-activation corridor).</p>
+<details class="mt-2"><summary class="text-muted text-sm" class="clickable">Raw details</summary><pre class="mono text-xs" x-text="JSON.stringify(chain.finality||{},null,2)"></pre></details>
             </div>
           </div>
 
