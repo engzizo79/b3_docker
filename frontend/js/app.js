@@ -19,6 +19,8 @@ function b3app() {
     staking: { loading: false, busy: false, active: false, weight: null, info: null, stakes: [],
         settings: null, settingsBusy: false, settingsSaved: false, ack: false, passphrase: '',
         unstakeBusy: false, unstakePreview: null, unstakeTarget: null, revokeArmed: false },
+ // Assets (FN Coin / FlowMesh)
+ assets: { loaded: false, list: [], fn: null, markets: [], validatorBusy: false },
     // Send
     sendAddr: '', sendAmt: '', sendBusy: false, sendErr: '',
     sendPreview: null, sendResult: null,
@@ -174,6 +176,30 @@ function b3app() {
       } catch (e) { /* not logged in yet */ }
     },
 
+        // -- Assets (FN Coin / FlowMesh) -----------------------------------------
+        async refreshAssets() {
+            try {
+                const d = await this.api('/api/assets');
+                this.assets.list = d.assets || [];
+                this.assets.fn = d.fn || null;
+                this.assets.loaded = true;
+            } catch (e) { this.assets.list = []; this.assets.fn = null; this.assets.loaded = true; }
+            try {
+                const d = await this.api('/api/assets/markets');
+                this.assets.markets = d.markets || [];
+            } catch (e) { this.assets.markets = []; }
+        },
+
+        async validatorAction(action) {
+            this.assets.validatorBusy = true;
+            try {
+                await this.api('/api/assets/validator/' + action, { method: 'POST' });
+                this.showToast('FlowMesh validator ' + (action === 'start' ? 'started' : 'stopped'));
+            } catch (e) { this.showToast(e.message, 'danger'); }
+            this.assets.validatorBusy = false;
+        },
+
+        
     // -- Wallet unlock/lock --------------------------------------------------
     async doUnlock() {
       this.unlockBusy = true;

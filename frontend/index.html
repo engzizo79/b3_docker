@@ -118,6 +118,7 @@
  <button class="nav-tab" :class="{'active:view==='receive'}" @click="view='receive';refreshBook()">Receive</button>
           <button class="nav-tab" :class="{'active':view==='send'}" @click="view='send'">Send</button>
           <button class="nav-tab" :class="{'active':view==='staking'}" @click="view='staking'">Staking</button>
+<button class="nav-tab" :class="{'active':view==='assets'}" @click="view='assets';refreshAssets()">Assets</button>
 <button class="nav-tab advanced-only" :class="{'active':view==='batch'}" @click="view='batch';refreshBatch()">Batch</button>
           <button class="nav-tab" :class="{'active':view==='settings'}" @click="view='settings'">Settings</button>
         </nav>
@@ -488,7 +489,79 @@
 </template>
           </div>
 
-          <!-- BATCH (user-definable batch actions) -->
+          <!-- ASSETS (FN Coin / FlowMesh) -->
+<div x-show="view==='assets'">
+ <div class="card mb-3">
+  <div class="card-header"><h3>Assets (FN Coin)</h3></div>
+  <template x-if="!assets.loaded">
+   <div class="text-center p-4"><span class="spinner"></span></div>
+  </template>
+  <template x-if="assets.loaded">
+   <div>
+    <template x-if="assets.fn">
+     <div class="stat-grid mb-2">
+      <div class="stat"><div class="stat-label">FN Coin</div><div class="stat-value"><span x-text="assets.fn.active ? 'Active' : 'Not active'"></span></div></div>
+      <div class="stat"><div class="stat-label">Modern issued</div><div class="stat-value"><span x-text="assets.fn.modern_issued ?? '—'"></span></div></div>
+      <div class="stat"><div class="stat-label">Capacity</div><div class="stat-value"><span x-text="assets.fn.modern_capacity ?? '—'"></span></div></div>
+     </div>
+    </template>
+    <template x-if="assets.list.length === 0">
+     <div class="empty-state">
+      <h3>No assets yet</h3>
+      <p>This wallet holds no FN Coin or colored assets. Balances appear here once you receive or issue them.</p>
+     </div>
+    </template>
+    <div class="table-wrap mt-2" x-show="assets.list.length > 0">
+     <table class="table">
+      <thead><tr><th>Ticker</th><th>Name</th><th>Kind</th><th class="text-right">Confirmed</th><th class="text-right">Spendable</th></tr></thead>
+      <tbody>
+       <template x-for="a in assets.list" :key="a.asset_id">
+        <tr>
+         <td class="text-mono" x-text="a.ticker || a.asset_id.slice(0,8)+'…'"></td>
+         <td x-text="a.name"></td>
+         <td><span class="badge badge-info" x-text="a.kind"></span></td>
+         <td class="text-right text-mono" x-text="a.confirmed"></td>
+         <td class="text-right text-mono" x-text="a.spendable"></td>
+        </tr>
+       </template>
+      </tbody>
+     </table>
+    </div>
+    <p class="text-muted text-sm mt-2">Asset amounts are exact base units — FN Coin has 0 decimals, bUSD has 6.</p>
+   </div>
+  </template>
+ </div>
+ <div class="card mb-3">
+  <div class="card-header"><h3>FlowMesh Markets</h3></div>
+  <p class="text-sm text-muted">Certified colored-asset/B3 markets. Prices are integer B3 atoms per base unit.</p>
+  <template x-if="assets.markets.length === 0">
+   <p class="text-muted text-sm mt-2">No markets yet — markets appear once colored assets trade on FlowMesh.</p>
+  </template>
+  <div class="table-wrap mt-2" x-show="assets.markets.length > 0">
+   <table class="table">
+    <thead><tr><th>Market</th><th>State</th></tr></thead>
+    <tbody>
+     <template x-for="m in assets.markets" :key="m.market_id">
+      <tr>
+       <td class="text-mono" x-text="m.market_id.slice(0,16)+'…'"></td>
+       <td><span class="badge badge-info" x-text="m.state || 'listed'"></span></td>
+      </tr>
+     </template>
+    </tbody>
+   </table>
+  </div>
+ </div>
+ <div class="card mb-3 advanced-only">
+  <div class="card-header"><h3>FlowMesh Validator</h3></div>
+  <p class="text-sm text-muted">Running a validator carries responsibility — leaving with too many others can pause finality or the bridge. Requires an unlocked wallet.</p>
+  <div class="flex-start gap-2 mt-2">
+   <button class="btn btn-primary btn-sm" @click="validatorAction('start')" :disabled="assets.validatorBusy" type="button">Start validator</button>
+   <button class="btn btn-danger btn-sm" @click="validatorAction('stop')" :disabled="assets.validatorBusy" type="button">Stop validator</button>
+  </div>
+ </div>
+</div>
+
+ <!-- BATCH (user-definable batch actions) -->
 <div x-show="view==='batch'">
  <div class="card mb-3">
   <div class="card-header"><h3>Batch Actions</h3></div>

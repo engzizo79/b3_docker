@@ -75,6 +75,18 @@ def main() -> None:
     mock = MockRPC()
     mock.responses["listwallets"] = ["wallet"]
     mock.responses["getbalances"] = {"mine": {"trusted": 5000.0, "untrusted_pending": 0, "immature": 0}}
+    mock.responses["getwalletassets"] = {"assets": [
+        {"asset_id": "cd" * 32, "kind": "fn", "ticker": "FN", "name": "FN Coin",
+         "decimals": 0, "confirmed": 1200, "unconfirmed": 0, "spendable": 1200, "utxos": []},
+        {"asset_id": "ab" * 32, "kind": "colored", "ticker": "bUSD", "name": "Bridge USD",
+         "decimals": 6, "confirmed": 5000000, "unconfirmed": 0, "spendable": 5000000, "utxos": []},
+    ]}
+    mock.responses["getassetstate"] = {"next_height": 825000, "fn": {
+        "configured": True, "active": True, "asset_id": "cd" * 32, "pod_active": True,
+        "counter_known": True, "modern_issued": 200, "modern_capacity": 5000},
+        "colored": {"configured": True, "active": True, "issuance_fee": "50.000000000"}}
+    mock.responses["listflowmeshmarkets"] = [
+        {"market_id": "ef" * 32, "asset_id": "ab" * 32, "state": "open"}]
     state = AppState(s, mock, SessionStore(s.session_secret), username="admin")
     app = create_app(state)
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8899

@@ -82,6 +82,7 @@ def create_app(state: AppState | None = None) -> FastAPI:
 
     from app.routers import auth, chain, wallet, wallet_extra, batch, alerts, setup
     from app.routers import staking
+    from app.routers import assets
     app.include_router(auth.router)
     app.include_router(chain.router)
     app.include_router(wallet.router)
@@ -89,6 +90,7 @@ def create_app(state: AppState | None = None) -> FastAPI:
     app.include_router(batch.router)
     app.include_router(alerts.router)
     app.include_router(staking.router)
+    app.include_router(assets.router)
     app.include_router(setup.router)
 
     @app.get("/api/health")

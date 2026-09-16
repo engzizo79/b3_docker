@@ -57,6 +57,12 @@ ALLOWED: dict[str, set[str]] = {
 	"wallet_security": { "walletpassphrasechange" },
 	"network_read": {"getpeerinfo"},
 	"staking_read": {"getstakinginfo"},
+    "assets_read": {
+        "getwalletassets", "listflowmeshmarkets", "getflowmeshmarketdata",
+    },
+    "assets_write": {  # gated: require unlocked wallet in the API layer
+        "startflowmeshvalidator", "stopflowmeshvalidator",
+    },
     "wallet_lifecycle": {"createwallet", "loadwallet", "listwallets", "unloadwallet"},
 }
 
