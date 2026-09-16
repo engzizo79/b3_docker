@@ -16,7 +16,9 @@ function b3app() {
     // Chain
     chain: { blocks: null, connections: null, progress: null, mempool: null, finality: null, sync: null, syncErr: false },
     // Staking
-    staking: { loading: false, busy: false, active: false, weight: null, info: null },
+    staking: { loading: false, busy: false, active: false, weight: null, info: null, stakes: [],
+        settings: null, settingsBusy: false, settingsSaved: false, ack: false, passphrase: '',
+        unstakeBusy: false, unstakePreview: null, unstakeTarget: null, revokeArmed: false },
     // Send
     sendAddr: '', sendAmt: '', sendBusy: false, sendErr: '',
     sendPreview: null, sendResult: null,
@@ -160,10 +162,16 @@ function b3app() {
     async refreshStaking() {
       try {
         const d = await this.api('/api/chain/staking');
-        this.staking.info = d.staking;
-        this.staking.active = !!d.staking.staking;
-        this.staking.weight = d.staking.weight;
+        const info = d.staking || {};
+        this.staking.info = info;
+        const loop = info.staking || info;
+        this.staking.active = !!(loop.running !== undefined ? loop.running : loop.staking);
+        this.staking.weight = info.weight || loop.weight || null;
+        this.staking.stakes = info.stakes || [];
       } catch (e) { this.staking.info = null; }
+      try {
+        this.staking.settings = await this.api('/api/staking/settings');
+      } catch (e) { /* not logged in yet */ }
     },
 
     // -- Wallet unlock/lock --------------------------------------------------
@@ -237,6 +245,95 @@ function b3app() {
         this.showToast('Staking stopped');
       } catch (e) { this.showToast(e.message, 'danger'); }
       this.staking.busy = false;
+    },
+
+    // -- One-click unstake (two-phase, mirrors the Send flow) -----------------
+    async doUnstakePreview(stake) {
+      this.staking.unstakeTarget = stake;
+      this.staking.unstakePreview = null;
+      this.staking.unstakeBusy = true;
+      try {
+        this.staking.unstakePreview = await this.api('/api/staking/unstake', {
+          method: 'POST',
+          body: JSON.stringify({ txid: stake.txid, vout: stake.vout, confirm: false })
+        });
+      } catch (e) { this.showToast(e.message, 'danger'); }
+      this.staking.unstakeBusy = false;
+    },
+
+    async doUnstakeConfirm() {
+      if (!this.staking.unstakePreview || !this.staking.unstakeTarget) return;
+      const target = this.staking.unstakeTarget;
+      const preview = this.staking.unstakePreview;
+      this.staking.unstakeBusy = true;
+      try {
+        const result = await this.api('/api/staking/unstake', {
+          method: 'POST',
+          body: JSON.stringify({ txid: target.txid, vout: target.vout,
+                                  confirm: true, confirm_token: preview.confirm_token })
+        });
+        this.showToast('Unstaked: transaction broadcast (' + result.txid + ')');
+        this.staking.unstakePreview = null;
+        this.staking.unstakeTarget = null;
+        await this.refreshStaking();
+        await this.refreshWallet();
+      } catch (e) { this.showToast(e.message, 'danger'); }
+      this.staking.unstakeBusy = false;
+    },
+
+    doUnstakeCancel() {
+      this.staking.unstakePreview = null;
+      this.staking.unstakeTarget = null;
+    },
+
+    // -- Autostake settings (Advanced) ---------------------------------------
+    async saveStakingSettings() {
+      this.staking.settingsBusy = true;
+      this.staking.settingsSaved = false;
+      const s = this.staking.settings || {};
+      try {
+        this.staking.settings = await this.api('/api/staking/settings', {
+          method: 'POST',
+          body: JSON.stringify({
+            autostake_enabled: !!s.autostake_enabled,
+            autostake_target: s.autostake_target || '0',
+            autostake_reserve: s.autostake_reserve || '0',
+            passphrase: this.staking.passphrase || '',
+            acknowledge_risk: !!this.staking.ack
+          })
+        });
+        this.staking.passphrase = '';
+        this.staking.settingsSaved = true;
+        this.showToast('Staking settings saved');
+      } catch (e) { this.showToast(e.message, 'danger'); }
+      this.staking.settingsBusy = false;
+    },
+
+    async revokeVault() {
+      // Two-step inline confirmation (native confirm() banned by design review).
+      if (!this.staking.revokeArmed) { this.staking.revokeArmed = true; return; }
+      this.staking.revokeArmed = false;
+      try {
+        await this.api('/api/staking/vault/revoke', { method: 'POST' });
+        this.staking.ack = false;
+        await this.refreshStaking();
+        this.showToast('Passphrase removed; unattended staking disabled');
+      } catch (e) { this.showToast(e.message, 'danger'); }
+    },
+
+    async runReconcile() {
+      this.staking.settingsBusy = true;
+      try {
+        const r = await this.api('/api/staking/reconcile', { method: 'POST' });
+        if (r.ran) {
+          this.showToast('Reconcile ran' + (r.topped_up ? ' - topped up ' + r.topped_up + ' B3' : ''));
+        } else {
+          this.showToast('Reconcile skipped: ' + (r.reason || 'nothing to do'), 'warning');
+        }
+        await this.refreshStaking();
+        await this.refreshWallet();
+      } catch (e) { this.showToast(e.message, 'danger'); }
+      this.staking.settingsBusy = false;
     },
 
     // -- Settings / TOTP -----------------------------------------------------

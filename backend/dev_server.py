@@ -72,7 +72,10 @@ def main() -> None:
     if not os.environ.get("B3DEV_SETUP_MODE"):
         db.ensure_user(s.db_path, "admin", s.ui_password)
 
-    state = AppState(s, MockRPC(), SessionStore(s.session_secret), username="admin")
+    mock = MockRPC()
+    mock.responses["listwallets"] = ["wallet"]
+    mock.responses["getbalances"] = {"mine": {"trusted": 5000.0, "untrusted_pending": 0, "immature": 0}}
+    state = AppState(s, mock, SessionStore(s.session_secret), username="admin")
     app = create_app(state)
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8899
     print(f"dev server on http://127.0.0.1:{port} (admin / correct horse battery staple)")

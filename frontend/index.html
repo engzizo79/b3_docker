@@ -383,16 +383,106 @@
                     <div><span class="stat-label">Staking</span><br><span class="badge" :class="staking.active?'badge-success':'badge-warning'" x-text="staking.active?'Active':'Inactive'"></span></div>
                     <div><span class="stat-label">Weight</span><br><span class="stat-value text-sm" x-text="staking.weight ?? '—'"></span></div>
                   </div>
-                  <pre class="mono text-xs" x-text="JSON.stringify(staking.info||{},null,2)"></pre>
+                  <div class="stat-grid mb-2">
+                    <div><span class="stat-label">Staked (active)</span><br><span class="stat-value text-sm" x-text="(staking.info.active ?? '—') + ((staking.info.active!=null)?' B3':'')"></span></div>
+                    <div><span class="stat-label">Pending</span><br><span class="stat-value text-sm" x-text="(staking.info.pending ?? '—') + ((staking.info.pending!=null)?' B3':'')"></span></div>
+                    <div><span class="stat-label">Blocks produced</span><br><span class="stat-value text-sm" x-text="(staking.info.staking && staking.info.staking.blocks_produced!=null)? staking.info.staking.blocks_produced : '—'"></span></div>
+                  </div>
+                  <details class="disclosure mt-2">
+                    <summary class="disclosure__summary text-muted text-sm">Raw details</summary>
+                    <pre class="mono text-xs" x-text="JSON.stringify(staking.info||{},null,2)"></pre>
+                  </details>
                 </div>
               </template>
             </div>
-            <div class="card">
+            <div class="card mb-3">
               <div class="flex gap-2">
                 <button class="btn btn-primary" @click="doStartStaking" :disabled="staking.busy||!session.wallet_unlocked" type="button">Start Staking</button>
                 <button class="btn btn-danger" @click="doStopStaking" :disabled="staking.busy" type="button">Stop Staking</button>
               </div>
               <p x-show="!session.wallet_unlocked" class="text-warning text-sm mt-2">Unlock the wallet to start staking.</p>
+            </div>
+
+            <!-- Your stakes: one-click unstake replaces the 6-step console ritual -->
+            <div class="card mb-3">
+              <div class="card-header"><h3>Your Stakes</h3></div>
+              <template x-if="staking.stakes.length === 0">
+                <p class="text-muted text-sm mt-2">No stakes yet — start staking to earn rewards.</p>
+              </template>
+              <div class="table-wrap mt-2" x-show="staking.stakes.length > 0">
+                <table class="table">
+                  <thead><tr><th>Amount</th><th>Status</th><th>Output</th><th></th></tr></thead>
+                  <tbody>
+                    <template x-for="s in staking.stakes" :key="s.txid + ':' + s.vout">
+                      <tr>
+                        <td class="mono" x-text="s.amount"></td>
+                        <td><span class="badge" :class="s.status==='ACTIVE'?'badge-success':(s.status==='PENDING'?'badge-warning':'badge-info')" x-text="s.status"></span></td>
+                        <td class="mono text-xs truncate w-truncate" x-text="s.txid + ':' + s.vout"></td>
+                        <td class="text-right">
+                          <button class="btn btn-sm btn-secondary" @click="doUnstakePreview(s)" :disabled="staking.unstakeBusy" type="button">Unstake</button>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Unstake preview / confirm (two-phase like Send) -->
+            <div class="card mb-3" x-show="staking.unstakePreview">
+              <div class="card-header"><h3>Confirm Unstake</h3></div>
+              <template x-if="staking.unstakePreview">
+                <div>
+                  <p class="text-sm">Unstaking <span class="mono font-bold" x-text="staking.unstakePreview.stake.amount"></span> B3 back to your wallet at
+                    <span class="mono text-xs" x-text="staking.unstakePreview.destination"></span>.</p>
+                  <p class="text-sm" x-show="staking.unstakePreview.validator_warning" class="text-warning">⚠ This stake is ACTIVE. Removing active stakes can affect network finality — coordinate with other validators if you run one.</p>
+                  <p class="text-sm text-muted">Fee: network default. The stake becomes normal spendable B3 after 1 confirmation.</p>
+                  <div class="flex gap-2 mt-2">
+                    <button class="btn btn-danger" @click="doUnstakeConfirm" :disabled="staking.unstakeBusy" type="button"><span x-show="staking.unstakeBusy" class="spinner"></span> Confirm Unstake</button>
+                    <button class="btn btn-ghost" @click="doUnstakeCancel" type="button">Cancel</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <!-- Autostake settings (Advanced only): vault + target/reserve -->
+            <div class="card advanced-only" x-show="mode==='advanced' && staking.settings">
+              <div class="card-header"><h3>Autostake (Unattended)</h3></div>
+              <div>
+                <p class="text-sm text-muted mb-2">Keeps the staked amount near your target after restarts and reboots. Requires storing the wallet passphrase (encrypted at rest) and explicit risk acknowledgement.</p>
+                <div class="form-group mb-2">
+                  <label class="form-label"><input type="checkbox" x-model="staking.settings.autostake_enabled"> Enable unattended autostake</label>
+                </div>
+                <div class="grid-2 mb-2">
+                  <div class="form-group">
+                    <label class="form-label">Stake target (B3)</label>
+                    <input class="input" type="text" x-model="staking.settings.autostake_target" placeholder="2000">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Keep liquid reserve (B3)</label>
+                    <input class="input" type="text" x-model="staking.settings.autostake_reserve" placeholder="100">
+                  </div>
+                </div>
+                <template x-if="!staking.settings.vault_stored">
+                  <div class="form-group mb-2">
+                    <label class="form-label">Wallet passphrase (stored encrypted, verified against the node)</label>
+                    <input class="input" type="password" x-model="staking.passphrase" autocomplete="new-password" placeholder="Wallet passphrase">
+                  </div>
+                </template>
+                <template x-if="staking.settings.vault_stored">
+                  <div class="flex-between mb-2">
+                    <span class="text-sm text-muted">Passphrase stored <span class="mono text-xs" x-text="staking.settings.vault_fingerprint ? '('+staking.settings.vault_fingerprint+')' : ''"></span></span>
+                    <button class="btn btn-sm btn-danger" @click="revokeVault" type="button" x-text="staking.revokeArmed ? 'Click again to confirm removal' : 'Remove passphrase'"></button>
+                  </div>
+                </template>
+                <div class="form-group mb-2">
+                  <label class="form-label"><input type="checkbox" x-model="staking.ack"> I understand the stored passphrase lets this machine unlock the wallet unattended, and that /data must be trusted, access-controlled storage</label>
+                </div>
+                <div class="flex gap-2">
+                  <button class="btn btn-primary" @click="saveStakingSettings" :disabled="staking.settingsBusy" type="button">Save</button>
+                  <button class="btn btn-secondary" @click="runReconcile" :disabled="staking.settingsBusy" type="button">Reconcile now</button>
+                </div>
+              </div>
             </div>
 </div>
 </template>

@@ -51,7 +51,7 @@ ALLOWED: dict[str, set[str]] = {
         "walletpassphrase", "walletlock", "createrawtransaction",
         "fundrawtransaction", "signrawtransactionwithwallet",
         "sendrawtransaction", "testmempoolaccept", "startstaking",
-        "stopstaking", "signmessage",
+        "stopstaking", "signmessage", "createstake", "sendall",
     },
     "wallet_messaging": { "setlabel", "verifymessage", "gettransaction" },
 	"wallet_security": { "walletpassphrasechange" },

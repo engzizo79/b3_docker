@@ -72,7 +72,7 @@ async def get_settings(request: Request):
         "vault_stored": stored,
         "vault_fingerprint": (vault.fingerprint(cfg["passphrase_enc"])
                               if vault and stored else None),
-        "vault_key_source": "env" if state.settings.wallet_vault_key else "file",
+        "vault_key_source": "env" if getattr(state.settings, "wallet_vault_key", "") else "file",
         "vault_available": vault is not None,
     }
 
