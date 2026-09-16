@@ -27,7 +27,21 @@ class MockRPC:
             "getfinalitystatus": {"epoch": 100},
             "getbridgeinfo": {"active": True},
             "gettxoutsetinfo": {"total_amount": 1000000},
-            "getstakinginfo": {"staking": True},
+            "getstakinginfo": {
+            "staking": {"available": True, "running": True, "state": "staking",
+                        "finality_signing": False, "last_signed_height": -1,
+                        "blocks_produced": 3},
+            "stakes": [
+                {"txid": "ab" * 32, "vout": 0, "amount": "1000.000000000",
+                 "status": "ACTIVE", "owner_address": "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2",
+                 "confirmations": 500},
+            ],
+            "active": "1000.000000000", "pending": "0.000000000",
+            "unconfirmed": "0.000000000",
+        },
+        "sendall": {"complete": True, "hex": "01000000000100000000" * 4},
+        "createstake": {"txid": "cs" + "b" * 62, "vout": 1, "amount": "100.000000000",
+                        "status": "UNCONFIRMED"},
  "getnewaddress": "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2",
  "setlabel": None,
  "gettransaction": {"txid": "a" * 64, "amount": 1.5, "confirmations": 10, "fee": 0.000034, "time": 1700000000, "category": "receive", "details": []},
@@ -115,6 +129,7 @@ def settings(tmp_path: Path) -> Settings:
     s.bootstrap_progress_file = str(tmp_path / "bootstrap.progress.json")
     s.wizard_marker_file = str(tmp_path / ".wizard_complete")
     s.bootstrap_manifest_url = ""
+    s.wallet_vault_key = ""
     s.allow_ephemeral_data = True  # tests use tmp_path (not a mount)
     return s
 

@@ -44,6 +44,10 @@ class Settings:
         self.wizard_marker_file: str = os.environ.get("WIZARD_MARKER_FILE", "/data/.wizard_complete")
         self.bootstrap_manifest_url: str = os.environ.get(
             "BOOTSTRAP_MANIFEST_URL", "https://explorer.b3hive.io/bootstraps/manifest.json")
+        # Vault key for the unattended-staking passphrase store (S5).
+        # Operator-managed env var is the recommended source; when empty a
+        # generated key file <data>/.vault.key (0400) is used.
+        self.wallet_vault_key: str = os.environ.get("WALLET_VAULT_KEY", "")
         # Safety: block wallet actions if /data is not a persistent mount.
         # Set to true ONLY for testing — never in production with real funds.
         self.allow_ephemeral_data: bool = os.environ.get(

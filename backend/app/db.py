@@ -39,6 +39,14 @@ CREATE TABLE IF NOT EXISTS audit_log (
     detail TEXT,
     success INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS staking_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1), -- single row: this node config
+  autostake_enabled INTEGER NOT NULL DEFAULT 0,
+  autostake_target TEXT NOT NULL DEFAULT '', -- B3 amount, 9dp string
+  autostake_reserve TEXT NOT NULL DEFAULT '', -- B3 kept liquid, 9dp string
+  passphrase_enc TEXT, -- Fernet blob; NULL = unattended mode off
+  updated_ts REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS alerts (
  id INTEGER PRIMARY KEY,
  ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -219,6 +227,34 @@ def delete_recipe(db_path: str, recipe_id: int) -> bool:
     with _lock, _connect(db_path) as conn:
         cur = conn.execute("DELETE FROM batch_recipes WHERE id=?", (recipe_id,))
         return cur.rowcount > 0
+
+
+def get_staking_settings(db_path: str) -> dict:
+    """Single-row staking config (autostake + vault blob). The passphrase
+    itself is never returned; callers decrypt via the Vault when authorized."""
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute("SELECT * FROM staking_settings WHERE id=1").fetchone()
+        if row is None:
+            return {"autostake_enabled": False, "autostake_target": "",
+                    "autostake_reserve": "", "passphrase_enc": None}
+        return {"autostake_enabled": bool(row["autostake_enabled"]),
+                "autostake_target": row["autostake_target"],
+                "autostake_reserve": row["autostake_reserve"],
+                "passphrase_enc": row["passphrase_enc"]}
+
+
+def set_staking_settings(db_path: str, **fields) -> None:
+    """Upsert the single staking_settings row. Allowed keys are fixed."""
+    allowed = {"autostake_enabled", "autostake_target",
+               "autostake_reserve", "passphrase_enc"}
+    clean = {k: v for k, v in fields.items() if k in allowed}
+    with _lock, _connect(db_path) as conn:
+        conn.execute("INSERT OR IGNORE INTO staking_settings (id, updated_ts)"
+                    " VALUES (1, ?)", (time.time(),))
+        if clean:
+            sets = ", ".join(f"{k}=?" for k in clean)
+            conn.execute(f"UPDATE staking_settings SET {sets}, updated_ts=?"
+                        " WHERE id=1", (*clean.values(), time.time()))
 
 
 def user_exists(db_path: str, username: str) -> bool:

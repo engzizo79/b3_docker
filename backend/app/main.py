@@ -36,9 +36,16 @@ async def lifespan(app: FastAPI):
     from app.monitor import start_monitor, stop_monitor
     state: AppState = app.state.app_state
     start_monitor(state.settings, state.rpc)
+    # Unattended autostake (opt-in via Staking settings): reconcile at
+    # startup (retries while the node boots after crash/reboot), hourly.
+    from app.autostake import start_autostake, stop_autostake
+    from app.vault import vault_from_settings
+    _vault = vault_from_settings(state.settings, state.settings.b3_data_dir)
+    start_autostake(state.settings, state.rpc, _vault)
     yield
-    # Shutdown: stop the monitor.
+    # Shutdown: stop the monitor and the autostake task.
     await stop_monitor()
+    await stop_autostake()
 
 
 def create_app(state: AppState | None = None) -> FastAPI:
@@ -74,12 +81,14 @@ def create_app(state: AppState | None = None) -> FastAPI:
         return response
 
     from app.routers import auth, chain, wallet, wallet_extra, batch, alerts, setup
+    from app.routers import staking
     app.include_router(auth.router)
     app.include_router(chain.router)
     app.include_router(wallet.router)
     app.include_router(wallet_extra.router)
     app.include_router(batch.router)
     app.include_router(alerts.router)
+    app.include_router(staking.router)
     app.include_router(setup.router)
 
     @app.get("/api/health")
