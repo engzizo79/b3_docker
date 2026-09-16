@@ -74,32 +74,32 @@
             </svg>
             <span class="hide-mobile">B3 Hive</span>
           </a>
-          <div style="display:flex;align-items:center;gap:0.5rem">
+          <div class="flex-start">
             <template x-if="session.wallet_unlocked">
               <span class="badge badge-success">Unlocked</span>
             </template>
             <template x-if="!session.wallet_unlocked">
               <span class="badge badge-warning">Locked</span>
             </template>
- <div class="alerts-bell" style="position:relative">
+ <div class="alerts-bell">
  <button class="theme-toggle" @click="toggleAlerts()" title="Alerts" type="button">🔔<template x-if="alertCount>0"><span class="alert-badge" x-text="alertCount"></span></template></button>
  <template x-if="showAlerts">
- <div class="alerts-dropdown card" @click.away="showAlerts=false" style="position:absolute;right:0;top:100%;min-width:320px;max-width:90vw;z-index:200">
- <div class="card-header" style="display:flex;justify-content:space-between;align-items:center">
+ <div class="alerts-dropdown card dropdown" @click.away="showAlerts=false">
+ <div class="card-header" class="flex-between">
  <h3>Alerts</h3>
  <button class="btn btn-sm" @click="ackAllAlerts()" type="button">Ack all</button>
  </div>
  <template x-if="alerts.length===0">
- <p style="padding:1rem;color:var(--text-muted)">No alerts</p>
+ <p class="p-4 text-muted">No alerts</p>
  </template>
  <template x-for="al in alerts" :key="al.id">
- <div style="padding:0.6rem 1rem;border-bottom:1px solid var(--border)">
- <div style="display:flex;justify-content:space-between;align-items:start;gap:0.5rem">
+ <div class="alert-item">
+ <div class="flex-between-start">
  <span class="badge" :class="al.level==='stall'?'badge-warning':al.level==='recovery'?'badge-success':'badge-info'" x-text="al.level"></span>
  <button class="btn btn-sm" @click="ackAlert(al.id)" type="button">✓</button>
  </div>
- <p style="margin:0.4rem 0 0;font-size:0.85rem" x-text="al.message"></p>
- <p style="margin:0.2rem 0 0;font-size:0.7rem;color:var(--text-muted)" x-text="al.ts"></p>
+ <p class="alert-msg" x-text="al.message"></p>
+ <p class="alert-meta" x-text="al.ts"></p>
  </div>
  </template>
  </div>
@@ -543,7 +543,7 @@
 
 <!-- SETTINGS -->
           <div x-show="view==='settings'">
-            <div class="card" style="margin-bottom:0.75rem">
+            <div class="card mb-3">
               <div class="card-header"><h3>2FA Setup</h3></div>
               <template x-if="!totpSetup">
                 <button class="btn btn-secondary" @click="doTotpSetup" :disabled="totpBusy" type="button">
@@ -552,20 +552,20 @@
               </template>
               <template x-if="totpSetup">
                 <div>
-                  <p class="text-sm text-muted" style="margin-bottom:0.75rem">Scan this QR code with your authenticator app. Recovery codes are shown once — save them securely.</p>
+                  <p class="text-sm text-muted">Scan this QR code with your authenticator app. Recovery codes are shown once — save them securely.</p>
                   <div class="qr-wrap"><div id="totp-qr"></div></div>
-                  <details style="margin-top:0.5rem">
-                    <summary class="text-sm text-accent" style="cursor:pointer">Recovery Codes</summary>
-                    <div style="margin-top:0.5rem;display:flex;flex-wrap:wrap;gap:0.5rem">
+                  <details class="mt-2">
+                    <summary class="text-sm text-accent clickable">Recovery Codes</summary>
+                    <div class="mt-2 flex flex-wrap gap-2">
                       <template x-for="code in totpSetup.recovery_codes" :key="code">
-                        <code class="mono text-sm" style="background:var(--bg-input);padding:0.25rem 0.5rem;border-radius:var(--radius-sm)" x-text="code"></code>
+                        <code class="mono text-sm code-chip" x-text="code"></code>
                       </template>
                     </div>
                   </details>
                 </div>
               </template>
             </div>
-<div class="card" style="margin-bottom:0.75rem">
+<div class="card mb-3">
  <div class="card-header"><h3>Sign Message</h3></div>
  <form @submit.prevent="doSignMessage">
  <div class="form-group"><label>Address</label>
@@ -575,17 +575,17 @@
  <button class="btn btn-primary" type="submit" :disabled="signv.busy || !session.wallet_unlocked">
  <span x-show="signv.busy" class="spinner"></span> Sign
  </button>
- <p class="text-xs text-muted" x-show="!session.wallet_unlocked" style="margin-top:0.5rem">Unlock the wallet to sign.</p>
+ <p class="text-xs text-muted mt-2" x-show="!session.wallet_unlocked">Unlock the wallet to sign.</p>
  <template x-if="signv.sig">
- <div style="margin-top:0.75rem">
+ <div class="mt-3">
  <p class="text-sm">Signature:</p>
- <p class="mono text-xs" style="word-break:break-all" x-text="signv.sig"></p>
+ <p class="mono text-xs" class="break-all" x-text="signv.sig"></p>
  <button class="btn btn-sm btn-secondary" @click="copyText(signv.sig)" type="button">Copy Signature</button>
  </div>
  </template>
  </form>
  </div>
- <div class="card" style="margin-bottom:0.75rem">
+ <div class="card mb-3">
  <div class="card-header"><h3>Verify Message</h3></div>
  <form @submit.prevent="doVerifyMessage">
  <div class="form-group"><label>Address</label>
@@ -596,11 +596,11 @@
  <textarea class="input" x-model="signv.vmessage" rows="3" required></textarea></div>
  <button class="btn btn-primary" type="submit" :disabled="signv.busy"><span x-show="signv.busy" class="spinner"></span> Verify</button>
  <template x-if="signv.verified !== null">
- <p class="text-sm" style="margin-top:0.5rem" x-text="signv.verified? 'Signature is VALID':'Signature is INVALID'"></p>
+ <p class="text-sm mt-2" x-text="signv.verified? 'Signature is VALID':'Signature is INVALID'"></p>
  </template>
  </form>
  </div>
- <div class="card" style="margin-bottom:0.75rem">
+ <div class="card mb-3">
  <div class="card-header"><h3>Change Wallet Passphrase</h3></div>
  <form @submit.prevent="doPassphraseChange">
  <div class="form-group"><label>Current passphrase</label>
@@ -612,7 +612,7 @@
  <button class="btn btn-primary" type="submit" :disabled="pwchange.busy"><span x-show="pwchange.busy" class="spinner"></span> Change Passphrase</button>
  </form>
  </div>
- <div class="card" style="margin-bottom:0.75rem">
+ <div class="card mb-3">
  <div class="card-header">
  <h3>Network Peers</h3>
  <button class="btn btn-sm btn-secondary" @click="peers.open=!peers.open;refreshPeers()" type="button" x-text="peers.open? 'Hide':'Show'"></button>
@@ -636,14 +636,14 @@
  </div>
             <div class="card">
               <h3>Theme</h3>
-              <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+              <div class="flex gap-2 mt-2">
                 <button class="btn btn-sm" :class="theme==='dark'?'btn-primary':'btn-secondary'" @click="setTheme('dark')" type="button">Dark</button>
                 <button class="btn btn-sm" :class="theme==='light'?'btn-primary':'btn-secondary'" @click="setTheme('light')" type="button">Light</button>
               </div>
             </div>
  <div class="card">
  <h3>Setup Wizard</h3>
- <p class="text-muted" style="margin-bottom:0.5rem">Re-run the first-use setup wizard (bootstrap sync choice + node configuration).</p>
+ <p class="text-muted mb-2">Re-run the first-use setup wizard (bootstrap sync choice + node configuration).</p>
  <button class="btn btn-sm btn-secondary" @click="view='wizard';checkWizard()" type="button">Open Setup Wizard</button>
  </div>
           </div>
@@ -651,21 +651,21 @@
  <!-- SETUP WIZARD (first-run bootstrap + node config) -->
  <div x-show="view==='wizard'" class="card">
  <h2>Setup Wizard</h2>
- <p class="text-muted" style="margin-bottom:1rem">
+ <p class="text-muted">
  Welcome! Your node is starting with a fresh chain. Choose how to sync:
  download a trusted bootstrap (fast, ~10 min) or sync from scratch (slow, hours).
  </p>
 
  <!-- Step 1: sync method -->
- <div class="card" style="margin-bottom:1rem">
+ <div class="card mb-4">
  <h3>1. Sync Method</h3>
  <template x-if="wizard.progress.phase==='idle' && !wizard.starting">
  <div>
- <p style="margin-bottom:0.5rem"><strong>Option A:</strong> Download a bootstrap snapshot</p>
+ <p class="mb-2"><strong>Option A:</strong> Download a bootstrap snapshot</p>
  <button class="btn btn-primary" @click="loadBootstraps()" :disabled="wizard.manifestBusy" type="button">
  <span x-show="wizard.manifestBusy" class="spinner"></span> Show available bootstraps
  </button>
- <table x-show="wizard.bootstraps.length" class="table" style="margin-top:0.5rem">
+ <table x-show="wizard.bootstraps.length" class="table mt-2">
  <thead><tr><th>Height</th><th>Size</th><th>Created</th><th></th></tr></thead>
  <tbody>
  <template x-for="b in wizard.bootstraps" :key="b.height">
@@ -678,15 +678,15 @@
  </template>
  </tbody>
  </table>
- <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border)">
- <p style="margin-bottom:0.5rem"><strong>Option B:</strong> Sync from scratch</p>
+ <hr class="divider">
+ <p class="mb-2"><strong>Option B:</strong> Sync from scratch</p>
  <button class="btn btn-secondary" @click="completeWizard(true)" type="button">Skip bootstrap, sync from scratch</button>
  </div>
  </template>
  </div>
 
  <!-- Step 2: bootstrap progress -->
- <div class="card" style="margin-bottom:1rem" x-show="wizard.progress.phase && wizard.progress.phase!=='idle'">
+ <div class="card mb-4" x-show="wizard.progress.phase && wizard.progress.phase!=='idle'">
  <h3>2. Bootstrap Progress</h3>
  <p><strong x-text="wizard.progress.phase ? wizard.progress.phase.charAt(0).toUpperCase()+wizard.progress.phase.slice(1) : ''"></strong></p>
  <template x-if="wizard.progress.phase==='downloading'">
@@ -704,14 +704,14 @@
  </div>
 
  <!-- Step 3: wallet create / migrate -->
- <div class="card" style="margin-bottom:1rem" x-show="wizard.progress.phase==='idle' || wizard.progress.phase==='done'">
+ <div class="card mb-4" x-show="wizard.progress.phase==='idle' || wizard.progress.phase==='done'">
  <h3>3. Wallet</h3>
 
  <!-- persistence warning -->
  <template x-if="wizard.status && wizard.status.data_persistent===false">
-   <div class="card" style="background:var(--danger-bg);border:1px solid var(--danger);margin-bottom:1rem">
-     <p class="text-danger" style="font-weight:bold;margin-bottom:0.5rem">⚠ Data directory is not persistent!</p>
-     <p class="text-danger" style="margin-bottom:0">
+   <div class="card callout callout--danger mb-4">
+     <p class="text-danger font-bold mb-2">⚠ Data directory is not persistent!</p>
+     <p class="text-danger m-0">
        Your data directory is not mapped to a persistent volume. If the container is removed,
        your wallet and funds will be lost. Map a host directory in docker-compose.yml
        (e.g. <code>-v ~/.B3-CoinV2:/data</code>) before creating a wallet.
@@ -721,17 +721,17 @@
 
  <!-- loaded wallets -->
  <template x-if="wizard.wallet.loaded && wizard.wallet.loaded.length">
-   <div style="margin-bottom:1rem">
-     <p class="text-muted" style="margin-bottom:0.3rem">Loaded wallets:</p>
+   <div>
+     <p class="text-muted mb-1">Loaded wallets:</p>
      <template x-for="w in wizard.wallet.loaded" :key="w">
-       <span class="badge" x-text="w" style="margin-right:0.3rem"></span>
+       <span class="badge" x-text="w" class="mr-1"></span>
      </template>
    </div>
  </template>
 
  <!-- create wallet -->
- <div style="margin-bottom:1rem">
-   <p style="margin-bottom:0.5rem"><strong>Create a new wallet</strong></p>
+ <div>
+   <p class="mb-2"><strong>Create a new wallet</strong></p>
    <div class="form-row">
      <label>Wallet name</label>
      <input x-model="wizard.wallet.createName" placeholder="my_wallet">
@@ -749,12 +749,12 @@
    </button>
  </div>
 
- <hr style="margin:1rem 0;border:none;border-top:1px solid var(--border)">
+ <hr class="divider">
 
  <!-- migrate / load existing -->
  <div>
-   <p style="margin-bottom:0.5rem"><strong>Migrate / load existing wallet</strong></p>
-   <p class="text-muted" style="margin-bottom:0.5rem">
+   <p class="mb-2"><strong>Migrate / load existing wallet</strong></p>
+   <p class="text-muted mb-2">
      If you already have a wallet file in your data directory, enter its filename to load it.
    </p>
    <div class="form-row">
@@ -768,11 +768,11 @@
  </div>
 
  <!-- Step 4: security (first run only) -->
- <div class="card" style="margin-bottom:1rem" x-show="wizard.status && wizard.status.setup_required">
+ <div class="card mb-4" x-show="wizard.status && wizard.status.setup_required">
  <h3>4. Security</h3>
  <template x-if="!wizard.secSet">
  <div>
- <p class="text-muted" style="margin-bottom:0.5rem">
+ <p class="text-muted mb-2">
  First run: no password is needed from this local machine. Set a login password to enable
  remote (internet) access. Until then, the UI is locked to localhost.
  </p>
@@ -784,7 +784,7 @@
  <label>Repeat password</label>
  <input type="password" x-model="wizard.secPw2" placeholder="repeat">
  </div>
- <p x-show="wizard.secErr" class="text-danger text-sm" style="margin-bottom:0.5rem" x-text="wizard.secErr"></p>
+ <p x-show="wizard.secErr" class="text-danger text-sm mb-2" x-text="wizard.secErr"></p>
  <button class="btn btn-primary" @click="setSecurityPassword()" :disabled="wizard.secBusy" type="button">
  <span x-show="wizard.secBusy" class="spinner"></span> Set Password
  </button>
@@ -798,7 +798,7 @@
  <!-- Step 5: node config -->
  <div class="card" x-show="wizard.conf && wizard.conf.editable">
  <h3>5. Node Configuration</h3>
- <p class="text-muted" style="margin-bottom:0.5rem">Safe subset of b3coin.conf options. RPC and consensus keys are locked.</p>
+ <p class="text-muted mb-2">Safe subset of b3coin.conf options. RPC and consensus keys are locked.</p>
  <div class="form-row">
  <label>txindex <span class="text-muted">(0/1)</span></label>
  <input x-model="wizard.confForm.txindex" placeholder="1">
@@ -819,7 +819,7 @@
  <label>bantime</label>
  <input x-model="wizard.confForm.bantime" placeholder="86400">
  </div>
- <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem">
+ <div class="mt-2 flex flex-wrap gap-2">
  <button class="btn btn-primary" @click="applyConf()" :disabled="wizard.confBusy" type="button">
  <span x-show="wizard.confBusy" class="spinner"></span> Save Config
  </button>
@@ -834,7 +834,7 @@
     </template>
 
     <!-- Toast -->
-    <div x-show="toast" x-transition class="toast" :class="toastType==='danger'?'toast-danger':'toast-success'" x-text="toast" style="position:fixed;bottom:1rem;right:1rem;z-index:200"></div>
+    <div x-show="toast" x-transition class="toast" :class="toastType==='danger'?'toast-danger':'toast-success'" x-text="toast"></div>
   </div>
 
   <script src="/js/alpine.min.js" defer></script>

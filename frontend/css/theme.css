@@ -452,6 +452,25 @@ border-radius: var(--radius-md); box-shadow: var(--shadow-lg);
 .hide-mobile { display: none; }
 @media (min-width: 640px) { .hide-mobile { display: initial; } }
 
+/* ---- Alerts header ---- */
+.alerts-bell { position: relative; }
+.alert-item { padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
+.alert-msg { margin: 0.4rem 0 0; font-size: var(--text-sm); }
+.alert-meta { margin: 0.2rem 0 0; font-size: 0.7rem; color: var(--text-muted); }
+
+/* ---- Divider (hr) ---- */
+hr.divider { margin: 1rem 0; border: none; border-top: 1px solid var(--border); }
+
+/* ---- Code chip ---- */
+.code-chip { background: var(--bg-input); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); }
+
+/* ---- Utility extras ---- */
+.flex-between-start { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2); }
+.font-bold { font-weight: bold; }
+.mr-1 { margin-right: var(--space-1); }
+.mr-2 { margin-right: var(--space-2); }
+.mb-2-none { margin-bottom: 0; }
+
 /* ---- Login hero ---- */
 .login-hero {
 display: flex; align-items: center; justify-content: center;
