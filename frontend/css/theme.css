@@ -508,6 +508,7 @@ min-height: 80vh;
 .mw-narrow { max-width: 360px; }
 .mw-modal { max-width: 440px; }
 .mw-page { max-width: 960px; }
+.w-truncate-lg { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .w-truncate { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .min-w-form { min-width: 180px; }
 .min-h-screen { min-height: 100vh; min-height: 100dvh; }

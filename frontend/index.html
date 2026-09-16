@@ -259,10 +259,10 @@
  </div>
 <!-- RECEIVE -->
  <div x-show="view==='receive'">
- <div class="card" style="margin-bottom:0.75rem">
+ <div class="card mb-3">
  <div class="card-header"><h3>Get New Address</h3></div>
- <form @submit.prevent="doReceive" style="display:flex;gap:0.5rem;align-items:end;flex-wrap:wrap">
- <div class="form-group" style="flex:1;min-width:180px;margin:0">
+ <form @submit.prevent="doReceive" class="flex gap-2 items-end flex-wrap">
+ <div class="form-group flex-1 min-w-form m-0">
  <label>Label (optional)</label>
  <input class="input" x-model="receive.label" placeholder="e.g. mining payouts">
  </div>
@@ -271,8 +271,8 @@
  </button>
  </form>
  <template x-if="receive.generated">
- <div style="margin-top:1rem;text-align:center">
- <p class="mono text-sm" style="word-break:break-all" x-text="receive.generated.address"></p>
+ <div class="mt-4 text-center">
+ <p class="mono text-sm break-all" x-text="receive.generated.address"></p>
  <div class="qr-wrap"><div id="addr-qr"></div></div>
  <button class="btn btn-sm btn-secondary" @click="copyText(receive.generated.address)" type="button">Copy Address</button>
  </div>
@@ -288,7 +288,7 @@
  <template x-for="a in book.addresses" :key="a.address">
  <tr>
  <td class="text-sm" x-text="a.label || '(no label)'"></td>
- <td class="mono text-xs truncate" style="max-width:140px" x-text="a.address"></td>
+ <td class="mono text-xs truncate w-truncate-lg" x-text="a.address"></td>
  <td class="mono text-sm" x-text="a.amount"></td>
  <td><button class="btn btn-sm btn-secondary" @click="copyText(a.address)" type="button">Copy</button></td>
  </tr>
