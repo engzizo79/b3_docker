@@ -303,14 +303,14 @@
           <!-- SEND -->
           <div x-show="view==='send'">
             <template x-if="!session.wallet_unlocked">
-              <div class="card" style="text-align:center">
+              <div class="card text-center">
                 <p class="text-muted">Unlock the wallet first to send funds.</p>
-                <button class="btn btn-primary" style="margin-top:0.75rem" @click="view='wallet'" type="button">Go to Wallet</button>
+                <button class="btn btn-primary mt-3" @click="view='wallet'" type="button">Go to Wallet</button>
               </div>
             </template>
             <template x-if="session.wallet_unlocked">
               <div class="card">
-                <h2 style="margin-bottom:1rem">Send B3</h2>
+                <h2 class="mb-4">Send B3</h2>
                 <form @submit.prevent="doSendPreview">
                   <div class="form-group">
                     <label>Recipient Address</label>
@@ -320,7 +320,7 @@
                     <label>Amount (B3)</label>
                     <input class="input" type="text" inputmode="decimal" x-model="sendAmt" placeholder="0.000000000" required>
                   </div>
-                  <p x-show="sendErr" class="text-danger text-sm" style="margin-bottom:0.5rem" x-text="sendErr"></p>
+                  <p x-show="sendErr" class="text-danger text-sm mb-2" x-text="sendErr"></p>
                   <button class="btn btn-primary btn-block" type="submit" :disabled="sendBusy">
                     <span x-show="sendBusy" class="spinner"></span> Preview Transaction
                   </button>
@@ -328,32 +328,32 @@
 
                 <!-- Preview result -->
                 <template x-if="sendPreview">
-                  <div style="margin-top:1rem;padding:1rem;background:var(--accent-bg);border:1px solid var(--border-focus);border-radius:var(--radius-md)">
+                  <div class="callout callout--info mt-4">
                     <h3 class="text-accent">Transaction Preview</h3>
-                    <p class="text-sm" style="margin:0.5rem 0">TXID: <span class="mono" x-text="sendPreview.txid"></span></p>
-                    <p class="text-sm" style="margin:0.5rem 0" x-show="sendPreview.recipients">
+                    <p class="text-sm" class="m-0 mt-2 mb-2">TXID: <span class="mono" x-text="sendPreview.txid"></span></p>
+                    <p class="text-sm" class="m-0 mt-2 mb-2" x-show="sendPreview.recipients">
                       Sending <span class="mono font-bold" x-text="sendPreview.recipients?.[0]?.amount"></span> B3
                       to <span class="mono" x-text="sendPreview.recipients?.[0]?.address"></span>
                     </p>
                     <template x-if="sendPreview.mempool_ok">
-                      <div style="margin-top:0.75rem">
+                      <div class="mt-3">
                         <button class="btn btn-primary" @click="doSendConfirm" :disabled="sendBusy" type="button">
                           <span x-show="sendBusy" class="spinner"></span> Confirm & Broadcast
                         </button>
                       </div>
                     </template>
                     <template x-if="!sendPreview.mempool_ok">
-                      <p class="text-danger text-sm" style="margin-top:0.5rem" x-text="'Rejected: '+(sendPreview.rejection||'unknown')"></p>
+                      <p class="text-danger text-sm mt-2" x-text="'Rejected: '+(sendPreview.rejection||'unknown')"></p>
                     </template>
                   </div>
                 </template>
 
                 <!-- Sent result -->
                 <template x-if="sendResult">
-                  <div style="margin-top:1rem;padding:1rem;background:var(--success-bg);border:1px solid var(--success-border);border-radius:var(--radius-md)">
+                  <div class="callout callout--success mt-4">
                     <h3 class="text-success">Transaction Sent!</h3>
-                    <p class="text-sm mono" style="margin-top:0.5rem" x-text="sendResult.txid"></p>
-                    <button class="btn btn-sm btn-secondary" style="margin-top:0.75rem" @click="sendResult=null;sendPreview=null;sendAddr='';sendAmt=''" type="button">New Transaction</button>
+                    <p class="text-sm mono mt-2" x-text="sendResult.txid"></p>
+                    <button class="btn btn-sm btn-secondary mt-3" @click="sendResult=null;sendPreview=null;sendAddr='';sendAmt=''" type="button">New Transaction</button>
                   </div>
                 </template>
               </div>
