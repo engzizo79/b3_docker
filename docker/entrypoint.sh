@@ -188,7 +188,7 @@ run_bootstrap() {
     read -r B_HEIGHT B_URL B_SHA B_SIZE B_WIPE < <(python3 - "$CMD_JSON" <<'PY'
 import json, sys
 try:
-    c = json.load(open(sys.argv[1]))
+    c = json.loads(sys.argv[1])
     print(c.get("height",""), c.get("url",""), c.get("sha256",""), c.get("size",""),
           "yes" if c.get("wipe") else "")
 except Exception:
