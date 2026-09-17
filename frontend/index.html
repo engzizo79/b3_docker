@@ -76,10 +76,10 @@
           </a>
           <div class="flex-start">
             <template x-if="session.wallet_unlocked">
-              <span class="badge badge-success">Unlocked</span>
+              <span class="badge badge-success" title="Wallet unlocked">🔓 <span class="hide-mobile">Unlocked</span></span>
             </template>
             <template x-if="!session.wallet_unlocked">
-              <span class="badge badge-warning">Locked</span>
+              <span class="badge badge-warning" title="Wallet locked">🔒 <span class="hide-mobile">Locked</span></span>
             </template>
  <div class="alerts-bell">
  <button class="theme-toggle" @click="toggleAlerts()" title="Alerts" type="button">🔔<template x-if="alertCount>0"><span class="alert-badge" x-text="alertCount"></span></template></button>
@@ -489,7 +489,84 @@
 </template>
           </div>
 
-          <!-- ASSETS (FN Coin / FlowMesh) -->
+          <!-- Consolidation sweep (Advanced only): scheduled plain-P2PKH UTXO merge -->
+<div class="card advanced-only mb-3" x-show="mode==='advanced' && staking.cons">
+<div class="card-header"><h3>Consolidation Sweep</h3></div>
+<div>
+<p class="text-sm text-muted mb-2">Merges small plain-P2PKH UTXOs into one output on a schedule to cut future fees. Stake carriers and colored-asset envelopes are never touched. The scheduled path uses the unattended vault; manual runs need an unlocked wallet.</p>
+<template x-if="staking.cons">
+<div>
+<div class="form-group mb-2">
+<label class="form-label"><input type="checkbox" x-model="staking.cons.enabled"> Enable scheduled sweep</label>
+</div>
+<div class="grid-2 mb-2">
+<div class="form-group">
+<label class="form-label">Destination (your B3 address)</label>
+<input class="input mono" type="text" x-model="staking.cons.destination" placeholder="S...">
+</div>
+<div class="form-group">
+<label class="form-label">Interval (minutes, 0 = manual only)</label>
+<input class="input" type="number" x-model.number="staking.cons.interval_minutes">
+</div>
+</div>
+<div class="grid-2 mb-2">
+<div class="form-group">
+<label class="form-label">Min UTXO value (B3)</label>
+<input class="input" type="text" x-model="staking.cons.min_utxo_value" placeholder="0">
+</div>
+<div class="form-group">
+<label class="form-label">Inputs per transaction</label>
+<input class="input" type="number" x-model.number="staking.cons.inputs_per_tx">
+</div>
+</div>
+<div class="form-group mb-2">
+<label class="form-label"><input type="checkbox" x-model="staking.cons.restake_after"> Re-stake the consolidated output (moves it into staking)</label>
+</div>
+<div class="flex flex-wrap gap-2">
+<button class="btn btn-primary" @click="saveConsolidation" :disabled="staking.consBusy" type="button">Save</button>
+<button class="btn btn-secondary" @click="previewConsolidation" :disabled="staking.consBusy || !session.wallet_unlocked" type="button">Preview Sweep</button>
+</div>
+<p x-show="!session.wallet_unlocked" class="text-warning text-sm mt-2">Unlock the wallet to preview or run a manual sweep.</p>
+<template x-if="staking.cons.last_run_summary">
+<p class="text-muted text-sm mt-2">Last run: <span class="mono text-xs" x-text="staking.cons.last_run_summary"></span></p>
+</template>
+</div>
+</template>
+</div>
+</div>
+
+<template x-if="staking.consPreview">
+<div class="card mb-3">
+<div class="card-header"><h3>Confirm Sweep</h3></div>
+<div>
+<p class="text-sm">Consolidating <span class="mono font-bold" x-text="staking.consPreview.eligible_utxos"></span> UTXO(s) into <span class="mono text-xs" x-text="staking.consPreview.destination"></span>.</p>
+<div class="table-wrap mt-2" x-show="staking.consPreview.batches.length">
+<table class="table">
+<thead><tr><th>Batch</th><th>Inputs</th><th class="text-right">Input total</th><th class="text-right">Fee</th><th class="text-right">Output</th></tr></thead>
+<tbody>
+<template x-for="(b, i) in staking.consPreview.batches" :key="i">
+<tr>
+<td x-text="i"></td>
+<td x-text="b.inputs"></td>
+<td class="text-right mono" x-text="b.total_input"></td>
+<td class="text-right mono" x-text="b.fee"></td>
+<td class="text-right mono" x-text="b.skipped ? '—' : b.output"></td>
+</tr>
+</template>
+</tbody>
+</table>
+</div>
+<p class="text-sm mt-2">Total output <span class="mono font-bold" x-text="staking.consPreview.total_output"></span> B3 · fee <span class="mono" x-text="staking.consPreview.total_fee"></span> B3 · rate <span class="mono text-xs" x-text="staking.consPreview.fee_rate"></span></p>
+<p x-show="staking.consPreview.restake_after" class="text-warning text-sm">The consolidated output will be re-staked immediately (createstake).</p>
+<div class="flex gap-2 mt-2">
+<button class="btn btn-danger" @click="executeConsolidation" :disabled="staking.consBusyExec" type="button"><span x-show="staking.consBusyExec" class="spinner"></span> Confirm Sweep</button>
+<button class="btn btn-ghost" @click="cancelConsolidation" type="button">Cancel</button>
+</div>
+</div>
+</div>
+</template>
+
+<!-- ASSETS (FN Coin / FlowMesh) -->
 <div x-show="view==='assets'">
  <div class="card mb-3">
   <div class="card-header"><h3>Assets (FN Coin)</h3></div>

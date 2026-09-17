@@ -47,6 +47,24 @@ CREATE TABLE IF NOT EXISTS staking_settings (
   passphrase_enc TEXT, -- Fernet blob; NULL = unattended mode off
   updated_ts REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS consolidation_settings (
+ id INTEGER PRIMARY KEY CHECK (id = 1), -- single row: this node config
+ enabled INTEGER NOT NULL DEFAULT 0,
+ interval_minutes INTEGER NOT NULL DEFAULT 1440, -- 0 = manual only
+ destination TEXT NOT NULL DEFAULT '', -- B3 P2PKH address for consolidated output
+ min_utxo_value TEXT NOT NULL DEFAULT '0', -- dust threshold, 9dp
+ inputs_per_tx INTEGER NOT NULL DEFAULT 50,
+ max_batches INTEGER NOT NULL DEFAULT 5,
+ min_output TEXT NOT NULL DEFAULT '0.0001', -- skip batches below this
+ fee_mode TEXT NOT NULL DEFAULT 'estimate', -- estimate or fixed
+ fee_rate TEXT NOT NULL DEFAULT '0.0001', -- used when fixed
+ fee_target INTEGER NOT NULL DEFAULT 6,
+ fallback_fee_rate TEXT NOT NULL DEFAULT '0.0001',
+ restake_after INTEGER NOT NULL DEFAULT 0, -- 1 = createstake the output
+ last_run_ts REAL,
+ last_run_summary TEXT,
+ updated_ts REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS alerts (
  id INTEGER PRIMARY KEY,
  ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -255,6 +273,63 @@ def set_staking_settings(db_path: str, **fields) -> None:
             sets = ", ".join(f"{k}=?" for k in clean)
             conn.execute(f"UPDATE staking_settings SET {sets}, updated_ts=?"
                         " WHERE id=1", (*clean.values(), time.time()))
+
+
+_CONS_DEFAULTS = {
+    "enabled": False, "interval_minutes": 1440, "destination": "",
+    "min_utxo_value": "0", "inputs_per_tx": 50, "max_batches": 5,
+    "min_output": "0.0001", "fee_mode": "estimate", "fee_rate": "0.0001",
+    "fee_target": 6, "fallback_fee_rate": "0.0001", "restake_after": False,
+    "last_run_ts": None, "last_run_summary": None,
+}
+
+
+def get_consolidation_settings(db_path: str) -> dict:
+    """Single-row consolidation sweep config."""
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM consolidation_settings WHERE id=1").fetchone()
+    if row is None:
+        return dict(_CONS_DEFAULTS)
+    return {
+        "enabled": bool(row["enabled"]),
+        "interval_minutes": int(row["interval_minutes"]),
+        "destination": row["destination"],
+        "min_utxo_value": row["min_utxo_value"],
+        "inputs_per_tx": int(row["inputs_per_tx"]),
+        "max_batches": int(row["max_batches"]),
+        "min_output": row["min_output"],
+        "fee_mode": row["fee_mode"],
+        "fee_rate": row["fee_rate"],
+        "fee_target": int(row["fee_target"]),
+        "fallback_fee_rate": row["fallback_fee_rate"],
+        "restake_after": bool(row["restake_after"]),
+        "last_run_ts": row["last_run_ts"],
+        "last_run_summary": row["last_run_summary"],
+    }
+
+
+def set_consolidation_settings(db_path: str, **fields) -> None:
+    """Upsert the single consolidation_settings row."""
+    allowed = set(_CONS_DEFAULTS.keys()) - {"last_run_ts", "last_run_summary"}
+    clean = {k: v for k, v in fields.items() if k in allowed}
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO consolidation_settings (id, updated_ts)"
+            " VALUES (1,?)", (time.time(),))
+        if clean:
+            sets = ", ".join(f"{k}=?" for k in clean)
+            conn.execute(
+                f"UPDATE consolidation_settings SET {sets}, updated_ts=?"
+                " WHERE id=1", (*clean.values(), time.time()))
+
+
+def record_consolidation_run(db_path: str, summary: str) -> None:
+    """Stamp the last run timestamp + short summary for the UI card."""
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "UPDATE consolidation_settings SET last_run_ts=?, last_run_summary=?"
+            " WHERE id=1", (time.time(), summary))
 
 
 def user_exists(db_path: str, username: str) -> bool:

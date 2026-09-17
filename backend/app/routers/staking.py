@@ -35,15 +35,24 @@ def _vault(state: AppState):
     return vault_from_settings(state.settings, state.settings.b3_data_dir)
 
 
-def _amount_or_400(value, field):
-    # Parse exact-9dp amounts; empty string means 0.
+def _amount_or_400(value, field, allow_zero=False):
+    # Parse exact-9dp amounts; empty string means 0. parse_amount enforces
+    # positive (send amounts), so thresholds that legitimately allow zero
+    # (e.g. min_utxo_value) pass allow_zero=True to accept an exact 0.
+    s = str(value).strip()
+    if not s:
+        return Decimal(0)
     try:
-        amt = parse_amount(str(value)) if str(value).strip() else Decimal(0)
+        return parse_amount(s)
     except (ValueError, ArithmeticError, InvalidOperation):
+        if allow_zero:
+            try:
+                z = Decimal(s)
+                if z == 0:
+                    return z
+            except InvalidOperation:
+                pass
         raise HTTPException(status_code=400, detail=f"invalid {field}")
-    if amt < 0:
-        raise HTTPException(status_code=400, detail=f"{field} must be >= 0")
-    return amt
 
 
 def _txid_from_hex(tx_hex):
@@ -254,3 +263,112 @@ async def unstake(body: dict, request: Request):
              detail=f"stake={txid}:{vout} dest={dest} txid={sent}")
     return {"preview": False, "txid": sent, "destination": dest,
             "mempool_ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Consolidation sweep (S2) — scheduled plain-P2PKH UTXO consolidation.
+# Advanced-only feature: settings, preview (wallet unlock), execute (confirm
+# token). The scheduled path lives in app/consolidation.py and reuses the
+# same vault + BatchEngine rails.
+# ---------------------------------------------------------------------------
+
+from app import consolidation as cons_mod
+from app.batch_engine import validate_b3_address
+
+
+@router.get("/consolidation/settings")
+async def get_consolidation_settings(request: Request):
+    state = _state(request)
+    state.require_session(request)
+    return db.get_consolidation_settings(state.settings.db_path)
+
+
+@router.post("/consolidation/settings")
+async def update_consolidation_settings(body: dict, request: Request):
+    state = _state(request)
+    sess = state.require_session(request)
+    body = body or {}
+    dbp = state.settings.db_path
+
+    destination = str(body.get("destination") or "").strip()
+    if destination and not validate_b3_address(destination):
+        raise HTTPException(status_code=400,
+                            detail="destination must be a valid B3 P2PKH address")
+
+    interval = int(body.get("interval_minutes", 1440))
+    if interval < 0 or interval > 1_000_000:
+        raise HTTPException(status_code=400, detail="interval_minutes out of range")
+
+    inputs_per_tx = int(body.get("inputs_per_tx", 50))
+    if inputs_per_tx < 1 or inputs_per_tx > 675:
+        raise HTTPException(status_code=400, detail="inputs_per_tx out of range")
+
+    max_batches = int(body.get("max_batches", 5))
+    if max_batches < 1 or max_batches > 100:
+        raise HTTPException(status_code=400, detail="max_batches out of range")
+
+    fee_mode = str(body.get("fee_mode") or "estimate")
+    if fee_mode not in ("estimate", "fixed"):
+        raise HTTPException(status_code=400, detail="fee_mode must be estimate or fixed")
+
+    min_utxo = _amount_or_400(body.get("min_utxo_value", ""), "min_utxo_value",
+                                  allow_zero=True)
+    min_output = _amount_or_400(body.get("min_output", "0.0001"), "min_output",
+                                   allow_zero=True)
+    fee_rate = _amount_or_400(body.get("fee_rate", "0.0001"), "fee_rate")
+    fallback_rate = _amount_or_400(body.get("fallback_fee_rate", "0.0001"),
+                                  "fallback_fee_rate")
+
+    db.set_consolidation_settings(
+        dbp,
+        enabled=1 if bool(body.get("enabled")) else 0,
+        interval_minutes=interval,
+        destination=destination,
+        min_utxo_value=format(min_utxo, ".9f"),
+        inputs_per_tx=inputs_per_tx,
+        max_batches=max_batches,
+        min_output=format(min_output, ".9f"),
+        fee_mode=fee_mode,
+        fee_rate=format(fee_rate, ".9f"),
+        fee_target=int(body.get("fee_target", 6)),
+        fallback_fee_rate=format(fallback_rate, ".9f"),
+        restake_after=1 if bool(body.get("restake_after")) else 0,
+    )
+    db.audit(dbp, "consolidation_settings", sess.username,
+             detail=f"enabled={bool(body.get('enabled'))} dest={destination} "
+                    f"interval={interval} restake={bool(body.get('restake_after'))}")
+    return db.get_consolidation_settings(dbp)
+
+
+@router.post("/consolidation/preview")
+async def consolidation_preview(request: Request):
+    state = _state(request)
+    state.require_wallet_unlocked(request)
+    try:
+        plan = await cons_mod.plan(state.settings, state.rpc,
+                                   state.settings.session_secret)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
+        raise HTTPException(status_code=503, detail=f"node unavailable: {exc}")
+    # Strip internal fields before returning to the client.
+    plan.pop("_chunks", None)
+    plan.pop("_rate", None)
+    plan.pop("_plan_key", None)
+    return plan
+
+
+@router.post("/consolidation/execute")
+async def consolidation_execute(body: dict, request: Request):
+    state = _state(request)
+    sess = state.require_wallet_unlocked(request)
+    body = body or {}
+    token = str(body.get("confirm_token") or "")
+    if not token:
+        raise HTTPException(status_code=400, detail="confirm_token required")
+    result = await cons_mod.execute(state.settings, state.rpc,
+                                    state.settings.session_secret, token,
+                                    username=sess.username)
+    if not result.get("ok"):
+        raise HTTPException(status_code=422, detail=result.get("error", "execute failed"))
+    return result

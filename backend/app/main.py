@@ -39,13 +39,16 @@ async def lifespan(app: FastAPI):
     # Unattended autostake (opt-in via Staking settings): reconcile at
     # startup (retries while the node boots after crash/reboot), hourly.
     from app.autostake import start_autostake, stop_autostake
+    from app.consolidation import start_consolidation, stop_consolidation
     from app.vault import vault_from_settings
     _vault = vault_from_settings(state.settings, state.settings.b3_data_dir)
     start_autostake(state.settings, state.rpc, _vault)
+    start_consolidation(state.settings, state.rpc, _vault)
     yield
-    # Shutdown: stop the monitor and the autostake task.
+    # Shutdown: stop the monitor, autostake and consolidation tasks.
     await stop_monitor()
     await stop_autostake()
+    await stop_consolidation()
 
 
 def create_app(state: AppState | None = None) -> FastAPI:

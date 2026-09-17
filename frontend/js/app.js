@@ -18,7 +18,8 @@ function b3app() {
     // Staking
     staking: { loading: false, busy: false, active: false, weight: null, info: null, stakes: [],
         settings: null, settingsBusy: false, settingsSaved: false, ack: false, passphrase: '',
-        unstakeBusy: false, unstakePreview: null, unstakeTarget: null, revokeArmed: false },
+        unstakeBusy: false, unstakePreview: null, unstakeTarget: null, revokeArmed: false,
+        cons: null, consBusy: false, consPreview: null, consBusyExec: false },
  // Assets (FN Coin / FlowMesh)
  assets: { loaded: false, list: [], fn: null, markets: [], validatorBusy: false },
     // System (versions + daemon log)
@@ -204,6 +205,9 @@ function b3app() {
       } catch (e) { this.staking.info = null; }
       try {
         this.staking.settings = await this.api('/api/staking/settings');
+      } catch (e) { /* not logged in yet */ }
+      try {
+        this.staking.cons = await this.api('/api/staking/consolidation/settings');
       } catch (e) { /* not logged in yet */ }
     },
 
@@ -392,6 +396,43 @@ function b3app() {
       } catch (e) { this.showToast(e.message, 'danger'); }
       this.staking.settingsBusy = false;
     },
+
+    // -- Consolidation sweep (Advanced) ---------------------------------------
+    async saveConsolidation() {
+      this.staking.consBusy = true;
+      try {
+        this.staking.cons = await this.api('/api/staking/consolidation/settings', {
+          method: 'POST', body: JSON.stringify(this.staking.cons) });
+        this.showToast('Consolidation settings saved');
+      } catch (e) { this.showToast(e.message, 'danger'); }
+      this.staking.consBusy = false;
+    },
+
+    async previewConsolidation() {
+      this.staking.consBusy = true;
+      this.staking.consPreview = null;
+      try {
+        this.staking.consPreview = await this.api('/api/staking/consolidation/preview',
+          { method: 'POST' });
+      } catch (e) { this.showToast(e.message, 'danger'); }
+      this.staking.consBusy = false;
+    },
+
+    async executeConsolidation() {
+      this.staking.consBusyExec = true;
+      try {
+        const r = await this.api('/api/staking/consolidation/execute', {
+          method: 'POST', body: JSON.stringify({
+            confirm_token: this.staking.consPreview.confirm_token }) });
+        this.showToast('Consolidation done: ' + r.results.length + ' batch(es) broadcast');
+        this.staking.consPreview = null;
+        await this.refreshStaking();
+        await this.refreshWallet();
+      } catch (e) { this.showToast(e.message, 'danger'); }
+      this.staking.consBusyExec = false;
+    },
+
+    cancelConsolidation() { this.staking.consPreview = null; },
 
     // -- Settings / TOTP -----------------------------------------------------
     async doTotpSetup() {
