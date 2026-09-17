@@ -9,7 +9,7 @@ B3_DATA_DIR="${B3_DATA_DIR:-/data}"
 CONF="${B3_DATA_DIR}/b3coin.conf"
 RUN_UI="${RUN_UI:-true}"
 
-# Deferred daemon (fresh chain, first UI run): the daemon intentionally
+# Deferred daemon (first UI run, wizard pending): the daemon intentionally
 # stays DOWN until the setup wizard picks a sync method (bootstrap download
 # or sync-from-scratch). Healthy as long as the backend (wizard) responds.
 DEFERRED="${B3_DEFERRED_FILE:-${B3_DATA_DIR}/.daemon_deferred}"

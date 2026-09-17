@@ -76,7 +76,7 @@ class ChainMonitor:
             logger.info("monitor paused during bootstrap (phase=%s)",
                         prog.get("phase"))
             return
-        # Daemon deferred (fresh chain, first UI run): the wizard holds the node
+        # Daemon deferred (first UI run, wizard pending): the wizard holds the node
         # down until a sync method is chosen; RPC is down by design.
         if Path(self.settings.daemon_deferred_file).is_file():
             logger.debug("monitor paused: daemon deferred (setup pending)")

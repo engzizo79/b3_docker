@@ -130,17 +130,14 @@ if [ "${RUN_UI}" != "false" ] && [ -f "${SECRETS_FILE}" ]; then
         done < "${SECRETS_FILE}"
 fi
 
-# --- 2. Start the daemon (deferred on a fresh chain in UI mode) ---------------
-# First run + fresh chain + UI enabled: the daemon stays DOWN until the setup
-# wizard picks a sync method (bootstrap download or sync-from-scratch) — it
-# never burns hours syncing from genesis before the bootstrap choice.
-# Upgrades, existing chains, and headless mode start immediately.
+# --- 2. Start the daemon (deferred until first wizard completion in UI mode) ---
+# First run with the UI enabled: the daemon stays DOWN until the setup wizard
+# is completed (Finish Setup). This guarantees the user's sync-method and
+# node-configuration choices apply on the FIRST daemon start — no restart
+# needed — and no sync burns hours before the bootstrap choice.
+# Upgrades and existing completed setups start immediately; headless mode too.
 WIZARD_MARKER="${B3_DATA_DIR}/.wizard_complete"
 DEFERRED_FILE="${B3_DEFERRED_FILE:-${B3_DATA_DIR}/.daemon_deferred}"
-chain_is_fresh() {
-    [ ! -d "${B3_DATA_DIR}/chainstate" ] && return 0
-    [ -z "$(ls -A "${B3_DATA_DIR}/chainstate" 2>/dev/null)" ]
-}
 start_daemon() {
     rm -f "${DEFERRED_FILE}"
     log "Starting b3coind (datadir=${B3_DATA_DIR})"
@@ -162,9 +159,9 @@ start_daemon() {
 DAEMON_PID=""
 TAIL_PID=""
 DAEMON_LOG="${B3_DAEMON_LOG:-${B3_DATA_DIR}/daemon.log}"
-if [ "${RUN_UI}" != "false" ] && [ ! -f "${WIZARD_MARKER}" ] && chain_is_fresh; then
+if [ "${RUN_UI}" != "false" ] && [ ! -f "${WIZARD_MARKER}" ]; then
     touch "${DEFERRED_FILE}"
-    log "Fresh chain + first UI run — daemon deferred until the setup wizard picks a sync method"
+    log "First UI run — daemon deferred until the setup wizard is completed (Finish Setup)"
 else
     start_daemon
 fi
@@ -384,7 +381,7 @@ while true; do
             esac
     fi
     # Start-node command polling: the setup wizard writes start-node.cmd when
-    # the user chooses "sync from scratch" on a deferred fresh chain.
+    # the user finishes the wizard choosing sync-from-scratch / keep-chain.
     START_NODE_CMD="${START_NODE_CMD_FILE:-${B3_DATA_DIR}/start-node.cmd}"
     if [ -z "${DAEMON_PID}" ] && [ -f "${START_NODE_CMD}" ]; then
         rm -f "${START_NODE_CMD}"

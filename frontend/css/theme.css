@@ -580,3 +580,19 @@ scroll-behavior: auto !important;
 }
 .mode-pill:hover { color: var(--accent); border-color: var(--border-focus); }
 [data-mode="advanced"] .mode-pill { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
+
+/* === Wizard stepper + tooltips (v0.2.3) === */
+.step-indicator { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-4); }
+.step-pill { padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); border: 1px solid var(--border); color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; }
+.step-pill--active { background: var(--accent-bg); color: var(--accent-text); border-color: var(--border-focus); font-weight: 600; }
+.step-pill--done { background: var(--accent-bg); color: var(--accent-text); border-color: var(--border-focus); opacity: 0.7; }
+.card--selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset, var(--shadow); }
+.info-tip { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: var(--space-1); border: 1px solid var(--border); border-radius: 50%; font-size: 11px; font-style: italic; font-family: var(--font-mono); color: var(--text-muted); cursor: help; position: relative; background: var(--surface); }
+.info-tip:hover, .info-tip:focus { border-color: var(--accent); color: var(--accent-text); }
+.info-tip::before { content: attr(data-tip); position: absolute; bottom: 150%; left: 50%; transform: translateX(-50%); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); width: max-content; max-width: 280px; font-size: var(--text-xs); font-style: normal; line-height: 1.4; opacity: 0; pointer-events: none; transition: opacity 0.15s ease; z-index: 1000; box-shadow: var(--shadow); text-transform: none; letter-spacing: 0; font-family: inherit; }
+.info-tip:hover::before, .info-tip:focus::before { opacity: 1; }
+.divider { border: 0; border-top: 1px solid var(--border); margin: var(--space-4) 0; }
+.callout { padding: var(--space-4); border-radius: var(--radius-sm); border-left: 4px solid var(--border); }
+.callout--danger { background: var(--danger-bg); border-left-color: var(--danger); }
+.callout--warning { background: var(--warning-bg); border-left-color: var(--warning); }
+.callout--info { background: var(--accent-bg); border-left-color: var(--accent); }

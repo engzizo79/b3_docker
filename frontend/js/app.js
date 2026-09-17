@@ -54,10 +54,12 @@ function b3app() {
     toast: null, toastType: 'success',
  alerts: [], showAlerts: false, alertCount: 0,
  // Setup wizard (first-run bootstrap + node config)
- wizard: { status: null, bootstraps: [], manifestBusy: false, starting: false,
+ wizard: { step: 1, status: null, bootstraps: [], manifestBusy: false, starting: false,
+ syncChoice: null, // 'bootstrap' | 'scratch' | 'keep' | null
  freshChain: null, bootTarget: null, wipeChain: false,
  progress: { phase: 'idle' }, progressTimer: null,
  conf: null, confForm: {}, confBusy: false, restartBusy: false,
+ finishing: false,
  secPw: '', secPw2: '', secBusy: false, secSet: false, secErr: '',
  wallet: { loaded: [], reachable: false, createName: '', createPw: '', createPw2: '', loadName: '', busy: false } },
 
@@ -832,32 +834,35 @@ function b3app() {
  } catch (e) { this.showToast(e.message, 'danger'); }
  this.wizard.manifestBusy = false;
  },
- // Two-step inline confirm (native confirm() banned by design review).
- armBootstrap(b) {
+ // --- Stepper helpers (selection deferred to Finish; nothing applied mid-wizard) ---
+ selectBootstrap(b) {
  this.wizard.bootTarget = b;
- this.wizard.wipeChain = false;
+ this.wizard.syncChoice = 'bootstrap';
  },
- cancelBootstrap() {
+ selectScratch() {
+ this.wizard.syncChoice = 'scratch';
  this.wizard.bootTarget = null;
- this.wizard.wipeChain = false;
  },
- async startBootstrap(b) {
- const wipe = !!this.wizard.wipeChain;
- if (wipe === false && this.wizard.freshChain === false) {
- this.showToast('Existing chain data must be replaced for a bootstrap — enable the replace option', 'warning');
- return;
+ selectKeep() {
+ this.wizard.syncChoice = 'keep';
+ this.wizard.bootTarget = null;
+ },
+ stepClass(n) {
+ if (this.wizard.step > n) return 'step-pill--done';
+ if (this.wizard.step === n) return 'step-pill--active';
+ return '';
+ },
+ nextStep() {
+ if (this.wizard.step === 1 && !this.wizard.syncChoice) {
+ this.showToast('Pick a sync method first', 'warning'); return;
  }
- this.wizard.starting = true;
- try {
- await this.api('/api/setup/bootstrap/start', {
- method: 'POST', body: JSON.stringify({ height: b.height, sha256: b.sha256, url: b.url, size: b.size, wipe_chain: wipe })
- });
- this.showToast('Bootstrap started');
- this.cancelBootstrap();
- this.pollProgress();
- this.wizard.progressTimer = setInterval(() => this.pollProgress(), 2000);
- } catch (e) { this.showToast(e.message, 'danger'); }
- this.wizard.starting = false;
+ if (this.wizard.step === 1 && this.wizard.syncChoice === 'bootstrap' && !this.wizard.bootTarget) {
+ this.showToast('Select a bootstrap snapshot or choose another option', 'warning'); return;
+ }
+ if (this.wizard.step === 1 && this.wizard.syncChoice === 'bootstrap' && this.wizard.freshChain === false && !this.wizard.wipeChain) {
+ this.showToast('Enable "Replace existing chain data" to use a bootstrap', 'warning'); return;
+ }
+ this.wizard.step = Math.min(this.wizard.step + 1, 4);
  },
  async pollProgress() {
  try {
@@ -942,17 +947,58 @@ function b3app() {
  this.wizard.secBusy = false;
  },
 
- async completeWizard(startNode) {
+ // Finish: apply ALL wizard choices in order, then mark the wizard done.
+ // Sequence: 1) node config -> 2) sync method (bootstrap download OR node start)
+ // -> 3) wizard complete. The daemon never starts before this point, so
+ // config changes never need a restart (user requirement).
+ finishSummary() {
+ const parts = [];
+ if (this.wizard.syncChoice === 'bootstrap') parts.push('download the chain snapshot at height ' + (this.wizard.bootTarget ? this.wizard.bootTarget.height : '?') + ' and verify it');
+ if (this.wizard.syncChoice === 'scratch') parts.push('start the node syncing the full chain from the beginning');
+ if (this.wizard.syncChoice === 'keep') parts.push('start the node with the chain data already on disk');
+ if (this.wizard.conf && this.wizard.conf.editable) parts.push('apply your node configuration');
+ parts.push('open the dashboard');
+ return parts.join(', ');
+ },
+ async finishWizard() {
  if (this.wizard.status && this.wizard.status.setup_required && !this.wizard.secSet) {
- this.showToast("Set a login password in the Security step first", "danger"); return;
+ this.showToast('Set a login password in the Security step first', 'danger'); return;
  }
+ if (!this.wizard.syncChoice) {
+ this.showToast('Pick a sync method in step 1 first', 'warning'); return;
+ }
+ this.wizard.finishing = true;
  try {
- if (startNode) await this.api('/api/setup/start-node', { method: 'POST' });
+ // 1) Node configuration (safe subset) — applied BEFORE first daemon start.
+ if (this.wizard.conf && this.wizard.conf.editable) {
+ await this.api('/api/setup/conf/apply', {
+ method: 'POST', body: JSON.stringify({ conf: this.wizard.confForm })
+ });
+ }
+ // 2a) Bootstrap: hand the snapshot to the entrypoint worker; it stops/starts
+ // the daemon around the download and reports progress. The wizard polls it.
+ if (this.wizard.syncChoice === 'bootstrap' && this.wizard.bootTarget) {
+ const b = this.wizard.bootTarget;
+ const wipe = this.wizard.freshChain === false ? !!this.wizard.wipeChain : false;
+ await this.api('/api/setup/bootstrap/start', {
+ method: 'POST', body: JSON.stringify({ height: b.height, sha256: b.sha256, url: b.url, size: b.size, wipe_chain: wipe })
+ });
+ this.pollProgress();
+ this.wizard.progressTimer = setInterval(() => this.pollProgress(), 2000);
+ this.showToast('Bootstrap download started — you can watch progress on step 1');
+ }
+ // 2b) Sync from scratch / keep existing chain: start the (deferred) daemon.
+ if (this.wizard.syncChoice === 'scratch' || this.wizard.syncChoice === 'keep') {
+ await this.api('/api/setup/start-node', { method: 'POST' });
+ this.showToast('Node starting');
+ }
+ // 3) Mark the wizard complete (header/nav reappear).
  await this.api('/api/setup/complete', { method: 'POST' });
  this.wizard.status.wizard_done = true;
  this.view = 'dashboard';
  this.showToast('Setup complete — welcome to B3 Hive!');
  } catch (e) { this.showToast(e.message, 'danger'); }
+ this.wizard.finishing = false;
  },
 
  // -- Toast ---------------------------------------------------------------

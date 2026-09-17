@@ -233,7 +233,7 @@ async def restart_node(request: Request):
 @router.post("/start-node")
 async def start_node(request: Request):
     """Wizard: user chose sync-from-scratch. Signals the entrypoint supervisor
-    to start the daemon (deferred on a fresh chain in UI mode)."""
+    to start the daemon (deferred until first wizard completion in UI mode)."""
     s = _state(request)
     s.require_csrf(request)
     cmd_file = Path(s.settings.start_node_cmd_file)

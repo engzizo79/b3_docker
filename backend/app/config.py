@@ -32,7 +32,7 @@ class Settings:
         self.cookie_secure: str = os.environ.get("COOKIE_SECURE", "auto")
         # Setup wizard / bootstrap
         self.b3_data_dir: str = os.environ.get("B3_DATA_DIR", "/data")
-        # Set by the entrypoint while the daemon is deferred (fresh chain, first UI run).
+        # Set by the entrypoint while the daemon is deferred (first UI run, wizard pending).
         self.daemon_deferred_file: str = os.environ.get("B3_DEFERRED_FILE", str(Path(self.b3_data_dir) / ".daemon_deferred"))
         self.bootstrap_cmd_file: str = os.environ.get("BOOTSTRAP_CMD_FILE", "/data/bootstrap.cmd")
         self.bootstrap_progress_file: str = os.environ.get("BOOTSTRAP_PROGRESS_FILE", "/data/bootstrap.progress.json")
