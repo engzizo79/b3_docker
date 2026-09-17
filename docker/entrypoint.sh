@@ -185,13 +185,14 @@ run_bootstrap() {
     CMD_JSON="$1"
     B3_TMP_ARCHIVE="${B3_DATA_DIR}/bootstrap-download.tar.zst"
 
-    read -r B_HEIGHT B_URL B_SHA B_SIZE < <(python3 - "$CMD_JSON" <<'PY'
+    read -r B_HEIGHT B_URL B_SHA B_SIZE B_WIPE < <(python3 - "$CMD_JSON" <<'PY'
 import json, sys
 try:
     c = json.load(open(sys.argv[1]))
-    print(c.get("height",""), c.get("url",""), c.get("sha256",""), c.get("size",""))
+    print(c.get("height",""), c.get("url",""), c.get("sha256",""), c.get("size",""),
+          "yes" if c.get("wipe") else "")
 except Exception:
-    print("", "", "", "")
+    print("", "", "", "", "")
 PY
 )
     if [ -z "${B_URL}" ] || [ -z "${B_SHA}" ]; then
@@ -255,6 +256,22 @@ PY
 
     log "bootstrap: extracting into ${B3_DATA_DIR}"
     progress_phase extracting "\"height\":${B_HEIGHT}"
+    # Replace-chain mode (explicit user consent, wizard-gated in the backend):
+    # remove exactly the chain dirs the bootstrap archive replaces.
+    # Wallets, b3coin.conf, secrets, logs and settings are NEVER touched.
+    if [ "${B_WIPE}" = "yes" ]; then
+        log "bootstrap: wipe requested — removing existing chain data (blocks, chainstate, indexes, flowmesh)"
+        for CHAIN_DIR in blocks chainstate indexes flowmesh; do
+            if [ -e "${B3_DATA_DIR}/${CHAIN_DIR}" ]; then
+                rm -rf "${B3_DATA_DIR}/${CHAIN_DIR}" || {
+                    write_progress '{"phase":"failed","error":"chain wipe failed"}'
+                    log "bootstrap: failed to remove ${CHAIN_DIR} — aborting"
+                    if [ -n "${DAEMON_PID}" ]; then start_daemon; fi
+                    return 0
+                }
+            fi
+        done
+    fi
     tar --zstd -xf "${B3_TMP_ARCHIVE}" -C "${B3_DATA_DIR}" || {
         log "bootstrap: extraction failed"
         write_progress '{"phase":"failed","error":"extraction failed"}'

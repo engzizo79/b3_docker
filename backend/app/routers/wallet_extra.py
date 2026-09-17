@@ -43,8 +43,175 @@ def _client_ip(request: Request) -> str:
         request.client.host if request.client else "")
 
 
+def _data_dir(state: AppState):
+    from pathlib import Path
+    return Path(state.settings.b3_data_dir)
+
+
+def _wallets_dir(state: AppState):
+    # Bitcoin-31 named wallets live under datadir/wallets/; the legacy
+    # datadir/wallet.dat is also recognized as a loadable wallet file.
+    return _data_dir(state) / "wallets"
+
+
 class NewAddressBody(BaseModel):
     label: str = ""
+
+
+# --- Wallet management (create / load / migrate / backup) --------------------
+# These are regular wallet features, NOT setup-wizard-only actions.
+
+_WALLET_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$")
+
+
+class CreateWalletBody(BaseModel):
+    wallet_name: str
+    passphrase: str
+    load_on_startup: bool = True
+
+
+class LoadWalletBody(BaseModel):
+    filename: str
+    load_on_startup: bool = False
+
+
+class UnloadWalletBody(BaseModel):
+    filename: str
+
+
+@router.get("/manage")
+async def wallet_manage(request: Request):
+    """Wallet inventory: loaded wallets, on-disk wallet files (named
+    wallets under datadir/wallets plus the legacy wallet.dat), and the
+    default wallet directory. Never exposes keys or passphrases."""
+    state = _state(request)
+    state.require_2fa(request)
+    loaded: list[str] = []
+    try:
+        loaded = await state.rpc.call("listwallets")
+    except (RPCError, RPCNotAllowed, RPCUnavailable):
+        loaded = []
+    wallets_dir = _wallets_dir(state)
+    on_disk: list[str] = []
+    if wallets_dir.is_dir():
+        on_disk = sorted(p.name for p in wallets_dir.iterdir()
+                         if p.is_file() and p.suffix == ".dat")
+    legacy = _data_dir(state) / "wallet.dat"
+    if legacy.is_file() and "" not in on_disk:
+        on_disk.insert(0, "wallet.dat")
+    return {"loaded": loaded or [], "on_disk": on_disk,
+            "persistent_data": state.data_persistent()}
+
+
+@router.post("/manage/create")
+async def wallet_manage_create(body: CreateWalletBody, request: Request):
+    """Create a new wallet (named, passphrase-encrypted). Regular feature
+    mirrored from the setup wizard; requires persistent data so a new
+    wallet can never silently land on ephemeral container storage."""
+    state = _state(request)
+    sess = state.require_csrf(request)
+    state.require_persistent_data()
+    ip = _client_ip(request)
+    name = (body.wallet_name or "").strip()
+    if not _WALLET_NAME_RE.fullmatch(name):
+        raise HTTPException(422, "invalid wallet name")
+    passphrase = (body.passphrase or "").strip()
+    if len(passphrase) < 8:
+        raise HTTPException(422, "passphrase must be at least 8 characters")
+    try:
+        await state.rpc.call(
+            "createwallet", name, False, False, passphrase,
+            False, False, body.load_on_startup, False,
+        )
+    except RPCError as exc:
+        db.audit(state.settings.db_path, "wallet.create", sess.username,
+                 detail=f"ip={ip} name={name}", success=False)
+        raise HTTPException(409, f"node rejected createwallet: {exc.message}")
+    except (RPCNotAllowed, RPCUnavailable) as exc:
+        raise _translate(exc)
+    db.audit(state.settings.db_path, "wallet.create", sess.username,
+             detail=f"ip={ip} name={name}")
+    return {"ok": True, "wallet": name}
+
+
+@router.post("/manage/load")
+async def wallet_manage_load(body: LoadWalletBody, request: Request):
+    """Load (migrate) an existing wallet file from the wallet directory
+    or the legacy datadir location. Regular feature; persistence-guarded."""
+    state = _state(request)
+    sess = state.require_csrf(request)
+    state.require_persistent_data()
+    ip = _client_ip(request)
+    name = (body.filename or "").strip()
+    if not _WALLET_NAME_RE.fullmatch(name):
+        raise HTTPException(422, "invalid wallet filename")
+    try:
+        await state.rpc.call("loadwallet", name)
+    except RPCError as exc:
+        db.audit(state.settings.db_path, "wallet.load", sess.username,
+                 detail=f"ip={ip} name={name}", success=False)
+        raise HTTPException(409, f"node rejected loadwallet: {exc.message}")
+    except (RPCNotAllowed, RPCUnavailable) as exc:
+        raise _translate(exc)
+    db.audit(state.settings.db_path, "wallet.load", sess.username,
+             detail=f"ip={ip} name={name}")
+    return {"ok": True, "wallet": name}
+
+
+@router.post("/manage/unload")
+async def wallet_manage_unload(body: UnloadWalletBody, request: Request):
+    """Unload a loaded wallet. Refuses to unload the last loaded wallet
+    (the UI relies on at least one active wallet context)."""
+    state = _state(request)
+    sess = state.require_csrf(request)
+    ip = _client_ip(request)
+    try:
+        loaded = await state.rpc.call("listwallets")
+    except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
+        raise _translate(exc)
+    if len(loaded or []) <= 1:
+        raise HTTPException(409, "cannot unload the last loaded wallet")
+    name = (body.filename or "").strip()
+    if name not in (loaded or []):
+        raise HTTPException(404, "wallet not loaded")
+    try:
+        await state.rpc.call("unloadwallet", name)
+    except RPCError as exc:
+        raise HTTPException(409, f"node rejected unloadwallet: {exc.message}")
+    except (RPCNotAllowed, RPCUnavailable) as exc:
+        raise _translate(exc)
+    db.audit(state.settings.db_path, "wallet.unload", sess.username,
+             detail=f"ip={ip} name={name}")
+    return {"ok": True}
+
+
+@router.post("/manage/backup")
+async def wallet_manage_backup(request: Request):
+    """Backup the active wallet via backupwallet. The destination path is
+    server-generated (timestamped, under datadir/backups) — the browser
+    never controls it. Contains private keys: persistence-guarded and
+    audited. Requires an unlocked wallet only if the node says so; the
+    backend never touches passphrases here."""
+    state = _state(request)
+    sess = state.require_csrf(request)
+    state.require_persistent_data()
+    ip = _client_ip(request)
+    from datetime import datetime, timezone
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backups_dir = _data_dir(state) / "backups"
+    backups_dir.mkdir(parents=True, exist_ok=True)
+    dest = backups_dir / f"backup-{stamp}.dat"
+    try:
+        await state.rpc.call("backupwallet", str(dest))
+    except RPCError as exc:
+        db.audit(state.settings.db_path, "wallet.backup", sess.username,
+                 detail=f"ip={ip}", success=False)
+        raise HTTPException(409, f"node rejected backupwallet: {exc.message}")
+    except (RPCNotAllowed, RPCUnavailable) as exc:
+        raise _translate(exc)
+    db.audit(state.settings.db_path, "wallet.backup", sess.username,
+             detail=f"ip={ip} dest={dest.name}")
+    return {"ok": True, "path": str(dest)}
 
 
 @router.post("/receive")

@@ -63,7 +63,7 @@ ALLOWED: dict[str, set[str]] = {
     "assets_write": {  # gated: require unlocked wallet in the API layer
         "startflowmeshvalidator", "stopflowmeshvalidator",
     },
-    "wallet_lifecycle": {"createwallet", "loadwallet", "listwallets", "unloadwallet"},
+    "wallet_lifecycle": {"createwallet", "loadwallet", "listwallets", "unloadwallet", "backupwallet"},
 }
 
 ALLOWED_METHODS: set[str] = set().union(*ALLOWED.values())
@@ -74,7 +74,7 @@ FORBIDDEN: set[str] = {
     "importprivkey", "importmulti", "dumpprivkey", "dumpwallet",
     "encryptwallet", "signmessagewithprivkey", "setgenerate",
     "generate", "generatetoaddress", "importaddress", "importpubkey",
-    "dumpwallet", "backupwallet", "setaccount",
+    "dumpwallet", "setaccount",
 }
 
 

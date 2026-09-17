@@ -83,6 +83,7 @@ class MockRPC:
             "createwallet": {"name": "wallet"},
             "loadwallet": {"name": "wallet"},
             "unloadwallet": None,
+			"backupwallet": None,
         }
 
     async def call(self, method: str, *params):

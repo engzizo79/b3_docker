@@ -27,6 +27,11 @@ from app.deps import AppState
 
 router = APIRouter(prefix="/api/setup", tags=["setup"])
 
+# The explorer's reverse proxy 403s default python/httpx User-Agents; the
+# manifest fetch must present a browser-like UA.
+BROWSER_UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
+
 # Keys the wizard may read and edit. Everything else is left untouched but
 # preserved verbatim; unknown keys are rejected on apply.
 WIZARD_KEYS = {
@@ -55,6 +60,7 @@ class BootstrapBody(BaseModel):
     sha256: str
     url: str
     size: int = 0
+    wipe_chain: bool = False  # explicit consent to replace an existing chain
 
 
 class CreateWalletBody(BaseModel):
@@ -134,15 +140,18 @@ async def list_bootstraps(request: Request):
     s = _state(request)
     s.require_2fa(request)
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True,
+                                     headers={"User-Agent": BROWSER_UA}) as client:
             r = await client.get(s.settings.bootstrap_manifest_url)
             r.raise_for_status()
             manifest = r.json()
     except Exception as exc:
         raise HTTPException(502, f"explorer manifest unavailable: {exc}")
     entries = manifest.get("bootstraps", [])
+    fresh = _fresh_chain(s)
     return {
-        "available": _fresh_chain(s) and not _bootstrap_running(s),
+        "available": fresh and not _bootstrap_running(s),
+        "fresh_chain": fresh,
         "manifest_url": s.settings.bootstrap_manifest_url,
         "bootstraps": [
             {
@@ -165,9 +174,10 @@ async def start_bootstrap(body: BootstrapBody, request: Request):
          (request.client.host if request.client else "unknown")
 
     # Guards: session/CSRF are enforced by dependency wiring; here the rails:
-    if not _fresh_chain(s):
+    if not _fresh_chain(s) and not body.wipe_chain:
         raise HTTPException(409, "chain data already exists — bootstrap would "
-                                 "overwrite it; delete chainstate to allow")
+                                 "overwrite it; enable the replace-chain option "
+                                 "to allow")
     if _bootstrap_running(s):
         raise HTTPException(409, "bootstrap already in progress")
     if not re.fullmatch(r"[0-9a-f]{64}", body.sha256 or ""):
@@ -189,12 +199,13 @@ async def start_bootstrap(body: BootstrapBody, request: Request):
         "url": full_url,
         "sha256": body.sha256,
         "size": body.size,
+        "wipe": bool(body.wipe_chain),
     }
     cmd_file = Path(s.settings.bootstrap_cmd_file)
     cmd_file.parent.mkdir(parents=True, exist_ok=True)
     cmd_file.write_text(json.dumps(cmd))
     db.audit(s.settings.db_path, "setup.bootstrap.start", s.username,
-             detail=f"ip={ip} height={body.height}")
+             detail=f"ip={ip} height={body.height} wipe={bool(body.wipe_chain)}")
     return {"ok": True, "cmd_id": cmd["id"]}
 
 

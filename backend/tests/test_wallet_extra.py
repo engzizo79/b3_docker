@@ -146,3 +146,96 @@ def test_address_book_lists_labels(client: TestClient, mock_rpc: MockRPC):
     assert addrs[0]["label"] == "mining"
     assert addrs[0]["amount"] == "1.920000000"
     assert mock_rpc.called("listaddressgroupings")
+
+
+from pathlib import Path
+
+
+class TestWalletManagement:
+    """Wallet create / load / unload / backup — regular features, not wizard-only."""
+
+    def test_manage_lists_loaded_and_on_disk(self, client, mock_rpc):
+        out = login(client, headers=LOCAL)
+        st = client.app.state.app_state
+        wallets_dir = Path(st.settings.b3_data_dir) / "wallets"
+        wallets_dir.mkdir(parents=True, exist_ok=True)
+        (wallets_dir / "my-wallet.dat").write_bytes(b"")
+        mock_rpc.responses["listwallets"] = ["my-wallet"]
+        r = client.get("/api/wallet/manage", headers=out["headers"])
+        assert r.status_code == 200
+        assert "my-wallet" in r.json()["loaded"]
+        assert "my-wallet.dat" in r.json()["on_disk"]
+        assert r.json()["persistent_data"] is True
+
+    def test_manage_create_persistence_guard(self, client, monkeypatch):
+        out = login(client, headers=LOCAL)
+        st = client.app.state.app_state
+        monkeypatch.setattr(st, "data_persistent", lambda: False)
+        r = client.post("/api/wallet/manage/create",
+                        json={"wallet_name": "w", "passphrase": "p" * 8},
+                        headers=out["headers"])
+        assert r.status_code == 403
+
+    def test_manage_create_bad_name(self, client):
+        out = login(client, headers=LOCAL)
+        r = client.post("/api/wallet/manage/create",
+                        json={"wallet_name": "../etc", "passphrase": "p" * 8},
+                        headers=out["headers"])
+        assert r.status_code == 422
+
+    def test_manage_create_short_passphrase(self, client):
+        out = login(client, headers=LOCAL)
+        r = client.post("/api/wallet/manage/create",
+                        json={"wallet_name": "w", "passphrase": "short"},
+                        headers=out["headers"])
+        assert r.status_code == 422
+
+    def test_manage_create_success(self, client, mock_rpc):
+        out = login(client, headers=LOCAL)
+        r = client.post("/api/wallet/manage/create",
+                        json={"wallet_name": "mywallet", "passphrase": "p" * 12},
+                        headers=out["headers"])
+        assert r.status_code == 200
+        assert r.json()["wallet"] == "mywallet"
+        assert mock_rpc.called("createwallet")
+
+    def test_manage_load_success(self, client, mock_rpc):
+        out = login(client, headers=LOCAL)
+        r = client.post("/api/wallet/manage/load",
+                        json={"filename": "mywallet.dat"},
+                        headers=out["headers"])
+        assert r.status_code == 200
+        assert mock_rpc.called("loadwallet")
+
+    def test_manage_unload_last_refused(self, client, mock_rpc):
+        out = login(client, headers=LOCAL)
+        mock_rpc.responses["listwallets"] = ["only"]
+        r = client.post("/api/wallet/manage/unload",
+                        json={"filename": "only"}, headers=out["headers"])
+        assert r.status_code == 409
+
+    def test_manage_backup_success(self, client, mock_rpc):
+        out = login(client, headers=LOCAL)
+        r = client.post("/api/wallet/manage/backup", headers=out["headers"])
+        assert r.status_code == 200
+        assert "backup-" in r.json()["path"]
+        assert mock_rpc.called("backupwallet")
+
+    def test_manage_backup_persistence_guard(self, client, monkeypatch):
+        out = login(client, headers=LOCAL)
+        st = client.app.state.app_state
+        monkeypatch.setattr(st, "data_persistent", lambda: False)
+        r = client.post("/api/wallet/manage/backup", headers=out["headers"])
+        assert r.status_code == 403
+
+    def test_manage_requires_auth(self, client):
+        r = client.get("/api/wallet/manage")
+        assert r.status_code == 401
+
+    def test_manage_create_requires_csrf(self, client):
+        out = login(client, headers=LOCAL)
+        hdr = {k: v for k, v in out["headers"].items() if k != "x-csrf-token"}
+        r = client.post("/api/wallet/manage/create",
+                        json={"wallet_name": "w", "passphrase": "p" * 8},
+                        headers=hdr)
+        assert r.status_code == 403

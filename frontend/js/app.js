@@ -4,6 +4,11 @@ function b3app() {
   return {
     // -- State ---------------------------------------------------------------
     session: { authenticated: false, wallet_unlocked: false, totp_configured: false },
+    walletMgmt: { loaded: [], on_disk: [], persistent: true,
+                  show: false, busy: false,
+                  createName: '', createPw: '', createPw2: '',
+                  loadName: '', backupBusy: false, backupPath: '',
+                  unloadTarget: '', unloadArm: false, error: '' },
     view: 'dashboard',
     theme: localStorage.getItem('b3-theme') || 'dark',
 		mode: localStorage.getItem('b3-mode') || 'simple',
@@ -50,6 +55,7 @@ function b3app() {
  alerts: [], showAlerts: false, alertCount: 0,
  // Setup wizard (first-run bootstrap + node config)
  wizard: { status: null, bootstraps: [], manifestBusy: false, starting: false,
+ freshChain: null, bootTarget: null, wipeChain: false,
  progress: { phase: 'idle' }, progressTimer: null,
  conf: null, confForm: {}, confBusy: false, restartBusy: false,
  secPw: '', secPw2: '', secBusy: false, secSet: false, secErr: '',
@@ -84,7 +90,7 @@ function b3app() {
       try {
         const s = await this.api('/api/auth/status');
         this.session = s;
-        if (s.authenticated) this.poll();
+        if (s.authenticated) { await this.checkWizard(); this.poll(); }
       } catch (e) { this.session.authenticated = false; }
     },
 
@@ -96,7 +102,7 @@ function b3app() {
           method: 'POST', body: JSON.stringify({ password: this.loginPw })
         });
         this.loginStep2 = r.totp_required;
-        if (!r.totp_required) { this.session.authenticated = true; this.poll(); }
+        if (!r.totp_required) { this.session.authenticated = true; await this.checkWizard(); this.poll(); }
       } catch (e) { this.loginErr = e.message; }
       this.loginBusy = false;
     },
@@ -107,7 +113,7 @@ function b3app() {
         await this.api('/api/auth/2fa', {
           method: 'POST', body: JSON.stringify({ code: this.totpCode })
         });
-        this.session.authenticated = true; this.loginStep2 = false; this.poll();
+        this.session.authenticated = true; this.loginStep2 = false; await this.checkWizard(); this.poll();
       } catch (e) { this.loginErr = e.message; }
       this.loginBusy = false;
     },
@@ -255,6 +261,77 @@ function b3app() {
         await this.refreshSession();
         this.showToast('Wallet locked');
       } catch (e) { this.showToast(e.message, 'danger'); }
+    },
+
+    // -- Wallet management (create / load / migrate / backup) ----------------
+    async refreshWalletMgmt() {
+      try {
+        const r = await this.api('/api/wallet/manage');
+        this.walletMgmt.loaded = r.loaded || [];
+        this.walletMgmt.on_disk = r.on_disk || [];
+        this.walletMgmt.persistent = r.persistent_data;
+        this.walletMgmt.error = '';
+      } catch (e) { this.walletMgmt.error = e.message; }
+    },
+    toggleWalletMgmt() {
+      this.walletMgmt.show = !this.walletMgmt.show;
+      if (this.walletMgmt.show) { this.refreshWalletMgmt(); }
+    },
+    async createWalletMgmt() {
+      if (this.walletMgmt.createPw !== this.walletMgmt.createPw2) {
+        this.showToast('Passphrases do not match', 'danger'); return;
+      }
+      if (this.walletMgmt.createPw.length < 8) {
+        this.showToast('Passphrase must be at least 8 characters', 'danger'); return;
+      }
+      this.walletMgmt.busy = true;
+      try {
+        await this.api('/api/wallet/manage/create', {
+          method: 'POST', body: JSON.stringify({
+            wallet_name: this.walletMgmt.createName, passphrase: this.walletMgmt.createPw
+          })
+        });
+        this.showToast('Wallet created: ' + this.walletMgmt.createName);
+        this.walletMgmt.createName = ''; this.walletMgmt.createPw = ''; this.walletMgmt.createPw2 = '';
+        await this.refreshWalletMgmt();
+        await this.refreshWallet();
+      } catch (e) { this.showToast(e.message, 'danger'); }
+      this.walletMgmt.busy = false;
+    },
+    async loadWalletMgmt(name) {
+      this.walletMgmt.busy = true;
+      try {
+        await this.api('/api/wallet/manage/load', {
+          method: 'POST', body: JSON.stringify({ filename: name || this.walletMgmt.loadName })
+        });
+        this.showToast('Wallet loaded: ' + (name || this.walletMgmt.loadName));
+        this.walletMgmt.loadName = '';
+        await this.refreshWalletMgmt();
+        await this.refreshWallet();
+      } catch (e) { this.showToast(e.message, 'danger'); }
+      this.walletMgmt.busy = false;
+    },
+    async unloadWalletMgmt(name) {
+      this.walletMgmt.busy = true;
+      try {
+        await this.api('/api/wallet/manage/unload', {
+          method: 'POST', body: JSON.stringify({ filename: name })
+        });
+        this.showToast('Wallet unloaded: ' + name);
+        this.walletMgmt.unloadTarget = ''; this.walletMgmt.unloadArm = false;
+        await this.refreshWalletMgmt();
+        await this.refreshWallet();
+      } catch (e) { this.showToast(e.message, 'danger'); }
+      this.walletMgmt.busy = false;
+    },
+    async backupWalletMgmt() {
+      this.walletMgmt.backupBusy = true;
+      try {
+        const r = await this.api('/api/wallet/manage/backup', { method: 'POST' });
+        this.walletMgmt.backupPath = r.path || '';
+        this.showToast('Backup saved');
+      } catch (e) { this.showToast(e.message, 'danger'); }
+      this.walletMgmt.backupBusy = false;
     },
 
     // -- Send flow -----------------------------------------------------------
@@ -719,6 +796,18 @@ function b3app() {
  },
 
     // -- Setup wizard --------------------------------------------------------
+ // Block navigation away from the wizard until setup is complete.
+ setView(v) {
+ if (this.wizard.status && !this.wizard.status.wizard_done && v !== 'wizard' && v !== 'settings') {
+ this.showToast('Complete the setup wizard first', 'warning');
+ return;
+ }
+ this.view = v;
+ if (v === 'receive') this.refreshBook();
+ if (v === 'assets') this.refreshAssets();
+ if (v === 'batch') this.refreshBatch();
+ },
+
  async checkWizard() {
  if (!this.session.authenticated) return;
  try {
@@ -739,18 +828,32 @@ function b3app() {
  try {
  const r = await this.api('/api/setup/bootstraps');
  this.wizard.bootstraps = r.bootstraps || [];
+ this.wizard.freshChain = r.fresh_chain;
  } catch (e) { this.showToast(e.message, 'danger'); }
  this.wizard.manifestBusy = false;
  },
+ // Two-step inline confirm (native confirm() banned by design review).
+ armBootstrap(b) {
+ this.wizard.bootTarget = b;
+ this.wizard.wipeChain = false;
+ },
+ cancelBootstrap() {
+ this.wizard.bootTarget = null;
+ this.wizard.wipeChain = false;
+ },
  async startBootstrap(b) {
- if (!confirm('Download bootstrap at height ' + b.height + '? ~' +
- Math.round(b.size / 1048576) + ' MB. The daemon will be stopped during download.')) return;
+ const wipe = !!this.wizard.wipeChain;
+ if (wipe === false && this.wizard.freshChain === false) {
+ this.showToast('Existing chain data must be replaced for a bootstrap — enable the replace option', 'warning');
+ return;
+ }
  this.wizard.starting = true;
  try {
  await this.api('/api/setup/bootstrap/start', {
- method: 'POST', body: JSON.stringify({ height: b.height, sha256: b.sha256, url: b.url, size: b.size })
+ method: 'POST', body: JSON.stringify({ height: b.height, sha256: b.sha256, url: b.url, size: b.size, wipe_chain: wipe })
  });
  this.showToast('Bootstrap started');
+ this.cancelBootstrap();
  this.pollProgress();
  this.wizard.progressTimer = setInterval(() => this.pollProgress(), 2000);
  } catch (e) { this.showToast(e.message, 'danger'); }
