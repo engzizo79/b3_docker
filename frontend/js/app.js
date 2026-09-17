@@ -21,6 +21,8 @@ function b3app() {
         unstakeBusy: false, unstakePreview: null, unstakeTarget: null, revokeArmed: false },
  // Assets (FN Coin / FlowMesh)
  assets: { loaded: false, list: [], fn: null, markets: [], validatorBusy: false },
+    // System (versions + daemon log)
+    system: { info: null, logs: [], logBusy: false, logCount: 200, logFilter: 'all', logNote: '' },
     // Send
     sendAddr: '', sendAmt: '', sendBusy: false, sendErr: '',
     sendPreview: null, sendResult: null,
@@ -123,6 +125,35 @@ function b3app() {
       this.refreshStaking();
       this.refreshSession();
       this.checkWizard();
+    },
+
+    // -- System (About / Node log) ------------------------------------------
+    async loadSystemInfo() {
+      try { this.system.info = await this.api('/api/system/info'); } catch (e) {}
+    },
+
+    async loadLogs() {
+      this.system.logBusy = true; this.system.logNote = '';
+      try {
+        const r = await this.api('/api/system/logs?lines=' + this.system.logCount);
+        this.system.logs = r.lines || [];
+        this.system.logNote = r.note || '';
+      } catch (e) { this.system.logs = []; this.system.logNote = ''; }
+      this.system.logBusy = false;
+    },
+
+    filteredLogs() {
+      const f = this.system.logFilter;
+      if (f === 'all') return this.system.logs;
+      // b3coind lines carry level markers: WARNING, Error, ERROR
+      const pat = f === 'error' ? /error|ERROR/ : /WARNING|warn/;
+      return this.system.logs.filter(l => pat.test(l));
+    },
+
+    openSettings() {
+      this.view = 'settings';
+      this.loadSystemInfo();
+      this.loadLogs();
     },
 
     async refreshSession() {

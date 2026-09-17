@@ -120,7 +120,7 @@
           <button class="nav-tab" :class="{'active':view==='staking'}" @click="view='staking'">Staking</button>
 <button class="nav-tab" :class="{'active':view==='assets'}" @click="view='assets';refreshAssets()">Assets</button>
 <button class="nav-tab advanced-only" :class="{'active':view==='batch'}" @click="view='batch';refreshBatch()">Batch</button>
-          <button class="nav-tab" :class="{'active':view==='settings'}" @click="view='settings'">Settings</button>
+          <button class="nav-tab" :class="{'active':view==='settings'}" @click="openSettings()">Settings</button>
         </nav>
 
         <!-- Main content -->
@@ -708,6 +708,20 @@
 <!-- SETTINGS -->
           <div x-show="view==='settings'">
             <div class="card mb-3">
+              <div class="card-header"><h3>About</h3></div>
+              <div class="flex-between"><span class="text-sm text-muted">Wallet version</span>
+                <span class="mono text-sm" x-text="system.info ? system.info.app_version : '…'"></span></div>
+              <div class="flex-between mt-2"><span class="text-sm text-muted">Node version</span>
+                <template x-if="system.info && system.info.node_up && system.info.daemon">
+                  <span class="mono text-sm" x-text="system.info.daemon.subversion"></span>
+                </template>
+                <template x-if="system.info && !system.info.node_up"><span class="text-sm text-muted">Not running</span></template>
+              </div>
+              <div class="flex-between mt-2"><span class="text-sm text-muted">Node status</span>
+                <span class="badge" :class="system.info && system.info.node_up ? 'badge-success' : 'badge-warning'" x-text="system.info && system.info.node_up ? 'Running' : 'Down'"></span>
+              </div>
+            </div>
+            <div class="card mb-3">
               <div class="card-header"><h3>2FA Setup</h3></div>
               <template x-if="!totpSetup">
                 <button class="btn btn-secondary" @click="doTotpSetup" :disabled="totpBusy" type="button">
@@ -809,6 +823,33 @@
  <h3>Setup Wizard</h3>
  <p class="text-muted mb-2">Re-run the first-use setup wizard (bootstrap sync choice + node configuration).</p>
  <button class="btn btn-sm btn-secondary" @click="view='wizard';checkWizard()" type="button">Open Setup Wizard</button>
+ </div>
+ <div class="card advanced-only" x-show="mode==='advanced'">
+ <div class="card-header"><h3>Node Log</h3></div>
+ <div class="flex-start flex-wrap gap-2 mb-2">
+ <button class="btn btn-sm btn-secondary" @click="loadLogs()" :disabled="system.logBusy" type="button">
+ <span x-show="system.logBusy" class="spinner"></span> Refresh
+ </button>
+ <select class="input" style="width:auto" x-model.number="system.logCount" @change="loadLogs()">
+ <option value="100">100 lines</option>
+ <option value="200">200 lines</option>
+ <option value="500">500 lines</option>
+ </select>
+ <select class="input" style="width:auto" x-model="system.logFilter">
+ <option value="all">All levels</option>
+ <option value="warn">Warnings</option>
+ <option value="error">Errors</option>
+ </select>
+ </div>
+ <template x-if="system.logs.length">
+ <pre class="mono text-xs" style="max-height:400px;overflow:auto" x-text="filteredLogs().join(String.fromCharCode(10))"></pre>
+ </template>
+ <template x-if="!system.logs.length && system.logNote">
+ <p class="text-sm text-muted" x-text="system.logNote"></p>
+ </template>
+ <template x-if="!system.logs.length && !system.logNote && !system.logBusy">
+ <p class="text-sm text-muted">No log loaded — press Refresh.</p>
+ </template>
  </div>
           </div>
 

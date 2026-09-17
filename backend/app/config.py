@@ -52,6 +52,13 @@ class Settings:
         # Set to true ONLY for testing — never in production with real funds.
         self.allow_ephemeral_data: bool = os.environ.get(
             "ALLOW_EPHEMERAL_DATA", "false").strip().lower() == "true"
+        # UI/backend version — injected at Docker build time from `git describe`
+        # (Dockerfile ARG B3_APP_VERSION). "dev" outside a build.
+        self.app_version: str = os.environ.get("B3_APP_VERSION", "dev")
+        # Daemon stdout log (entrypoint redirects -printtoconsole here; a tail
+        # mirror keeps `docker logs` working). Backend tails this for the UI.
+        self.daemon_log_file: str = os.environ.get(
+            "B3_DAEMON_LOG", str(Path(self.b3_data_dir) / "daemon.log"))
 
 
 settings = Settings()

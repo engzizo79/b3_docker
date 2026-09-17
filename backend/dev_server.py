@@ -21,6 +21,7 @@ DEV_RPC_PASS = "devpass"  # dev-only dummy value, never a real node credential
 
 
 def main() -> None:
+    import os
     import uvicorn
 
     tmp = Path(tempfile.mkdtemp(prefix="b3hive-dev-"))
@@ -44,6 +45,8 @@ def main() -> None:
     s.recovery_cmd_file = str(tmp / "recovery.cmd")
     s.b3_data_dir = str(tmp)
     s.daemon_deferred_file = str(tmp / ".daemon_deferred")
+    s.app_version = "dev"
+    s.daemon_log_file = os.environ.get("B3_DAEMON_LOG", str(tmp / "daemon.log"))
     s.explorer_tip_file = str(tmp / "explorer_tip_height")
     s.start_node_cmd_file = str(tmp / "start-node.cmd")
     s.bootstrap_cmd_file = str(tmp / "bootstrap.cmd")
@@ -74,6 +77,8 @@ def main() -> None:
 
     mock = MockRPC()
     mock.responses["listwallets"] = ["wallet"]
+    mock.responses["getnetworkinfo"] = {
+        "version": 1010500, "subversion": "/B3Hive:1.1.5/", "protocolversion": 70016}
     mock.responses["getbalances"] = {"mine": {"trusted": 5000.0, "untrusted_pending": 0, "immature": 0}}
     mock.responses["getwalletassets"] = {"assets": [
         {"asset_id": "cd" * 32, "kind": "fn", "ticker": "FN", "name": "FN Coin",

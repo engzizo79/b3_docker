@@ -53,10 +53,14 @@ COPY docker/healthcheck.sh /usr/local/bin/healthcheck.sh
 RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh
 
 # Node data dir (host-mapped); conf lives at /data/b3coin.conf
+# B3_APP_VERSION: baked in at build time (docker build --build-arg
+# B3_APP_VERSION=$(git describe --tags)); shown in the UI About card.
+ARG B3_APP_VERSION=dev
 ENV B3_DATA_DIR=/data \
     RUN_UI=true \
     WEB_PORT=8080 \
-    ALLOW_EPHEMERAL_DATA=false
+    ALLOW_EPHEMERAL_DATA=false \
+    B3_APP_VERSION=${B3_APP_VERSION}
 VOLUME ["/data"]
 
 EXPOSE 8080

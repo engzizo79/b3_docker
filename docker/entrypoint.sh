@@ -144,14 +144,24 @@ chain_is_fresh() {
 start_daemon() {
     rm -f "${DEFERRED_FILE}"
     log "Starting b3coind (datadir=${B3_DATA_DIR})"
+    # Daemon output goes to a file the backend can tail (/data persists),
+    # mirrored to container stdout so `docker logs` keeps working.
+    touch "${DAEMON_LOG}"
+    chmod 640 "${DAEMON_LOG}" 2>/dev/null || true
     run_as b3coind \
         -datadir="${B3_DATA_DIR}" \
         -printtoconsole \
-        -daemon=0 "$@" &
+        -daemon=0 "$@" >> "${DAEMON_LOG}" 2>&1 &
     DAEMON_PID=$!
+    if [ -z "${TAIL_PID}" ]; then
+        tail -F -n 0 "${DAEMON_LOG}" 2>/dev/null &
+        TAIL_PID=$!
+    fi
 }
 
 DAEMON_PID=""
+TAIL_PID=""
+DAEMON_LOG="${B3_DAEMON_LOG:-${B3_DATA_DIR}/daemon.log}"
 if [ "${RUN_UI}" != "false" ] && [ ! -f "${WIZARD_MARKER}" ] && chain_is_fresh; then
     touch "${DEFERRED_FILE}"
     log "Fresh chain + first UI run — daemon deferred until the setup wizard picks a sync method"
@@ -282,6 +292,9 @@ terminate() {
     fi
     if [ -n "${DAEMON_PID}" ]; then
         kill -TERM "${DAEMON_PID}" 2>/dev/null || true
+    fi
+    if [ -n "${TAIL_PID}" ]; then
+        kill -TERM "${TAIL_PID}" 2>/dev/null || true
     fi
     wait 2>/dev/null
     exit 0
