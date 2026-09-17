@@ -65,6 +65,16 @@ CREATE TABLE IF NOT EXISTS consolidation_settings (
  last_run_summary TEXT,
  updated_ts REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS wizard_wallet_queue (
+ id INTEGER PRIMARY KEY,
+ action TEXT NOT NULL CHECK (action IN ('create','load')),
+ name TEXT NOT NULL,
+ passphrase_enc TEXT, -- Fernet blob; NULL for load intents / after processing
+ status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','done','failed')),
+ error TEXT,
+ created_ts REAL NOT NULL,
+ updated_ts REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS alerts (
  id INTEGER PRIMARY KEY,
  ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -351,3 +361,55 @@ def set_password(db_path: str, username: str, password: str) -> None:
         else:
             conn.execute("UPDATE users SET password_hash=? WHERE username=?",
                          (new_hash, username))
+
+
+# --- wizard wallet queue ---------------------------------------------------
+
+
+def queue_wallet_intent(db_path: str, action: str, name: str,
+                        passphrase_enc: str | None) -> int:
+    """Store a wallet intent from the setup wizard. Executed later, once the
+    daemon is reachable (see app/wizard_queue.py)."""
+    now = time.time()
+    with _lock, _connect(db_path) as conn:
+        cur = conn.execute(
+            "INSERT INTO wizard_wallet_queue (action, name, passphrase_enc, "
+            "status, created_ts, updated_ts) VALUES (?,?,?,?,?,?)",
+            (action, name, passphrase_enc, "pending", now, now))
+        return int(cur.lastrowid)
+
+
+def list_wallet_queue(db_path: str) -> list[dict]:
+    """All queue rows (newest last). passphrase blobs are stripped."""
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT id, action, name, status, error, created_ts, updated_ts "
+            "FROM wizard_wallet_queue ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+
+def pending_wallet_intents(db_path: str) -> list[dict]:
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM wizard_wallet_queue WHERE status='pending' "
+            "ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+
+def update_wallet_intent(db_path: str, intent_id: int, status: str,
+                         error: str | None = None) -> None:
+    """Set status/error and clear the passphrase blob (never kept around)."""
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "UPDATE wizard_wallet_queue SET status=?, error=?, passphrase_enc=NULL, "
+            "updated_ts=? WHERE id=?",
+            (status, error, time.time(), intent_id))
+
+
+def remove_wallet_intent(db_path: str, intent_id: int) -> bool:
+    """Remove a still-pending intent (user changed their mind). True if removed."""
+    with _lock, _connect(db_path) as conn:
+        cur = conn.execute(
+            "DELETE FROM wizard_wallet_queue WHERE id=? AND status='pending'",
+            (intent_id,))
+        return cur.rowcount > 0

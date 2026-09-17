@@ -589,10 +589,29 @@ scroll-behavior: auto !important;
 .card--selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset, var(--shadow); }
 .info-tip { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: var(--space-1); border: 1px solid var(--border); border-radius: 50%; font-size: 11px; font-style: italic; font-family: var(--font-mono); color: var(--text-muted); cursor: help; position: relative; background: var(--surface); }
 .info-tip:hover, .info-tip:focus { border-color: var(--accent); color: var(--accent-text); }
-.info-tip::before { content: attr(data-tip); position: absolute; bottom: 150%; left: 50%; transform: translateX(-50%); background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); width: max-content; max-width: 280px; font-size: var(--text-xs); font-style: normal; line-height: 1.4; opacity: 0; pointer-events: none; transition: opacity 0.15s ease; z-index: 1000; box-shadow: var(--shadow); text-transform: none; letter-spacing: 0; font-family: inherit; }
+.info-tip::before { content: attr(data-tip); position: absolute; bottom: 150%; left: 50%; transform: translateX(-50%); background: #1a1a1a; color: #fff; border: 1px solid #000; border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); width: max-content; max-width: 280px; font-size: var(--text-xs); font-style: normal; line-height: 1.4; opacity: 0; pointer-events: none; transition: opacity 0.15s ease; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.4); text-transform: none; letter-spacing: 0; font-family: inherit; }
 .info-tip:hover::before, .info-tip:focus::before { opacity: 1; }
 .divider { border: 0; border-top: 1px solid var(--border); margin: var(--space-4) 0; }
 .callout { padding: var(--space-4); border-radius: var(--radius-sm); border-left: 4px solid var(--border); }
 .callout--danger { background: var(--danger-bg); border-left-color: var(--danger); }
 .callout--warning { background: var(--warning-bg); border-left-color: var(--warning); }
 .callout--info { background: var(--accent-bg); border-left-color: var(--accent); }
+
+:root[data-theme="light"] .info-tip::before { background: #fff; color: #1a1a1a; border-color: #888; box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
+
+
+/* ---- Dashboard: balance hero, sync banner, recent activity ---- */
+.balance-value { font-family: var(--font-mono); font-size: 1.9rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; margin: var(--space-1) 0 0; word-break: break-all; }
+.sync-banner { border-left: 4px solid var(--accent); background: var(--accent-bg); }
+.sync-banner .progress { margin-top: var(--space-1); }
+.sync-bar-text { font-size: 0.75rem; white-space: nowrap; overflow: hidden; }
+.recent-item { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
+.recent-item:last-child { border-bottom: 0; }
+.raw-pre { white-space: pre-wrap; word-break: break-all; max-height: 240px; overflow-y: auto; margin: var(--space-2) 0 0; }
+
+/* ---- Header control coherence: one height, one radius, one family ---- */
+.app-header .btn, .app-header .btn-sm, .app-header .theme-toggle, .app-header .mode-pill {
+  height: 30px; padding: 0 var(--space-3); border-radius: var(--radius-md);
+  display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+}
+.app-header .badge { height: 20px; display: inline-flex; align-items: center; }

@@ -263,6 +263,78 @@ async def complete_wizard(request: Request):
 # --- wallet create / migrate -------------------------------------------------
 
 
+# --- wizard wallet queue (daemon may be DOWN: intents, not executions) -----
+
+
+class QueueCreateBody(BaseModel):
+    wallet_name: str
+    passphrase: str
+
+
+class QueueLoadBody(BaseModel):
+    filename: str
+
+
+@router.get("/wallet/queue")
+async def wallet_queue_list(request: Request):
+    """Queued wallet intents and their status (passphrase never returned)."""
+    s = _state(request)
+    s.require_2fa(request)
+    return {"queue": db.list_wallet_queue(s.settings.db_path)}
+
+
+@router.post("/wallet/queue/create")
+async def wallet_queue_create(body: QueueCreateBody, request: Request):
+    """Queue a create-wallet intent. Executed automatically once the node
+    is up (start of daemon). Passphrase is Fernet-encrypted at rest and
+    wiped after processing."""
+    s = _state(request)
+    s.require_csrf(request)
+    s.require_persistent_data()
+    name = (body.wallet_name or "").strip()
+    if not _wallet_name_ok(name):
+        raise HTTPException(422, "invalid wallet name")
+    passphrase = (body.passphrase or "").strip()
+    if len(passphrase) < 8:
+        raise HTTPException(422, "passphrase must be at least 8 characters")
+    from app.vault import vault_from_settings
+    vault = vault_from_settings(s.settings, s.settings.b3_data_dir)
+    if vault is None:
+        raise HTTPException(500, "cannot create vault for queued passphrase")
+    blob = vault.encrypt(passphrase)
+    intent_id = db.queue_wallet_intent(s.settings.db_path, "create", name, blob)
+    db.audit(s.settings.db_path, "setup.wallet.queue_create", s.username,
+             detail=f"ip={request.client.host if request.client else 'unknown'} name={name}")
+    return {"ok": True, "queued": True, "id": intent_id, "wallet": name}
+
+
+@router.post("/wallet/queue/load")
+async def wallet_queue_load(body: QueueLoadBody, request: Request):
+    """Queue a load-wallet intent (no passphrase needed)."""
+    s = _state(request)
+    s.require_csrf(request)
+    s.require_persistent_data()
+    name = (body.filename or "").strip()
+    if not _wallet_name_ok(name):
+        raise HTTPException(422, "invalid wallet filename")
+    intent_id = db.queue_wallet_intent(s.settings.db_path, "load", name, None)
+    db.audit(s.settings.db_path, "setup.wallet.queue_load", s.username,
+             detail=f"ip={request.client.host if request.client else 'unknown'} name={name}")
+    return {"ok": True, "queued": True, "id": intent_id, "wallet": name}
+
+
+@router.post("/wallet/queue/{intent_id}/remove")
+async def wallet_queue_remove(intent_id: int, request: Request):
+    """Remove a still-pending intent (user changed their mind in the wizard)."""
+    s = _state(request)
+    s.require_csrf(request)
+    if not db.remove_wallet_intent(s.settings.db_path, intent_id):
+        raise HTTPException(404, "intent not found or already processed")
+    db.audit(s.settings.db_path, "setup.wallet.queue_remove", s.username,
+             detail=f"id={intent_id}")
+    return {"ok": True}
+
+
 @router.get("/wallet/status")
 async def wallet_status(request: Request):
     s = _state(request)
@@ -286,7 +358,7 @@ async def create_wallet(body: CreateWalletBody, request: Request):
     try:
         await s.rpc.call(
             "createwallet", name, False, False, passphrase,
-            False, False, body.load_on_startup, False,
+            False, True, body.load_on_startup, False,
         )
     except Exception as exc:
         from app.rpc import RPCError

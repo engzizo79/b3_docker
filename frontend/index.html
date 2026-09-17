@@ -75,17 +75,17 @@
             <span class="hide-mobile">B3 Hive</span>
           </a>
           <div class="flex-start">
-            <template x-if="session.wallet_unlocked">
+            <template x-if="wallet.loaded && session.wallet_unlocked">
               <span class="badge badge-success" title="Wallet unlocked">🔓 <span class="hide-mobile">Unlocked</span></span>
             </template>
-            <template x-if="!session.wallet_unlocked">
+            <template x-if="wallet.loaded && !session.wallet_unlocked">
               <span class="badge badge-warning" title="Wallet locked">🔒 <span class="hide-mobile">Locked</span></span>
             </template>
- <div class="alerts-bell">
+ <div class="alerts-bell" @click.away="showAlerts=false">
  <button class="theme-toggle" @click="toggleAlerts()" title="Alerts" type="button">🔔<template x-if="alertCount>0"><span class="alert-badge" x-text="alertCount"></span></template></button>
  <template x-if="showAlerts">
- <div class="alerts-dropdown card dropdown" @click.away="showAlerts=false">
- <div class="card-header" class="flex-between">
+ <div class="alerts-dropdown card dropdown">
+ <div class="card-header flex-between">
  <h3>Alerts</h3>
  <button class="btn btn-sm" @click="ackAllAlerts()" type="button">Ack all</button>
  </div>
@@ -127,42 +127,124 @@
         <main class="app-main">
 
           <!-- DASHBOARD -->
-          <div x-show="view==='dashboard'">
-            <div class="grid-2 mb-3">
-              <div class="card">
-                <div class="stat-label">Block Height</div>
-                <div class="stat-value" x-text="chain.blocks ?? '—'"></div>
-              </div>
-              <div class="card">
-                <div class="stat-label">Connections</div>
-                <div class="stat-value" x-text="chain.connections ?? '—'"></div>
-              </div>
-            </div>
-            <div class="grid-2 mb-3">
-              <div class="card">
-                <div class="stat-label">Sync Progress</div>
-<div class="stat-value" x-text="chain.sync? chain.sync.percent.toFixed(1)+'% ('+chain.sync.blocks.toLocaleString()+' / '+chain.sync.tip.toLocaleString()+')': —"></div>
-<p x-show="chain.sync && chain.sync.behind > 0" class="text-warning text-sm" class="m-0 mt-1" x-text="chain.sync? chain.sync.behind.toLocaleString()+' blocks behind — syncing': ''"></p>
-<p x-show="chain.sync && chain.sync.behind === 0" class="text-success text-sm" class="m-0 mt-1">Up to date</p>
-              </div>
-              <div class="card">
-                <div class="stat-label">Mempool</div>
-                <div class="stat-value" x-text="chain.mempool ?? '—'"></div>
-              </div>
-            </div>
-            <div class="card">
-              <div class="card-header"><h3>Finality</h3></div>
-<div class="grid-2 mb-2">
-<div><span class="stat-label">Epoch</span><br><span class="stat-value text-sm" x-text="chain.finality && chain.finality.epoch != null ? chain.finality.epoch : '—'"></span></div>
-<div><span class="stat-label">Validators</span><br><span class="stat-value text-sm" x-text="chain.finality && chain.finality.validator_set && chain.finality.validator_set.size != null ? chain.finality.validator_set.size + ' validators' : '—'"></span></div>
-</div>
-<p class="text-sm" class="m-0 mt-2 mb-2" x-show="chain.finality && chain.finality.active === true">Finality is <span class="badge badge-success">Active</span> — BLS checkpoints are being finalized.</p>
-<p class="text-sm text-muted" class="m-0 mt-2 mb-2" x-show="chain.finality && chain.finality.active !== true">Modern-PoS finality is not active yet (pre-activation corridor).</p>
-<details class="mt-2"><summary class="text-muted text-sm" class="clickable">Raw details</summary><pre class="mono text-xs" x-text="JSON.stringify(chain.finality||{},null,2)"></pre></details>
-            </div>
-          </div>
+<div x-show="view==='dashboard'">
 
-          <!-- WALLET -->
+<!-- Sync / bootstrap banner: honest post-finish visibility (no more nothingness after Finish) -->
+<template x-if="syncBannerVisible()">
+<div class="card sync-banner mb-3">
+  <div class="flex-between mb-2">
+    <h3 class="m-0" x-text="nodeStatusHeadline()"></h3>
+    <span class="spinner"></span>
+  </div>
+  <template x-if="bootstrapPhase()==='downloading'">
+    <div>
+      <div class="progress"><div class="progress-bar sync-bar-text" :style="'width:'+bootstrapPct()+'%'" x-text="bootstrapPct()+'% downloaded'"></div></div>
+      <p class="text-muted text-sm m-0 mt-1" x-text="bootstrapMb()+' — chain snapshot'"></p>
+    </div>
+  </template>
+  <template x-if="bootstrapPhase()!=='downloading'">
+    <div>
+      <div class="progress"><div class="progress-bar sync-bar-text" :style="'width:'+(chain.sync? Math.min(100,chain.sync.percent):0)+'%'" x-text="(chain.sync? chain.sync.percent.toFixed(1):'0')+'% — '+((chain.sync && chain.sync.behind!=null)? chain.sync.behind.toLocaleString():'?')+' blocks behind'"></div></div>
+      <p class="text-muted text-sm m-0 mt-1">Your node is catching up with the network. Blocks arrive from peers — your balance becomes spendable as they confirm.</p>
+      <p class="text-muted text-sm m-0 mt-1" x-show="pendingQueueCount()>0">Wallet setup queued — it runs automatically once the node is up.</p>
+    </div>
+  </template>
+</div>
+</template>
+
+<!-- No-wallet empty state: guidance first, tech later -->
+<template x-if="!wallet.loaded">
+<div class="card callout callout--info mb-3">
+<h3 class="mb-2">👋 Get started</h3>
+<p class="mb-2">You don't have a wallet loaded yet. Without a wallet you can't send or receive B3 coins, stake, or see your balance.</p>
+<div class="flex-start">
+<button class="btn btn-primary" @click="view='wallet';toggleWalletMgmt()" type="button">Create a new wallet</button>
+<button class="btn btn-secondary" @click="view='wallet';toggleWalletMgmt()" type="button">Load an existing wallet</button>
+</div>
+<p class="text-muted text-sm mt-2 mb-0">New here? Create a wallet with a strong passphrase. Your wallet stays on your machine — never share the passphrase.</p>
+</div>
+</template>
+
+<!-- Balance hero + staking + recent activity: wallet-centric for BOTH modes -->
+<div x-show="wallet.loaded">
+<div class="card balance-hero mb-3">
+  <div class="stat-label">Available Balance</div>
+  <div class="balance-value" x-text="fmtAmount(wallet.balance)+' B3'"></div>
+  <p class="text-muted text-sm m-0 mt-1" x-show="wallet.pending!=null && wallet.pending>0" x-text="fmtAmount(wallet.pending)+' B3 pending'"></p>
+  <p class="text-muted text-sm m-0 mt-1" x-text="nodeStatusText()"></p>
+  <div class="flex-start mt-3">
+    <button class="btn btn-primary" @click="setView('send')" type="button">Send B3</button>
+    <button class="btn btn-secondary" @click="setView('receive')" type="button">Receive</button>
+    <button class="btn btn-secondary" x-show="!staking.active" @click="setView('staking')" type="button">Start Staking</button>
+    <button class="btn btn-secondary" x-show="staking.active" @click="setView('staking')" type="button">View Staking</button>
+  </div>
+</div>
+<div class="grid-2 mb-3">
+<div class="card">
+  <div class="card-header"><h3>Staking</h3><button class="btn btn-sm btn-ghost" @click="setView('staking')" type="button">Open Stake</button></div>
+  <p class="m-0">
+    <span class="badge" :class="staking.active?'badge-success':'badge-info'" x-text="staking.active?'Running':'Off'"></span>
+    <span class="text-muted text-sm" x-text="staking.active?' — your coins are working to earn blocks':' — earn B3 by staking your balance'"></span>
+  </p>
+  <p class="text-muted text-sm m-0 mt-1" x-show="staking.weight && mode==='advanced'">Stake weight: <span class="mono" x-text="fmtAmount(staking.weight)"></span></p>
+</div>
+<div class="card">
+  <div class="card-header"><h3>Recent Activity</h3><button class="btn btn-sm btn-ghost" @click="setView('wallet')" type="button">See all</button></div>
+  <template x-if="!wallet.txs.length">
+    <p class="text-muted text-sm p-4 m-0">No transactions yet — receive some B3 to get started.</p>
+  </template>
+  <template x-for="tx in wallet.txs.slice(0,5)" :key="tx.txid+tx.timereceived">
+    <div class="recent-item">
+      <div>
+        <span class="badge" :class="tx.category==='send'?'badge-danger':(tx.category==='receive'?'badge-success':'badge-warning')" x-text="txLabel(tx.category)"></span>
+        <span class="text-muted text-xs" x-text="new Date(tx.timereceived*1000).toLocaleString()"></span>
+      </div>
+      <span class="mono text-sm" :class="tx.category==='send'?'text-danger':'text-success'" x-text="(tx.category==='send'?'−':'+')+fmtAmount(Math.abs(tx.amount))"></span>
+    </div>
+  </template>
+</div>
+</div>
+</div>
+
+<!-- Chain stats: Advanced only (Simple mode shows wallet + status, not raw chain tech) -->
+<div x-show="mode==='advanced'">
+<div class="grid-2 mb-3">
+<div class="card">
+<div class="stat-label">Block Height</div>
+<div class="stat-value" x-text="chain.blocks!=null? chain.blocks.toLocaleString(): '—'"></div>
+</div>
+<div class="card">
+<div class="stat-label">Connections</div>
+<div class="stat-value" x-text="chain.connections!=null? chain.connections: '—'"></div>
+</div>
+</div>
+<div class="grid-2 mb-3">
+<div class="card">
+<div class="stat-label">Sync Progress</div>
+<div class="stat-value" x-text="chain.sync? chain.sync.percent.toFixed(1)+'%': '—'"></div>
+<p x-show="chain.sync && chain.sync.behind > 0" class="text-warning text-sm m-0 mt-1" x-text="chain.sync? chain.sync.behind.toLocaleString()+' blocks behind — syncing': ''"></p>
+<p x-show="chain.sync && chain.sync.behind === 0" class="text-success text-sm m-0 mt-1">Up to date</p>
+</div>
+<div class="card">
+<div class="stat-label">Mempool</div>
+<div class="stat-value" x-text="chain.mempool!=null? chain.mempool: '—'"></div>
+</div>
+</div>
+<div class="card">
+<div class="card-header"><h3>Finality</h3></div>
+<div class="grid-2 mb-2">
+<div><span class="stat-label">Epoch</span><br><span class="stat-value text-sm" x-text="chain.finality && chain.finality.epoch!=null? chain.finality.epoch: '—'"></span></div>
+<div><span class="stat-label">Validators</span><br><span class="stat-value text-sm" x-text="chain.finality && chain.finality.validator_set && chain.finality.validator_set.size!=null? chain.finality.validator_set.size+' validators': '—'"></span></div>
+</div>
+<p class="text-sm m-0 mt-2 mb-2" x-show="chain.finality && chain.finality.active === true">Finality is <span class="badge badge-success">Active</span> — BLS checkpoints are being finalized.</p>
+<p class="text-sm text-muted m-0 mt-2 mb-2" x-show="chain.finality && chain.finality.active!== true">Modern-PoS finality is not active yet (pre-activation corridor).</p>
+<details class="mt-2"><summary class="text-muted text-sm clickable">Raw details</summary><pre class="mono text-xs raw-pre" x-text="JSON.stringify(chain.finality||{},null,2)"></pre></details>
+</div>
+</div>
+
+</div>
+
+<!-- WALLET -->
           <div x-show="view==='wallet'">
 <template x-if="wallet.loaded === false">
 <div class="card text-center p-5">
@@ -410,8 +492,8 @@
                 <template x-if="sendPreview">
                   <div class="callout callout--info mt-4">
                     <h3 class="text-accent">Transaction Preview</h3>
-                    <p class="text-sm" class="m-0 mt-2 mb-2">TXID: <span class="mono" x-text="sendPreview.txid"></span></p>
-                    <p class="text-sm" class="m-0 mt-2 mb-2" x-show="sendPreview.recipients">
+                    <p class="text-sm m-0 mt-2 mb-2">TXID: <span class="mono" x-text="sendPreview.txid"></span></p>
+                    <p class="text-sm m-0 mt-2 mb-2" x-show="sendPreview.recipients">
                       Sending <span class="mono font-bold" x-text="sendPreview.recipients?.[0]?.amount"></span> B3
                       to <span class="mono" x-text="sendPreview.recipients?.[0]?.address"></span>
                     </p>
@@ -1010,254 +1092,279 @@
 
         <!-- SETUP WIZARD (first-run stepper: sync -> wallet -> node -> security) -->
         <div x-show="view==='wizard'" class="card">
-            <h2>Setup Wizard</h2>
-            <p class="text-muted mb-3">
-                Four quick steps. Nothing is applied yet — the node only starts when you press
-                <strong>Finish Setup</strong>. You can go back and change any choice before that.
-            </p>
+ <h2>Setup Wizard</h2>
+ <p class="text-muted mb-3">
+ Four quick steps, ordered by importance. Nothing is applied until you press
+ <strong>Finish Setup</strong> at the end — the node only starts then, with
+ all your choices. You can go back and change anything before finishing.
+ </p>
 
-            <!-- Step indicator -->
-            <div class="step-indicator">
-                <span class="step-pill" :class="stepClass(1)">1. Sync</span>
-                <span class="step-pill" :class="stepClass(2)">2. Wallet</span>
-                <span class="step-pill" :class="stepClass(3)">3. Node</span>
-                <span class="step-pill" :class="stepClass(4)">4. Security</span>
-            </div>
+ <!-- Step indicator -->
+ <div class="step-indicator">
+ <span class="step-pill":class="stepClass(1)">1. Security</span>
+ <span class="step-pill":class="stepClass(2)">2. Node</span>
+ <span class="step-pill":class="stepClass(3)">3. Sync</span>
+ <span class="step-pill":class="stepClass(4)">4. Wallet</span>
+ </div>
 
-            <!-- STEP 1: sync method -->
-            <div x-show="wizard.step===1">
-                <h3 class="mb-2">How should this node get the blockchain?</h3>
+ <!-- STEP 1: Security -->
+ <div x-show="wizard.step===1">
+ <h3 class="mb-2">Security — Login Password</h3>
+ <template x-if="wizard.status && wizard.status.setup_required">
+ <div>
+ <p class="text-muted text-sm mb-3">
+ First run: no password is needed from this local machine. Set a login password
+ to enable <strong>remote (internet) access</strong>. Until then, the UI is
+ locked to localhost. The password is applied when you finish the wizard.
+ </p>
+ <div class="form-row">
+ <label>Login password <span class="text-muted">(min 8 chars)</span></label>
+ <input type="password" x-model="wizard.secPw" placeholder="strong password"
+ @input="wizard.secErr=''">
+ </div>
+ <div class="form-row">
+ <label>Repeat password</label>
+ <input type="password" x-model="wizard.secPw2" placeholder="repeat"
+ @input="wizard.secErr=''">
+ </div>
+ <p x-show="wizard.secErr" class="text-danger text-sm mb-2" x-text="wizard.secErr"></p>
+ <p class="text-muted text-sm">
+ <span x-show="wizard.secPw.length >= 8 && wizard.secPw === wizard.secPw2">✓ Passwords match — will be set on Finish.</span>
+ <span x-show="!wizard.secPw && !wizard.secPw2">Leave empty to skip (localhost-only access).</span>
+ </p>
+ </div>
+ </template>
+ <template x-if="wizard.status && !wizard.status.setup_required">
+ <p class="text-success">✓ Login password already set — remote access is enabled.</p>
+ </template>
+ </div>
 
-                <!-- bootstrap status (visible while a bootstrap runs or after it) -->
-                <div class="card mb-3" x-show="wizard.progress.phase && wizard.progress.phase!=='idle'">
-                    <div class="card-header"><h3>Bootstrap status</h3></div>
-                    <p><strong x-text="wizard.progress.phase ? wizard.progress.phase.charAt(0).toUpperCase()+wizard.progress.phase.slice(1) : ''"></strong></p>
-                    <template x-if="wizard.progress.phase==='downloading'">
-                        <div>
-                            <div class="progress"><div class="progress-bar" :style="'width:'+((wizard.progress.bytes||0)/(wizard.progress.size||1)*100)+'%'"></div></div>
-                            <p class="text-muted m-0" x-text="Math.round((wizard.progress.bytes||0)/1048576)+' / '+Math.round((wizard.progress.size||0)/1048576)+' MB'"></p>
-                        </div>
-                    </template>
-                    <template x-if="wizard.progress.phase==='done'">
-                        <p class="text-success m-0">Bootstrap applied at height <span x-text="wizard.progress.height"></span> — the node is syncing from there.</p>
-                    </template>
-                    <template x-if="wizard.progress.phase==='failed'">
-                        <p class="text-danger m-0">Bootstrap failed: <span x-text="wizard.progress.error || 'unknown'"></span> — pick a snapshot again, or sync from scratch.</p>
-                    </template>
-                </div>
+ <!-- STEP 2: Node configuration -->
+ <div x-show="wizard.step===2">
+ <h3 class="mb-2">Node Configuration</h3>
+ <p class="text-muted text-sm mb-3">Defaults are fine for most users — hover or tap the ⓘ icons for a short explanation. Values apply when the node starts at the end of this wizard. RPC and consensus settings are locked for safety.</p>
+ <template x-if="wizard.conf && wizard.conf.editable">
+ <div>
+ <div class="form-row">
+ <label class="flex-start">txindex
+ <span class="info-tip" tabindex="0" data-tip="Keep a full index of every transaction (1) so old payments can be searched, or save disk space (0). The blockchain still syncs fully either way.">i</span>
+ </label>
+ <input x-model="wizard.confForm.txindex" placeholder="1">
+ </div>
+ <div class="form-row">
+ <label class="flex-start">listen
+ <span class="info-tip" tabindex="0" data-tip="Accept incoming connections from other nodes (1). This helps the B3 network and improves sync speed. Turn off (0) if the machine must stay hidden (strict firewall/NAT).">i</span>
+ </label>
+ <input x-model="wizard.confForm.listen" placeholder="1">
+ </div>
+ <div class="form-row">
+ <label class="flex-start">maxconnections
+ <span class="info-tip" tabindex="0" data-tip="Maximum number of simultaneous peer connections. More peers = faster sync but more bandwidth. Default 125 is fine for most.">i</span>
+ </label>
+ <input x-model="wizard.confForm.maxconnections" placeholder="125">
+ </div>
+ <div class="form-row">
+ <label class="flex-start">proxy
+ <span class="info-tip" tabindex="0" data-tip="Route node traffic through a proxy server, e.g. 127.0.0.1:9050 for Tor. Leave empty for a direct connection.">i</span>
+ </label>
+ <input x-model="wizard.confForm.proxy" placeholder="host:port">
+ </div>
+ <div class="form-row">
+ <label class="flex-start">bantime
+ <span class="info-tip" tabindex="0" data-tip="How long (seconds) a misbehaving peer stays banned. 86400 = 24 hours (the default).">i</span>
+ </label>
+ <input x-model="wizard.confForm.bantime" placeholder="86400">
+ </div>
+ </div>
+ </template>
+ <template x-if="wizard.conf && !wizard.conf.editable">
+ <p class="text-muted">No editable configuration available for this node — the defaults will be used.</p>
+ </template>
+ </div>
 
-                <!-- Option A: bootstrap snapshot -->
-                <div class="card mb-3" :class="wizard.syncChoice==='bootstrap' ? 'card--selected' : ''">
-                    <div class="flex-between mb-2">
-                        <h3 class="m-0">Option A — Bootstrap snapshot</h3>
-                        <span class="badge badge-info">Fast · ~10 min</span>
-                    </div>
-                    <p class="text-muted text-sm mb-2">Download a trusted chain snapshot from the B3 Hive explorer and verify it. The node then only syncs the few remaining blocks itself.</p>
-                    <button class="btn btn-secondary" @click="loadBootstraps()" :disabled="wizard.manifestBusy" type="button">
-                        <span x-show="wizard.manifestBusy" class="spinner"></span>
-                        Show available bootstraps
-                    </button>
-                    <table x-show="wizard.bootstraps.length" class="table mt-2">
-                        <thead><tr><th>Height</th><th>Size</th><th>Created</th><th></th></tr></thead>
-                        <tbody>
-                            <template x-for="b in wizard.bootstraps" :key="b.height">
-                                <tr>
-                                    <td x-text="b.height"></td>
-                                    <td x-text="Math.round(b.size/1048576)+' MB'"></td>
-                                    <td x-text="b.created_utc"></td>
-                                    <td><button class="btn btn-sm btn-primary" @click="selectBootstrap(b)" type="button" x-text="wizard.bootTarget && wizard.bootTarget.height===b.height ? 'Selected ✓' : 'Select'"></button></td>
-                                </tr>
-                            </template>
-                        </tbody>
-                    </table>
-                    <template x-if="wizard.bootTarget">
-                        <div class="mt-2">
-                            <p class="text-sm m-0">Will apply the snapshot at height <strong x-text="wizard.bootTarget.height"></strong> (<span x-text="Math.round(wizard.bootTarget.size/1048576)+' MB'"></span>) when you finish the wizard.</p>
-                            <template x-if="wizard.freshChain===false">
-                                <div>
-                                    <label class="flex-start gap-2 text-sm mt-2">
-                                        <input type="checkbox" x-model="wizard.wipeChain">
-                                        <span>Replace existing chain data (blocks, chainstate, indexes, flowmesh are deleted and re-downloaded). Wallets and settings are not affected. This discards the current sync progress.</span>
-                                    </label>
-                                    <p class="text-xs text-warning mt-1 mb-0">Required: existing chain data must be replaced for the bootstrap to apply.</p>
-                                </div>
-                            </template>
-                        </div>
-                    </template>
-                </div>
+ <!-- STEP 3: Sync -->
+ <div x-show="wizard.step===3">
+ <h3 class="mb-2">How should this node get the blockchain?</h3>
 
-                <!-- Option B: sync from scratch (fresh chain only) -->
-                <div class="card mb-3" x-show="wizard.freshChain!==false" :class="wizard.syncChoice==='scratch' ? 'card--selected' : ''">
-                    <div class="flex-between mb-2">
-                        <h3 class="m-0">Option B — Sync from scratch</h3>
-                        <span class="badge badge-warning">Slow · hours</span>
-                    </div>
-                    <p class="text-muted text-sm mb-2">Download and verify the whole chain block by block. Takes hours but needs no external snapshot.</p>
-                    <button class="btn btn-secondary" @click="selectScratch()" type="button" x-text="wizard.syncChoice==='scratch' ? 'Selected ✓' : 'Select'"></button>
-                </div>
+ <!-- bootstrap status (visible while a bootstrap runs or after it) -->
+ <div class="card mb-3" x-show="wizard.progress.phase && wizard.progress.phase!=='idle'">
+ <div class="card-header"><h3>bootstrap status</h3></div>
+ <p><strong x-text="wizard.progress.phase? wizard.progress.phase.charAt(0).toUpperCase()+wizard.progress.phase.slice(1): ''"></strong></p>
+ <template x-if="wizard.progress.phase==='downloading'">
+ <div>
+ <div class="progress"><div class="progress-bar":style="'width:'+((wizard.progress.bytes||0)/(wizard.progress.size||1)*100)+'%'"></div></div>
+ <p class="text-muted m-0" x-text="Math.round((wizard.progress.bytes||0)/1048576)+' / '+Math.round((wizard.progress.size||0)/1048576)+' MB'"></p>
+ </div>
+ </template>
+ <template x-if="wizard.progress.phase==='done'">
+ <p class="text-success m-0">Bootstrap applied at height <span x-text="wizard.progress.height"></span> — the node is syncing from there.</p>
+ </template>
+ <template x-if="wizard.progress.phase==='failed'">
+ <p class="text-danger m-0">Bootstrap failed: <span x-text="wizard.progress.error || 'unknown'"></span> — pick a snapshot again, or sync from scratch.</p>
+ </template>
+ </div>
 
-                <!-- Option C: keep existing chain (re-run only) -->
-                <div class="card mb-3" x-show="wizard.freshChain===false" :class="wizard.syncChoice==='keep' ? 'card--selected' : ''">
-                    <div class="flex-between mb-2">
-                        <h3 class="m-0">Option C — Keep the existing chain</h3>
-                        <span class="badge badge-info">No download</span>
-                    </div>
-                    <p class="text-muted text-sm mb-2">Continue using the chain data already on disk. Pick this when re-running the wizard without changing the sync method.</p>
-                    <button class="btn btn-secondary" @click="selectKeep()" type="button" x-text="wizard.syncChoice==='keep' ? 'Selected ✓' : 'Select'"></button>
-                </div>
-            </div>
+ <!-- Option A: bootstrap snapshot -->
+ <div class="card mb-3":class="wizard.syncChoice==='bootstrap'? 'card--selected': ''">
+ <div class="flex-between mb-2">
+ <h3 class="m-0">Option A — Bootstrap snapshot</h3>
+ <span class="badge badge-info">Fast · ~10 min</span>
+ </div>
+ <p class="text-muted text-sm mb-2">Download a trusted chain snapshot from the B3 Hive explorer and verify it. The node then only syncs the few remaining blocks itself.</p>
+ <button class="btn btn-secondary" @click="loadBootstraps()":disabled="wizard.manifestBusy" type="button">
+ <span x-show="wizard.manifestBusy" class="spinner"></span>
+ Show available bootstraps
+ </button>
+ <table x-show="wizard.bootstraps.length" class="table mt-2">
+ <thead><tr><th>Height</th><th>Size</th><th>Created</th><th></th></tr></thead>
+ <tbody>
+ <template x-for="b in wizard.bootstraps":key="b.height">
+ <tr>
+ <td x-text="b.height"></td>
+ <td x-text="Math.round(b.size/1048576)+' MB'"></td>
+ <td x-text="b.created_utc"></td>
+ <td><button class="btn btn-sm btn-primary" @click="selectBootstrap(b)" type="button" x-text="wizard.bootTarget && wizard.bootTarget.height===b.height? 'Selected ✓': 'Select'"></button></td>
+ </tr>
+ </template>
+ </tbody>
+ </table>
+ <template x-if="wizard.bootTarget">
+ <div class="mt-2">
+ <p class="text-sm m-0">Will apply the snapshot at height <strong x-text="wizard.bootTarget.height"></strong> (<span x-text="Math.round(wizard.bootTarget.size/1048576)+' MB'"></span>) when you finish the wizard.</p>
+ <template x-if="wizard.freshChain===false">
+ <div>
+ <label class="flex-start gap-2 text-sm mt-2">
+ <input type="checkbox" x-model="wizard.wipeChain">
+ <span>Replace existing chain data (blocks, chainstate, indexes, flowmesh are deleted and re-downloaded). Wallets and settings are not affected. This discards the current sync progress.</span>
+ </label>
+ <p class="text-xs text-warning mt-1 mb-0">Required: existing chain data must be replaced for the bootstrap to apply.</p>
+ </div>
+ </template>
+ </div>
+ </template>
+ </div>
 
-            <!-- STEP 2: wallet -->
-            <div x-show="wizard.step===2">
-                <h3 class="mb-2">Set up a wallet</h3>
-                <p class="text-muted text-sm mb-2">Optional — you can skip this and use the Wallet view anytime; the wizard is not the only place to create or load wallets.</p>
+ <!-- Option B: sync from scratch (fresh chain only) -->
+ <div class="card mb-3" x-show="wizard.freshChain!==false":class="wizard.syncChoice==='scratch'? 'card--selected': ''">
+ <div class="flex-between mb-2">
+ <h3 class="m-0">Option B — Sync from scratch</h3>
+ <span class="badge badge-warning">Slow · hours</span>
+ </div>
+ <p class="text-muted text-sm mb-2">Download and verify the whole chain block by block. Takes hours but needs no external snapshot.</p>
+ <button class="btn btn-secondary" @click="selectScratch()" type="button" x-text="wizard.syncChoice==='scratch'? 'Selected ✓': 'Select'"></button>
+ </div>
 
-                <template x-if="wizard.status && wizard.status.data_persistent===false">
-                    <div class="card callout callout--danger mb-3">
-                        <p class="text-danger font-bold mb-2">⚠ Data directory is not persistent!</p>
-                        <p class="text-danger m-0">
-                            Your data directory is not mapped to a persistent volume. If the container is removed,
-                            your wallet and funds will be lost. Map a host directory in docker-compose.yml
-                            (e.g. <code>-v ~/.B3-CoinV2:/data</code>) before creating a wallet.
-                        </p>
-                    </div>
-                </template>
+ <!-- Option C: keep existing chain (re-run only) -->
+ <div class="card mb-3" x-show="wizard.freshChain===false":class="wizard.syncChoice==='keep'? 'card--selected': ''">
+ <div class="flex-between mb-2">
+ <h3 class="m-0">Option C — Keep the existing chain</h3>
+ <span class="badge badge-info">No download</span>
+ </div>
+ <p class="text-muted text-sm mb-2">Continue using the chain data already on disk. Pick this when re-running the wizard without changing the sync method.</p>
+ <button class="btn btn-secondary" @click="selectKeep()" type="button" x-text="wizard.syncChoice==='keep'? 'Selected ✓': 'Select'"></button>
+ </div>
+ </div>
 
-                <template x-if="wizard.wallet.loaded && wizard.wallet.loaded.length">
-                    <div class="mb-3">
-                        <p class="text-muted mb-1">Loaded wallets:</p>
-                        <template x-for="w in wizard.wallet.loaded" :key="w">
-                            <span class="badge mr-1" x-text="w"></span>
-                        </template>
-                    </div>
-                </template>
+ <!-- STEP 4: Wallet -->
+ <div x-show="wizard.step===4">
+ <h3 class="mb-2">Wallet Setup</h3>
+ <p class="text-muted text-sm mb-3">
+ Optional — you can skip this and manage wallets from the Wallet view anytime.
+ The wizard is not the only place to create or load wallets. Any wallets you
+ add here are queued and created/loaded <strong>automatically once the node
+ starts</strong> after you finish.
+ </p>
 
-                <div class="mb-3">
-                    <p class="mb-2"><strong>Create a new wallet</strong></p>
-                    <div class="form-row">
-                        <label>Wallet name</label>
-                        <input x-model="wizard.wallet.createName" placeholder="my_wallet">
-                    </div>
-                    <div class="form-row">
-                        <label>Passphrase <span class="text-muted">(min 8 chars)</span></label>
-                        <input type="password" x-model="wizard.wallet.createPw" placeholder="strong passphrase">
-                    </div>
-                    <div class="form-row">
-                        <label>Repeat passphrase</label>
-                        <input type="password" x-model="wizard.wallet.createPw2" placeholder="repeat">
-                    </div>
-                    <button class="btn btn-primary" @click="createWallet()" :disabled="wizard.wallet.busy || (wizard.status && wizard.status.data_persistent===false)" type="button">
-                        <span x-show="wizard.wallet.busy" class="spinner"></span> Create Wallet
-                    </button>
-                </div>
+ <template x-if="wizard.status && wizard.status.data_persistent===false">
+ <div class="card callout callout--danger mb-3">
+ <p class="text-danger font-bold mb-2">⚠ Data directory is not persistent!</p>
+ <p class="text-danger m-0">
+ Your data directory is not mapped to a persistent volume. If the container is removed,
+ your wallet and funds will be lost. Map a host directory in docker-compose.yml
+ (e.g. <code>-v ~/.B3-CoinV2:/data</code>) before creating a wallet.
+ </p>
+ </div>
+ </template>
 
-                <hr class="divider">
+ <!-- Queued wallet list -->
+ <template x-if="wizard.walletQueue.length">
+ <div class="mb-3">
+ <p class="text-muted mb-1">Queued wallets (created/loaded when the node starts):</p>
+ <table class="table">
+ <thead><tr><th>Action</th><th>Name</th><th>Status</th><th></th></tr></thead>
+ <tbody>
+ <template x-for="q in wizard.walletQueue" :key="q.id">
+ <tr>
+ <td x-text="q.action"></td>
+ <td x-text="q.name"></td>
+ <td>
+ <span class="badge" :class="q.status==='done'? 'badge-success': q.status==='failed'? 'badge-danger': 'badge-info'" x-text="q.status"></span>
+ <template x-if="q.status==='failed'">
+ <span class="text-danger text-xs" x-text="q.error"></span>
+ </template>
+ </td>
+ <td>
+ <button x-show="q.status==='pending'" class="btn btn-sm btn-ghost" @click="removeWalletIntent(q.id)" type="button">Remove</button>
+ </td>
+ </tr>
+ </template>
+ </tbody>
+ </table>
+ </div>
+ </template>
 
-                <div>
-                    <p class="mb-2"><strong>Migrate / load existing wallet</strong></p>
-                    <p class="text-muted mb-2">If you already have a wallet file in your data directory, enter its filename to load it.</p>
-                    <div class="form-row">
-                        <label>Wallet filename</label>
-                        <input x-model="wizard.wallet.loadName" placeholder="wallet.dat">
-                    </div>
-                    <button class="btn btn-secondary" @click="loadWallet()" :disabled="wizard.wallet.busy || (wizard.status && wizard.status.data_persistent===false)" type="button">
-                        <span x-show="wizard.wallet.busy" class="spinner"></span> Load Wallet
-                    </button>
-                </div>
-            </div>
+ <!-- Add wallet: create -->
+ <div class="mb-3">
+ <p class="mb-2"><strong>Add a new wallet</strong></p>
+ <div class="form-row">
+ <label>Wallet name</label>
+ <input x-model="wizard.wallet.createName" placeholder="my_wallet">
+ </div>
+ <div class="form-row">
+ <label>Passphrase <span class="text-muted">(min 8 chars)</span></label>
+ <input type="password" x-model="wizard.wallet.createPw" placeholder="strong passphrase">
+ </div>
+ <div class="form-row">
+ <label>Repeat passphrase</label>
+ <input type="password" x-model="wizard.wallet.createPw2" placeholder="repeat">
+ </div>
+ <button class="btn btn-primary" @click="queueWalletCreate()"
+ :disabled="wizard.wallet.busy || (wizard.status && wizard.status.data_persistent===false)" type="button">
+ <span x-show="wizard.wallet.busy" class="spinner"></span> Add Wallet
+ </button>
+ </div>
 
-            <!-- STEP 3: node configuration -->
-            <div x-show="wizard.step===3">
-                <h3 class="mb-2">Node configuration</h3>
-                <p class="text-muted text-sm mb-2">Defaults are fine for most users — hover or tap the ⓘ icons for a short explanation. Values apply when the node starts at the end of this wizard. RPC and consensus settings are locked for safety.</p>
-                <template x-if="wizard.conf && wizard.conf.editable">
-                    <div>
-                        <div class="form-row">
-                            <label class="flex-start">txindex
-                                <span class="info-tip" tabindex="0" data-tip="Keep a full index of every transaction (1) so old payments can be searched, or save disk space (0). The blockchain still syncs fully either way.">i</span>
-                            </label>
-                            <input x-model="wizard.confForm.txindex" placeholder="1">
-                        </div>
-                        <div class="form-row">
-                            <label class="flex-start">listen
-                                <span class="info-tip" tabindex="0" data-tip="Accept incoming connections from other nodes (1). This helps the B3 network and improves sync speed. Turn off (0) if the machine must stay hidden (strict firewall/NAT).">i</span>
-                            </label>
-                            <input x-model="wizard.confForm.listen" placeholder="1">
-                        </div>
-                        <div class="form-row">
-                            <label class="flex-start">maxconnections
-                                <span class="info-tip" tabindex="0" data-tip="Maximum number of simultaneous peer connections. More peers = faster sync but more bandwidth. Default 125 is fine for most.">i</span>
-                            </label>
-                            <input x-model="wizard.confForm.maxconnections" placeholder="125">
-                        </div>
-                        <div class="form-row">
-                            <label class="flex-start">proxy
-                                <span class="info-tip" tabindex="0" data-tip="Route node traffic through a proxy server, e.g. 127.0.0.1:9050 for Tor. Leave empty for a direct connection.">i</span>
-                            </label>
-                            <input x-model="wizard.confForm.proxy" placeholder="host:port">
-                        </div>
-                        <div class="form-row">
-                            <label class="flex-start">bantime
-                                <span class="info-tip" tabindex="0" data-tip="How long (seconds) a misbehaving peer stays banned. 86400 = 24 hours (the default).">i</span>
-                            </label>
-                            <input x-model="wizard.confForm.bantime" placeholder="86400">
-                        </div>
-                    </div>
-                </template>
-                <template x-if="wizard.conf && !wizard.conf.editable">
-                    <p class="text-muted">No editable configuration available for this node — the defaults will be used.</p>
-                </template>
-            </div>
+ <hr class="divider">
 
-            <!-- STEP 4: security -->
-            <div x-show="wizard.step===4">
-                <h3 class="mb-2">Security</h3>
-                <template x-if="wizard.status && wizard.status.setup_required && !wizard.secSet">
-                    <div>
-                        <p class="text-muted mb-2">
-                            First run: no password is needed from this local machine. Set a login password to enable
-                            remote (internet) access — until then, the UI is locked to localhost.
-                        </p>
-                        <div class="form-row">
-                            <label>Login password <span class="text-muted">(min 8 chars)</span></label>
-                            <input type="password" x-model="wizard.secPw" placeholder="strong password">
-                        </div>
-                        <div class="form-row">
-                            <label>Repeat password</label>
-                            <input type="password" x-model="wizard.secPw2" placeholder="repeat">
-                        </div>
-                        <p x-show="wizard.secErr" class="text-danger text-sm mb-2" x-text="wizard.secErr"></p>
-                        <button class="btn btn-primary" @click="setSecurityPassword()" :disabled="wizard.secBusy" type="button">
-                            <span x-show="wizard.secBusy" class="spinner"></span> Set Password
-                        </button>
-                    </div>
-                </template>
-                <template x-if="wizard.status && wizard.status.setup_required && wizard.secSet">
-                    <p class="text-success">✓ Password set — remote access is now enabled.</p>
-                </template>
-                <template x-if="wizard.status && !wizard.status.setup_required">
-                    <p class="text-success">✓ Login password already set.</p>
-                </template>
-                <p class="text-muted text-sm mt-2">
-                    <strong>Finish will:</strong> <span x-text="finishSummary()"></span>
-                </p>
-            </div>
+ <!-- Add wallet: load -->
+ <div>
+ <p class="mb-2"><strong>Add an existing wallet</strong></p>
+ <p class="text-muted mb-2">If you already have a wallet file in your data directory, enter its filename to load it when the node starts.</p>
+ <div class="form-row">
+ <label>Wallet filename</label>
+ <input x-model="wizard.wallet.loadName" placeholder="wallet.dat">
+ </div>
+ <button class="btn btn-secondary" @click="queueWalletLoad()"
+ :disabled="wizard.wallet.busy || (wizard.status && wizard.status.data_persistent===false)" type="button">
+ <span x-show="wizard.wallet.busy" class="spinner"></span> Add Existing Wallet
+ </button>
+ </div>
+ </div>
 
-            <!-- Stepper footer -->
-            <div class="flex-between mt-4">
-                <button class="btn btn-ghost" x-show="wizard.step>1" @click="wizard.step=wizard.step-1" type="button">← Back</button>
-                <span class="text-muted text-sm" x-show="wizard.step<4">Step <span x-text="wizard.step"></span> of 4</span>
-                <button class="btn btn-primary" x-show="wizard.step<4" @click="nextStep()" type="button">Next →</button>
-                <button class="btn btn-success" x-show="wizard.step===4" @click="finishWizard()"
-                        :disabled="wizard.finishing || (wizard.status && wizard.status.setup_required && !wizard.secSet) || !wizard.syncChoice"
-                        type="button">
-                    <span x-show="wizard.finishing" class="spinner"></span> Finish Setup
-                </button>
-            </div>
-        </div>
-
-        </main>
-      </div>
+ <!-- Stepper footer -->
+ <div class="flex-between mt-4">
+ <button class="btn btn-ghost" x-show="wizard.step>1" @click="wizard.step=wizard.step-1" type="button">← Back</button>
+ <span class="text-muted text-sm" x-show="wizard.step<4">Step <span x-text="wizard.step"></span> of 4</span>
+ <button class="btn btn-primary" x-show="wizard.step<4" @click="nextStep()" type="button">Next →</button>
+ <button class="btn btn-success" x-show="wizard.step===4" @click="finishWizard()"
+ :disabled="wizard.finishing || !wizard.syncChoice"
+ type="button">
+ <span x-show="wizard.finishing" class="spinner"></span> Finish Setup
+ </button>
+ </div>
+</div>
+</main>
+</div>
     </template>
 
     <!-- Toast -->

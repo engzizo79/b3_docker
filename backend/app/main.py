@@ -44,11 +44,16 @@ async def lifespan(app: FastAPI):
     _vault = vault_from_settings(state.settings, state.settings.b3_data_dir)
     start_autostake(state.settings, state.rpc, _vault)
     start_consolidation(state.settings, state.rpc, _vault)
+    # Wizard wallet-intent queue: execute queued create/load intents once
+    # the deferred daemon comes up after first-run setup finishes.
+    from app.wizard_queue import start_wizard_queue, stop_wizard_queue
+    start_wizard_queue(state.settings, state.rpc, _vault)
     yield
     # Shutdown: stop the monitor, autostake and consolidation tasks.
     await stop_monitor()
     await stop_autostake()
     await stop_consolidation()
+    await stop_wizard_queue()
 
 
 def create_app(state: AppState | None = None) -> FastAPI:

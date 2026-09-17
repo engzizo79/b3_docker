@@ -121,7 +121,7 @@ async def wallet_manage_create(body: CreateWalletBody, request: Request):
     try:
         await state.rpc.call(
             "createwallet", name, False, False, passphrase,
-            False, False, body.load_on_startup, False,
+            False, True, body.load_on_startup, False,
         )
     except RPCError as exc:
         db.audit(state.settings.db_path, "wallet.create", sess.username,

@@ -58,9 +58,9 @@ function b3app() {
  syncChoice: null, // 'bootstrap' | 'scratch' | 'keep' | null
  freshChain: null, bootTarget: null, wipeChain: false,
  progress: { phase: 'idle' }, progressTimer: null,
- conf: null, confForm: {}, confBusy: false, restartBusy: false,
+ conf: null, confForm: {}, 
  finishing: false,
- secPw: '', secPw2: '', secBusy: false, secSet: false, secErr: '',
+ secPw: '', secPw2: '', secErr: '', walletQueue: [],
  wallet: { loaded: [], reachable: false, createName: '', createPw: '', createPw2: '', loadName: '', busy: false } },
 
     // -- Init ----------------------------------------------------------------
@@ -818,12 +818,13 @@ function b3app() {
  if (!this.wizard.status.wizard_done) {
  this.view = 'wizard';
  this.wizard.conf = this.wizard.status.conf || null;
- if (this.wizard.status.conf && this.wizard.status.conf.editable
+			 if (this.wizard.status.conf && this.wizard.status.conf.editable
  && Object.keys(this.wizard.confForm).length === 0) {
  this.wizard.confForm = Object.assign({}, this.wizard.status.conf.editable);
  }
  }
- } catch (e) { /* setup status is best-effort */ }
+ this.refreshWalletQueue();
+} catch (e) { /* setup status is best-effort */ }
  },
  async loadBootstraps() {
  this.wizard.manifestBusy = true;
@@ -853,17 +854,30 @@ function b3app() {
  return '';
  },
  nextStep() {
- if (this.wizard.step === 1 && !this.wizard.syncChoice) {
- this.showToast('Pick a sync method first', 'warning'); return;
- }
- if (this.wizard.step === 1 && this.wizard.syncChoice === 'bootstrap' && !this.wizard.bootTarget) {
- this.showToast('Select a bootstrap snapshot or choose another option', 'warning'); return;
- }
- if (this.wizard.step === 1 && this.wizard.syncChoice === 'bootstrap' && this.wizard.freshChain === false && !this.wizard.wipeChain) {
- this.showToast('Enable "Replace existing chain data" to use a bootstrap', 'warning'); return;
- }
- this.wizard.step = Math.min(this.wizard.step + 1, 4);
- },
+if (this.wizard.step === 1) {
+// Early error catching (user requirement): validate password NOW.
+if (this.wizard.status && this.wizard.status.setup_required) {
+if (this.wizard.secPw.length < 8) {
+this.showToast('Password must be at least 8 characters', 'danger'); return;
+}
+if (this.wizard.secPw !== this.wizard.secPw2) {
+this.showToast('Passwords do not match', 'danger'); return;
+}
+}
+}
+if (this.wizard.step === 3) {
+if (!this.wizard.syncChoice) {
+this.showToast('Pick a sync method first', 'warning'); return;
+}
+if (this.wizard.syncChoice === 'bootstrap' && !this.wizard.bootTarget) {
+this.showToast('Select a bootstrap snapshot or choose another option', 'warning'); return;
+}
+if (this.wizard.syncChoice === 'bootstrap' && this.wizard.freshChain === false && !this.wizard.wipeChain) {
+this.showToast('Enable "Replace existing chain data" to use a bootstrap', 'warning'); return;
+}
+}
+this.wizard.step = Math.min(this.wizard.step + 1, 4);
+},
  async pollProgress() {
  try {
  const p = await this.api('/api/setup/bootstrap/progress');
@@ -876,132 +890,187 @@ function b3app() {
  }
  } catch (e) { /* progress poll is best-effort */ }
  },
- async applyConf() {
- this.wizard.confBusy = true;
- try {
- await this.api('/api/setup/conf/apply', {
- method: 'POST', body: JSON.stringify({ conf: this.wizard.confForm })
- });
- this.showToast('Configuration applied — restart the node to take effect');
- } catch (e) { this.showToast(e.message, 'danger'); }
- this.wizard.confBusy = false;
- },
- async restartNode() {
- if (!confirm('Restart b3coind to apply configuration changes?')) return;
- this.wizard.restartBusy = true;
- try {
- await this.api('/api/setup/restart-node', { method: 'POST' });
- this.showToast('Node restart queued');
- } catch (e) { this.showToast(e.message, 'danger'); }
- this.wizard.restartBusy = false;
- },
- async createWallet() {
- if (this.wizard.wallet.createPw !== this.wizard.wallet.createPw2) {
- this.showToast('Passphrases do not match', 'danger'); return;
- }
- if (this.wizard.wallet.createPw.length < 8) {
- this.showToast('Passphrase must be at least 8 characters', 'danger'); return;
- }
- this.wizard.wallet.busy = true;
- try {
- await this.api('/api/setup/wallet/create', {
- method: 'POST', body: JSON.stringify({
- wallet_name: this.wizard.wallet.createName, passphrase: this.wizard.wallet.createPw
- })
- });
- this.showToast('Wallet created: ' + this.wizard.wallet.createName);
- this.wizard.wallet.loaded.push(this.wizard.wallet.createName);
- this.wizard.wallet.createName = ''; this.wizard.wallet.createPw = ''; this.wizard.wallet.createPw2 = '';
- } catch (e) { this.showToast(e.message, 'danger'); }
- this.wizard.wallet.busy = false;
- },
- async loadWallet() {
- this.wizard.wallet.busy = true;
- try {
- await this.api('/api/setup/wallet/load', {
- method: 'POST', body: JSON.stringify({ filename: this.wizard.wallet.loadName })
- });
- this.showToast('Wallet loaded: ' + this.wizard.wallet.loadName);
- this.wizard.wallet.loaded.push(this.wizard.wallet.loadName);
- this.wizard.wallet.loadName = '';
- } catch (e) { this.showToast(e.message, 'danger'); }
- this.wizard.wallet.busy = false;
- },
- async setSecurityPassword() {
- this.wizard.secErr = "";
- if (this.wizard.secPw.length < 8) { this.wizard.secErr = "Password must be at least 8 characters"; return; }
- if (this.wizard.secPw !== this.wizard.secPw2) { this.wizard.secErr = "Passwords do not match"; return; }
- this.wizard.secBusy = true;
- try {
- await this.api("/api/auth/setup-password", { method: "POST", body: JSON.stringify({ password: this.wizard.secPw }) });
- this.wizard.secSet = true;
- // Auto-login: setting the password exits setup mode, closing the
- // passwordless local window. Establish a REAL session right away so
- // the rest of the wizard (complete) works without a login screen.
- await this.api("/api/auth/login", { method: "POST", body: JSON.stringify({ password: this.wizard.secPw }) });
- this.wizard.secPw = ""; this.wizard.secPw2 = "";
- this.showToast("Password set — remote access enabled");
- this.session.authenticated = true;
- this.poll();
- } catch (e) { this.wizard.secErr = e.message; }
- this.wizard.secBusy = false;
- },
+     // --- Wizard wallet queue: intents are EXECUTED when the node starts ---
+async refreshWalletQueue() {
+try {
+const r = await this.api('/api/setup/wallet/queue');
+this.wizard.walletQueue = r.queue || [];
+} catch (e) { /* best-effort */ }
+},
+async queueWalletCreate() {
+if (this.wizard.wallet.createPw !== this.wizard.wallet.createPw2) {
+this.showToast('Passphrases do not match', 'danger'); return;
+}
+if (this.wizard.wallet.createPw.length < 8) {
+this.showToast('Passphrase must be at least 8 characters', 'danger'); return;
+}
+if (!this.wizard.wallet.createName) {
+this.showToast('Enter a wallet name', 'warning'); return;
+}
+this.wizard.wallet.busy = true;
+try {
+await this.api('/api/setup/wallet/queue/create', {
+method: 'POST', body: JSON.stringify({
+wallet_name: this.wizard.wallet.createName, passphrase: this.wizard.wallet.createPw
+})
+});
+this.showToast('Wallet queued: ' + this.wizard.wallet.createName + ' — created when the node starts');
+this.wizard.wallet.createName = ''; this.wizard.wallet.createPw = ''; this.wizard.wallet.createPw2 = '';
+await this.refreshWalletQueue();
+} catch (e) { this.showToast(e.message, 'danger'); }
+this.wizard.wallet.busy = false;
+},
+async queueWalletLoad() {
+if (!this.wizard.wallet.loadName) {
+this.showToast('Enter a wallet filename', 'warning'); return;
+}
+this.wizard.wallet.busy = true;
+try {
+await this.api('/api/setup/wallet/queue/load', {
+method: 'POST', body: JSON.stringify({ filename: this.wizard.wallet.loadName })
+});
+this.showToast('Wallet load queued: ' + this.wizard.wallet.loadName);
+this.wizard.wallet.loadName = '';
+await this.refreshWalletQueue();
+} catch (e) { this.showToast(e.message, 'danger'); }
+this.wizard.wallet.busy = false;
+},
+async removeWalletIntent(id) {
+try {
+await this.api('/api/setup/wallet/queue/' + id + '/remove', { method: 'POST' });
+await this.refreshWalletQueue();
+} catch (e) { this.showToast(e.message, 'danger'); }
+},
 
  // Finish: apply ALL wizard choices in order, then mark the wizard done.
  // Sequence: 1) node config -> 2) sync method (bootstrap download OR node start)
  // -> 3) wizard complete. The daemon never starts before this point, so
  // config changes never need a restart (user requirement).
  finishSummary() {
- const parts = [];
- if (this.wizard.syncChoice === 'bootstrap') parts.push('download the chain snapshot at height ' + (this.wizard.bootTarget ? this.wizard.bootTarget.height : '?') + ' and verify it');
- if (this.wizard.syncChoice === 'scratch') parts.push('start the node syncing the full chain from the beginning');
- if (this.wizard.syncChoice === 'keep') parts.push('start the node with the chain data already on disk');
- if (this.wizard.conf && this.wizard.conf.editable) parts.push('apply your node configuration');
- parts.push('open the dashboard');
- return parts.join(', ');
- },
+const parts = [];
+if (this.wizard.status && this.wizard.status.setup_required) parts.push('set your login password');
+if (this.wizard.conf && this.wizard.conf.editable) parts.push('apply your node configuration');
+if (this.wizard.syncChoice === 'bootstrap') parts.push('download the chain snapshot at height ' + (this.wizard.bootTarget ? this.wizard.bootTarget.height : '?') + ' and verify it');
+if (this.wizard.syncChoice === 'scratch') parts.push('start the node syncing the full chain from the beginning');
+if (this.wizard.syncChoice === 'keep') parts.push('start the node with the chain data already on disk');
+const n = (this.wizard.walletQueue || []).filter(q => q.status === 'pending').length;
+if (n > 0) parts.push('create/load ' + n + ' queued wallet' + (n > 1 ? 's' : ''));
+parts.push('open the dashboard');
+return parts.join(', ');
+},
  async finishWizard() {
- if (this.wizard.status && this.wizard.status.setup_required && !this.wizard.secSet) {
- this.showToast('Set a login password in the Security step first', 'danger'); return;
- }
- if (!this.wizard.syncChoice) {
- this.showToast('Pick a sync method in step 1 first', 'warning'); return;
- }
- this.wizard.finishing = true;
- try {
- // 1) Node configuration (safe subset) — applied BEFORE first daemon start.
- if (this.wizard.conf && this.wizard.conf.editable) {
- await this.api('/api/setup/conf/apply', {
- method: 'POST', body: JSON.stringify({ conf: this.wizard.confForm })
- });
- }
- // 2a) Bootstrap: hand the snapshot to the entrypoint worker; it stops/starts
- // the daemon around the download and reports progress. The wizard polls it.
- if (this.wizard.syncChoice === 'bootstrap' && this.wizard.bootTarget) {
- const b = this.wizard.bootTarget;
- const wipe = this.wizard.freshChain === false ? !!this.wizard.wipeChain : false;
- await this.api('/api/setup/bootstrap/start', {
- method: 'POST', body: JSON.stringify({ height: b.height, sha256: b.sha256, url: b.url, size: b.size, wipe_chain: wipe })
- });
- this.pollProgress();
- this.wizard.progressTimer = setInterval(() => this.pollProgress(), 2000);
- this.showToast('Bootstrap download started — you can watch progress on step 1');
- }
- // 2b) Sync from scratch / keep existing chain: start the (deferred) daemon.
- if (this.wizard.syncChoice === 'scratch' || this.wizard.syncChoice === 'keep') {
- await this.api('/api/setup/start-node', { method: 'POST' });
- this.showToast('Node starting');
- }
- // 3) Mark the wizard complete (header/nav reappear).
- await this.api('/api/setup/complete', { method: 'POST' });
- this.wizard.status.wizard_done = true;
- this.view = 'dashboard';
- this.showToast('Setup complete — welcome to B3 Hive!');
- } catch (e) { this.showToast(e.message, 'danger'); }
- this.wizard.finishing = false;
- },
+if (this.wizard.status && this.wizard.status.setup_required) {
+if (this.wizard.secPw.length < 8) {
+this.showToast('Set your login password (step 1) first', 'danger'); return;
+}
+if (this.wizard.secPw !== this.wizard.secPw2) {
+this.showToast('Passwords do not match', 'danger'); return;
+}
+}
+if (!this.wizard.syncChoice) {
+this.showToast('Pick a sync method in the Sync step first', 'warning'); return;
+}
+this.wizard.finishing = true;
+try {
+// 0) Password (first run): setting it exits setup mode and closes the
+// passwordless local window — log straight in with a real session.
+if (this.wizard.status && this.wizard.status.setup_required) {
+await this.api('/api/auth/setup-password', {
+method: 'POST', body: JSON.stringify({ password: this.wizard.secPw })
+});
+await this.api('/api/auth/login', {
+method: 'POST', body: JSON.stringify({ password: this.wizard.secPw })
+});
+this.session.authenticated = true;
+this.wizard.secPw = ''; this.wizard.secPw2 = '';
+}
+// 1) Node configuration (safe subset) — applied BEFORE first daemon start.
+if (this.wizard.conf && this.wizard.conf.editable) {
+await this.api('/api/setup/conf/apply', {
+method: 'POST', body: JSON.stringify({ conf: this.wizard.confForm })
+});
+}
+// 2a) Bootstrap: the entrypoint worker downloads + verifies, starts the
+// daemon, and reports progress. Queued wallet intents run once it is up.
+if (this.wizard.syncChoice === 'bootstrap' && this.wizard.bootTarget) {
+const b = this.wizard.bootTarget;
+const wipe = (this.wizard.freshChain === false) ? this.wizard.wipeChain : false;
+await this.api('/api/setup/bootstrap/start', {
+method: 'POST', body: JSON.stringify({ height: b.height, sha256: b.sha256, url: b.url, size: b.size, wipe_chain: wipe })
+});
+this.pollProgress();
+this.wizard.progressTimer = setInterval(() => this.pollProgress(), 2000);
+}
+// 2b) Sync from scratch / keep existing chain: start the (deferred) daemon.
+if (this.wizard.syncChoice === 'scratch' || this.wizard.syncChoice === 'keep') {
+await this.api('/api/setup/start-node', { method: 'POST' });
+}
+// 3) Mark the wizard complete (header/nav reappear).
+await this.api('/api/setup/complete', { method: 'POST' });
+this.wizard.status.wizard_done = true;
+this.view = 'dashboard';
+this.showToast('Setup complete — welcome to B3 Hive! The node is starting; queued wallets load automatically.');
+this.poll();
+} catch (e) { this.showToast(e.message, 'danger'); }
+this.wizard.finishing = false;
+},
 
- // -- Toast ---------------------------------------------------------------
+ // -- Dashboard helpers: amounts, node status, sync banner, queue --------
+fmtAmount(v) {
+if (v === null || v === undefined) return '—';
+const n = Number(v);
+if (Number.isNaN(n)) return String(v);
+return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 9 });
+},
+txLabel(cat) {
+const map = { send: 'Sent', receive: 'Received', generate: 'Mined', immature: 'Mined', stake: 'Staked', orphan: 'Orphaned' };
+return map[cat] || (cat ? cat.charAt(0).toUpperCase() + cat.slice(1) : '—');
+},
+nodeDown() { return this.chain.blocks === null; },
+bootstrapPhase() {
+if (this.wizard.progress && this.wizard.progress.phase) return this.wizard.progress.phase;
+if (this.wizard.status && this.wizard.status.bootstrap && this.wizard.status.bootstrap.phase) {
+return this.wizard.status.bootstrap.phase;
+}
+return 'idle';
+},
+bootstrapPct() {
+const p = this.wizard.progress || {};
+if (p.phase !== 'downloading' || !p.size) return 0;
+return Math.min(100, Math.round(((p.bytes || 0) / p.size) * 100));
+},
+bootstrapMb() {
+const p = this.wizard.progress || {};
+return Math.round((p.bytes || 0) / 1048576) + ' / ' + Math.round((p.size || 0) / 1048576) + ' MB';
+},
+nodeStatusHeadline() {
+const p = this.bootstrapPhase();
+if (p === 'downloading' || p === 'verifying' || p === 'extracting' || p === 'wiping') return 'Preparing your node';
+if (this.nodeDown()) return 'Node starting up';
+if (this.chain.sync && this.chain.sync.behind > 0) return 'Syncing the B3 chain';
+return 'Node status';
+},
+nodeStatusText() {
+const peers = this.chain.connections != null ? this.chain.connections : 0;
+if (this.nodeDown()) return 'Node starting…';
+if (this.chain.sync && this.chain.sync.behind > 0) {
+return 'Syncing ' + this.chain.sync.percent.toFixed(1) + '% · ' + peers + ' peers';
+}
+return 'Synced · ' + peers + ' peers';
+},
+syncBannerVisible() {
+if (this.wizard.status && !this.wizard.status.wizard_done) return false;
+const p = this.bootstrapPhase();
+if (p !== 'idle' && p !== 'failed' && p !== 'done') return true;
+if (this.nodeDown()) return true;
+if (this.chain.sync && this.chain.sync.behind > 0) return true;
+return false;
+},
+pendingQueueCount() {
+return (this.wizard.walletQueue || []).filter(q => q.status === 'pending').length;
+},
+
+// -- Toast ---------------------------------------------------------------
     showToast(msg, type) {
       this.toast = msg; this.toastType = type || 'success';
       clearTimeout(this._toastTimer);
