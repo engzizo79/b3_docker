@@ -97,18 +97,91 @@ def test_setup_endpoints_blocked_on_ephemeral_data(setup_client):
     s = setup_client.app.state.app_state.settings
     s.allow_ephemeral_data = False
     try:
+        # The storage-blocked middleware intercepts ALL /api/* routes (except
+        # /api/health) with 503 + storage_blocked:true before the per-endpoint
+        # require_persistent_data guard (403) can run. Both layers exist; the
+        # middleware is the user-facing gate, the per-endpoint guard is
+        # defense-in-depth.
         r = setup_client.post("/api/setup/start-node", headers=_csrf(setup_client))
-        assert r.status_code == 403, r.text
-        assert "persistent" in r.json()["detail"].lower()
+        assert r.status_code == 503, r.text
+        assert r.json().get("storage_blocked") is True
         r = setup_client.post("/api/setup/complete", headers=_csrf(setup_client))
-        assert r.status_code == 403, r.text
-        assert "persistent" in r.json()["detail"].lower()
+        assert r.status_code == 503, r.text
+        assert r.json().get("storage_blocked") is True
         r = setup_client.post("/api/setup/bootstrap/start",
                               json={"height": 810000, "sha256": "ab" * 32,
                                     "url": "/bootstraps/bootstrap-810000.tar.zst",
                                     "size": 123, "wipe_chain": False},
                               headers=_csrf(setup_client))
-        assert r.status_code == 403, r.text
-        assert "persistent" in r.json()["detail"].lower()
+        assert r.status_code == 503, r.text
+        assert r.json().get("storage_blocked") is True
     finally:
         s.allow_ephemeral_data = True
+
+
+def test_health_reports_storage_blocked_on_ephemeral(setup_client):
+    """/api/health is the one public route in blocked mode: it tells the
+    SPA and the Docker healthcheck that storage is refused."""
+    s = setup_client.app.state.app_state.settings
+    s.allow_ephemeral_data = False
+    try:
+        r = setup_client.get("/api/health")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["storage_blocked"] is True
+        assert body["ok"] is False
+    finally:
+        s.allow_ephemeral_data = True
+
+
+def test_non_api_routes_serve_remediation_page_on_ephemeral(setup_client):
+    """The user sees a full-screen explanation page (not a crash, not a
+    blank screen) when storage is not persistent."""
+    s = setup_client.app.state.app_state.settings
+    s.allow_ephemeral_data = False
+    try:
+        r = setup_client.get("/")
+        assert r.status_code == 503
+        assert "text/html" in r.headers.get("content-type", "")
+        body = r.text
+        assert "Storage is not persistent" in body
+        assert "setup refused" in body.lower()
+        assert "docker-compose" in body or "docker compose" in body
+        # The remediation page must contain the fix steps.
+        assert "b3hive-data" in body
+        assert "/data" in body
+    finally:
+        s.allow_ephemeral_data = True
+
+
+def test_api_routes_return_503_json_on_ephemeral(setup_client):
+    """Programmatic clients get a 503 JSON body with the storage_blocked
+    flag so they can distinguish it from a normal error."""
+    s = setup_client.app.state.app_state.settings
+    s.allow_ephemeral_data = False
+    try:
+        r = setup_client.get("/api/chain/summary")
+        assert r.status_code == 503
+        body = r.json()
+        assert body.get("storage_blocked") is True
+        assert "persistent" in body["detail"].lower()
+    finally:
+        s.allow_ephemeral_data = True
+
+
+def test_routes_work_normally_when_persistent(setup_client):
+    """When storage IS persistent, the middleware is invisible."""
+    s = setup_client.app.state.app_state.settings
+    # login first so chain/summary is reachable
+    setup_client.post("/api/auth/login",
+                     json={"password": "correct horse battery staple"})
+    csrf = setup_client.cookies.get("b3_csrf")
+    r = setup_client.get("/api/health")
+    assert r.status_code == 200
+    assert r.json().get("storage_blocked") is False
+    # Root serves the SPA (200 with the Alpine root), not the 503 remediation
+    # page. The SPA template does contain a hidden storage-blocked block, so
+    # check for the SPA marker, not absence of the remediation text.
+    r = setup_client.get("/")
+    assert r.status_code == 200
+    assert 'x-data="b3app"' in r.text

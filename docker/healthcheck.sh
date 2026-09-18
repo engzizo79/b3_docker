@@ -9,6 +9,18 @@ B3_DATA_DIR="${B3_DATA_DIR:-/data}"
 CONF="${B3_DATA_DIR}/b3coin.conf"
 RUN_UI="${RUN_UI:-true}"
 
+# Blocked setup mode (storage not persistent): the daemon intentionally
+# never starts. Healthy as long as the backend serves the remediation page.
+if [ -f "${B3_DATA_DIR}/.storage_blocked" ] && [ "${RUN_UI}" != "false" ]; then
+    WEB_PORT="${WEB_PORT:-8080}"
+    if curl -sf --max-time 10 "http://127.0.0.1:${WEB_PORT}/api/health" > /dev/null; then
+        echo "storage not persistent — backend serving remediation page (healthy)"
+        exit 0
+    fi
+    echo "backend not responding (storage blocked)" >&2
+    exit 1
+fi
+
 # Deferred daemon (first UI run, wizard pending): the daemon intentionally
 # stays DOWN until the setup wizard picks a sync method (bootstrap download
 # or sync-from-scratch). Healthy as long as the backend (wizard) responds.

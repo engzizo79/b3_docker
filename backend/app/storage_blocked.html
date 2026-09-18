@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B3 Hive — Storage is not persistent</title>
+<style>
+:root { --bg:#12100e; --surface:#191612; --border:#2a2520; --fg:#f5efe6;
+  --muted:#9c8f7e; --accent:#e8b84e; --accent-text:#f0c963;
+  --danger:#f0736f; --danger-bg:#241616; --danger-border:#5c3434;
+  --radius:14px; --mono:ui-monospace,SFMono-Regular,Menlo,monospace; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { background:var(--bg); color:var(--fg);
+  font-family:system-ui,-apple-system,sans-serif; line-height:1.6;
+  display:flex; align-items:center; justify-content:center;
+  min-height:100dvh; padding:1rem; }
+.card { background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); max-width:640px; width:100%; padding:2.5rem; }
+.brand { display:flex; align-items:center; gap:.6rem; margin-bottom:1.5rem; }
+.brand svg { width:32px; height:32px; color:var(--accent); }
+.brand span { font-size:1.1rem; font-weight:700; color:var(--accent-text); }
+.alert { background:var(--danger-bg); border:1px solid var(--danger-border);
+  border-radius:10px; padding:1rem 1.2rem; margin-bottom:1.5rem;
+  display:flex; gap:.75rem; align-items:flex-start; }
+.alert svg { width:24px; height:24px; color:var(--danger); flex-shrink:0; margin-top:.1rem; }
+.alert-title { font-size:1.05rem; font-weight:700; color:var(--danger); margin-bottom:.25rem; }
+.alert-body { font-size:.9rem; color:var(--fg); opacity:.9; }
+h1 { font-size:1.5rem; font-weight:700; margin-bottom:.5rem; }
+.lead { color:var(--muted); font-size:.95rem; margin-bottom:1.5rem; }
+h2 { font-size:1rem; font-weight:600; margin:1.5rem 0 .75rem; color:var(--accent-text); }
+p { font-size:.9rem; margin-bottom:.75rem; }
+p.muted { color:var(--muted); }
+ol { margin:0 0 1rem 1.2rem; font-size:.9rem; }
+li { margin-bottom:.5rem; }
+code { font-family:var(--mono); font-size:.82rem; background:#100e0c;
+  border:1px solid var(--border); border-radius:6px; padding:.15rem .4rem;
+  color:var(--accent-text); }
+pre { font-family:var(--mono); font-size:.8rem; background:#100e0c;
+  border:1px solid var(--border); border-radius:8px; padding:1rem;
+  overflow-x:auto; color:#d4c8b8; margin:.5rem 0 1rem;
+  white-space:pre-wrap; word-break:break-all; }
+.note { font-size:.82rem; color:var(--muted); border-top:1px solid var(--border);
+  padding-top:1rem; margin-top:1rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L22 7v10l-10 5L2 17V7z"/></svg>
+    <span>B3 Hive</span>
+  </div>
+  <div class="alert">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="13"/><circle cx="12" cy="16.5" r="1" fill="currentColor"/></svg>
+    <div>
+      <div class="alert-title">Storage is not persistent — setup refused</div>
+      <div class="alert-body">B3 Hive detected that the data directory <code>/data</code> is not on a persistent volume. The blockchain and any wallet you create here would be <strong>lost when the container is removed or updated</strong>.</div>
+    </div>
+  </div>
+  <h1>This wallet cannot start safely</h1>
+  <p class="lead">B3 Hive refuses to run on throwaway storage. No configuration, no wallet, and no blockchain data were written — nothing was created that could be lost.</p>
+  <h2>Why this happened</h2>
+  <p>The container's <code>/data</code> directory sits on the container's temporary filesystem (overlay) or an anonymous Docker volume — not a bind mount or a named volume. When you run <code>docker compose down</code> or update the image, that storage disappears along with any wallet and chain data on it.</p>
+  <h2>How to fix it</h2>
+  <ol>
+    <li><strong>Stop the container:</strong> <code>docker compose down</code></li>
+    <li><strong>Add a persistent volume</strong> for <code>/data</code> — choose one of the options below.</li>
+    <li><strong>Start again:</strong> <code>docker compose up -d</code> — the setup wizard will appear normally.</li>
+  </ol>
+  <h2>Option A — Named volume (recommended)</h2>
+  <p>Add a volume to your <code>docker-compose.yml</code>:</p>
+<pre>volumes:
+  b3hive-data:
+
+services:
+  b3hive:
+    volumes:
+      - b3hive-data:/data</pre>
+  <h2>Option B — Host directory bind mount</h2>
+  <p>Map a directory on your host machine so you can see the files directly:</p>
+<pre>services:
+  b3hive:
+    volumes:
+      - ./b3hive-data:/data</pre>
+  <p class="muted">Plain <code>docker run</code> equivalent: <code>docker run -v b3hive-data:/data ...</code></p>
+  <div class="note">After adding the volume mapping and restarting, this page will disappear and the setup wizard will load. If you already configured a volume and still see this page, make sure the compose file in use is the right one (not a stale override) and that the mount source is a bind mount or a named volume, not an anonymous one.</div>
+</div>
+</body>
+</html>

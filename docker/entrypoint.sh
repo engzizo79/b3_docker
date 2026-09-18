@@ -39,6 +39,22 @@ generate_rpc_secret() {
     head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n'
 }
 
+storage_persistent() {
+    # Same rule the backend enforces (app.deps._mount_is_persistent):
+    # bind mounts and NAMED Docker volumes are persistent; anonymous
+    # volumes, overlay, tmpfs are not. Reuse the python implementation so
+    # the two checks can never drift apart.
+    B3_DATA_DIR="${B3_DATA_DIR}" python3 - <<'PY' 2>/dev/null
+import os
+try:
+    from app.deps import _mount_is_persistent
+except Exception:
+    print("unknown")
+else:
+    print("yes" if _mount_is_persistent(os.environ["B3_DATA_DIR"]) else "no")
+PY
+}
+
 # --- 0. Privilege setup ----------------------------------------------------
 if [ "$(id -u)" = "0" ]; then
     # Started as root (docker default): fix data-dir ownership, run as b3coin.
@@ -48,8 +64,50 @@ else
     run_as() { "$@"; }
 fi
 
+# --- 0.5 Storage persistence check -----------------------------------------
+# /data may not even exist when no volume is mapped at all: create it so
+# the checks and the backend can run, then decide if this storage is safe.
+mkdir -p "${B3_DATA_DIR}"
+PERSISTENT="$(storage_persistent)"
+if [ "${PERSISTENT}" = "unknown" ]; then
+    log "WARNING: storage persistence could not be verified — the backend enforces its own check"
+fi
+BLOCKED=""
+if [ "${PERSISTENT}" = "no" ] && [ "${ALLOW_EPHEMERAL_DATA:-false}" != "true" ]; then
+    BLOCKED=1
+fi
+if [ -n "${BLOCKED}" ]; then
+    log "STORAGE CHECK FAILED: ${B3_DATA_DIR} is not a persistent volume (bind mount or named volume)."
+    log "Refusing to set up: the blockchain and any wallet would be LOST when the container is removed."
+    touch "${B3_DATA_DIR}/.storage_blocked" 2>/dev/null || true
+    if [ "${RUN_UI}" = "false" ]; then
+        log "RUN_UI=false (headless) — refusing to start at all."
+        log "Remedy: stop the container, map a volume for /data (compose: volumes: b3hive-data:/data, or a host-directory bind mount), then start again."
+        exit 1
+    fi
+    log "The node daemon will NOT start. The web UI stays up to explain the problem: open http://<host>:${WEB_PORT}/"
+    # Backend needs a session secret to boot; use a random one in memory
+    # only (NOT written to disk — nothing may be persisted on throwaway
+    # storage). RPC creds stay empty: the daemon never starts anyway.
+    export SESSION_SECRET="$(generate_rpc_secret)$(generate_rpc_secret)$(generate_rpc_secret)$(generate_rpc_secret)"
+    export TOTP_ENCRYPTION_KEY="$(generate_rpc_secret)$(generate_rpc_secret)"
+    # Backend state must NOT touch /data in blocked mode (it is throwaway
+    # storage and would fail/leak): keep every state file in tmpfs /tmp.
+    export B3_DB_PATH="/tmp/b3hive-blocked.db"
+    export BOOTSTRAP_CMD_FILE="/tmp/bootstrap.cmd"
+    export BOOTSTRAP_PROGRESS_FILE="/tmp/bootstrap.progress.json"
+    export RECOVERY_CMD_FILE="/tmp/recovery.cmd"
+    export EXPLORER_TIP_FILE="/tmp/explorer_tip_height"
+    export START_NODE_CMD_FILE="/tmp/start-node.cmd"
+    export WIZARD_MARKER_FILE="/tmp/.wizard_complete"
+    export B3_DEFERRED_FILE="/tmp/.daemon_deferred"
+    RPC_USER="b3coinrpc"
+    RPC_PASSWORD=""
+    RPC_PORT="${RPC_PORT:-32647}"
+fi
+
 # --- 1. Generate b3coin.conf on FIRST RUN only ------------------------------
-if [ ! -f "${CONF}" ]; then
+if [ -z "${BLOCKED}" ] && [ ! -f "${CONF}" ]; then
     log "No b3coin.conf found — generating from environment (first run)"
     RPC_USER="${RPC_USER:-b3coinrpc}"
     if [ -z "${RPC_PASSWORD:-}" ]; then
@@ -90,9 +148,11 @@ fi
 
 # Read back the EFFECTIVE RPC settings from the conf — it is the source of
 # truth (the user may have edited it since it was generated).
-RPC_USER="$(grep -E '^rpcuser=' "${CONF}" | tail -1 | cut -d= -f2-)"
-RPC_PASSWORD="$(grep -E '^rpcpassword=' "${CONF}" | tail -1 | cut -d= -f2-)"
-RPC_PORT="$(grep -E '^rpcport=' "${CONF}" | tail -1 | cut -d= -f2-)"
+if [ -f "${CONF}" ]; then
+    RPC_USER="$(grep -E '^rpcuser=' "${CONF}" | tail -1 | cut -d= -f2-)"
+    RPC_PASSWORD="$(grep -E '^rpcpassword=' "${CONF}" | tail -1 | cut -d= -f2-)"
+    RPC_PORT="$(grep -E '^rpcport=' "${CONF}" | tail -1 | cut -d= -f2-)"
+fi
 RPC_PORT="${RPC_PORT:-32647}"
 
 # --- 1.5 Zero-config UI secrets ---------------------------------------------
@@ -102,7 +162,7 @@ RPC_PORT="${RPC_PORT:-32647}"
 # NO login password is generated: the first run boots in SETUP MODE
 # (local-only) and the operator sets the password in the wizard Security step.
 SECRETS_FILE="${B3_DATA_DIR}/.secrets.env"
-if [ "${RUN_UI}" != "false" ] && [ ! -f "${SECRETS_FILE}" ]; then
+if [ -z "${BLOCKED}" ] && [ "${RUN_UI}" != "false" ] && [ ! -f "${SECRETS_FILE}" ]; then
     GEN_SESSION="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
     GEN_TOTP="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
     {
@@ -159,7 +219,9 @@ start_daemon() {
 DAEMON_PID=""
 TAIL_PID=""
 DAEMON_LOG="${B3_DAEMON_LOG:-${B3_DATA_DIR}/daemon.log}"
-if [ "${RUN_UI}" != "false" ] && [ ! -f "${WIZARD_MARKER}" ]; then
+if [ -n "${BLOCKED}" ]; then
+    log "Daemon NOT started: storage is not persistent (setup refused)"
+elif [ "${RUN_UI}" != "false" ] && [ ! -f "${WIZARD_MARKER}" ]; then
     touch "${DEFERRED_FILE}"
     log "First UI run — daemon deferred until the setup wizard is completed (Finish Setup)"
 else
@@ -343,7 +405,7 @@ while true; do
     # /data/bootstrap.cmd. Runs blocking inside this loop iteration; the
     # backend stays up to serve /api/setup/bootstrap/progress.
     BOOTSTRAP_CMD="${B3_BOOTSTRAP_CMD:-/data/bootstrap.cmd}"
-    if [ -f "${BOOTSTRAP_CMD}" ]; then
+    if [ -z "${BLOCKED}" ] && [ -f "${BOOTSTRAP_CMD}" ]; then
         CMD_JSON="$(cat "${BOOTSTRAP_CMD}")"
         rm -f "${BOOTSTRAP_CMD}"
         log "bootstrap command received"
@@ -352,7 +414,7 @@ while true; do
     # Recovery command polling: the monitor writes a command to
     # /data/recovery.cmd when stall_level is restart or reindex.
     RECOVERY_CMD="${RECOVERY_CMD_FILE:-/data/recovery.cmd}"
-    if [ -f "${RECOVERY_CMD}" ]; then
+    if [ -z "${BLOCKED}" ] && [ -f "${RECOVERY_CMD}" ]; then
         CMD=$(cat "${RECOVERY_CMD}")
         rm -f "${RECOVERY_CMD}"
         log "recovery command: ${CMD}"
@@ -383,7 +445,7 @@ while true; do
     # Start-node command polling: the setup wizard writes start-node.cmd when
     # the user finishes the wizard choosing sync-from-scratch / keep-chain.
     START_NODE_CMD="${START_NODE_CMD_FILE:-${B3_DATA_DIR}/start-node.cmd}"
-    if [ -z "${DAEMON_PID}" ] && [ -f "${START_NODE_CMD}" ]; then
+    if [ -z "${BLOCKED}" ] && [ -z "${DAEMON_PID}" ] && [ -f "${START_NODE_CMD}" ]; then
         rm -f "${START_NODE_CMD}"
         log "start-node command received — starting daemon (sync from scratch)"
         start_daemon

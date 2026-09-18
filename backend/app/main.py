@@ -12,6 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from app.deps import AppState, create_app_state
 from app.rpc import RPCNotAllowed
 
+_STORAGE_BLOCKED_PAGE = (pathlib.Path(__file__).parent / "storage_blocked.html").read_text(
+    encoding="utf-8")
+
 
 class SpaStaticApp(StaticFiles):
     """SPA fallback: non-/api paths that do not match a file serve index.html."""
@@ -68,6 +71,13 @@ def create_app(state: AppState | None = None) -> FastAPI:
     async def _security_headers(request: Request, call_next):
         from app.session import client_is_localhost
         state0 = request.app.state.app_state
+        # Storage not persistent: refuse ALL setup/wallet work and serve a
+        # full-screen remediation page explaining the problem + the fix.
+        # /api/health stays public so healthchecks and the SPA can detect it.
+        if state0 is not None and not state0.data_persistent() and request.url.path != "/api/health":
+            if request.url.path.startswith("/api/"):
+                return JSONResponse(status_code=503, content={"detail": "storage not persistent", "storage_blocked": True})
+            return HTMLResponse(status_code=503, content=_STORAGE_BLOCKED_PAGE)
         if state0 is not None and state0.setup_mode() and not client_is_localhost(request):
             if request.url.path.startswith("/api/"):
                 return JSONResponse(status_code=403, content={"detail": "setup required: finish first-run setup from the local machine"})
@@ -104,8 +114,10 @@ def create_app(state: AppState | None = None) -> FastAPI:
     app.include_router(setup.router)
 
     @app.get("/api/health")
-    async def health():
-        return {"ok": True}
+    async def health(request: Request):
+        state0 = request.app.state.app_state
+        blocked = state0 is not None and not state0.data_persistent()
+        return {"ok": not blocked, "storage_blocked": blocked}
 
     @app.exception_handler(RPCNotAllowed)
     async def _not_allowed(request: Request, exc: RPCNotAllowed):

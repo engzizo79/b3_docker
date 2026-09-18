@@ -174,7 +174,9 @@ class TestWalletManagement:
         r = client.post("/api/wallet/manage/create",
                         json={"wallet_name": "w", "passphrase": "p" * 8},
                         headers=out["headers"])
-        assert r.status_code == 403
+        # Middleware intercepts with 503 before the per-endpoint guard.
+        assert r.status_code == 503
+        assert r.json().get("storage_blocked") is True
 
     def test_manage_create_bad_name(self, client):
         out = login(client, headers=LOCAL)
@@ -226,7 +228,9 @@ class TestWalletManagement:
         st = client.app.state.app_state
         monkeypatch.setattr(st, "data_persistent", lambda: False)
         r = client.post("/api/wallet/manage/backup", headers=out["headers"])
-        assert r.status_code == 403
+        # Middleware intercepts with 503 before the per-endpoint guard.
+        assert r.status_code == 503
+        assert r.json().get("storage_blocked") is True
 
     def test_manage_requires_auth(self, client):
         r = client.get("/api/wallet/manage")

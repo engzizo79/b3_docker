@@ -10,7 +10,9 @@ from tests.conftest import LOCAL, REMOTE, MockRPC, login
 def test_health_no_auth(client: TestClient):
     r = client.get("/api/health")
     assert r.status_code == 200
-    assert r.json() == {"ok": True}
+    body = r.json()
+    assert body["ok"] is True
+    assert body["storage_blocked"] is False
 
 
 def test_login_wrong_password(client: TestClient):

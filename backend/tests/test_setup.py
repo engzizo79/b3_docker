@@ -349,5 +349,7 @@ def test_wallet_unlock_blocked_on_ephemeral_data(setup_client):
     r = setup_client.post("/api/wallet/unlock",
         json={"passphrase": "test-passphrase"},
         headers=_csrf(setup_client))
-    assert r.status_code == 403
-    assert "persistent" in r.json()["detail"].lower()
+    # The storage-blocked middleware intercepts ALL /api/* routes with 503
+    # before the per-endpoint require_persistent_data guard (403) runs.
+    assert r.status_code == 503
+    assert r.json().get("storage_blocked") is True
