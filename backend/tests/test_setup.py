@@ -353,3 +353,20 @@ def test_wallet_unlock_blocked_on_ephemeral_data(setup_client):
     # before the per-endpoint require_persistent_data guard (403) runs.
     assert r.status_code == 503
     assert r.json().get("storage_blocked") is True
+
+
+def test_setup_status_reports_daemon_deferred(setup_client):
+    """daemon_deferred must be exposed so the UI can distinguish
+    'daemon never started' from 'daemon is starting' after a reload
+    (regression: the Node-view start button re-enabled while the node
+    was booting because it tracked 'starting' in browser memory)."""
+    _login(setup_client)
+    s = setup_client.app.state.app_state.settings
+    marker = Path(s.daemon_deferred_file)
+    marker.write_text("")
+    r = setup_client.get("/api/setup/status")
+    assert r.status_code == 200
+    assert r.json()["daemon_deferred"] is True
+    marker.unlink()
+    r = setup_client.get("/api/setup/status")
+    assert r.json()["daemon_deferred"] is False

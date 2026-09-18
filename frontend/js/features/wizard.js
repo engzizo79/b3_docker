@@ -49,6 +49,7 @@ export const wizardMixin = {
         setup_required: !!s.setup_required,
         fresh_chain: s.fresh_chain,
         data_persistent: s.data_persistent,
+        daemon_deferred: (s.daemon_deferred === undefined) ? null : s.daemon_deferred,
         wallet: s.wallet || { loaded: [], reachable: false },
         bootstrap: s.bootstrap || { phase: 'idle' },
         conf: s.conf || null,
@@ -446,6 +447,8 @@ export const wizardMixin = {
       if (this.wizard.syncChoice === 'scratch' || this.wizard.syncChoice === 'keep') {
         mark('node', 'active');
         await this.api('/api/setup/start-node', { method: 'POST' });
+        this.setup.daemon_deferred = false;
+        this.node.starting = true;
         // Stays ACTIVE until the daemon actually answers; the outcome
         // watcher flips it so the checklist never lies.
         mark('node', 'active', 'It takes a few minutes to scan the block index.');

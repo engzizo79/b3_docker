@@ -77,6 +77,22 @@ export const stateMixin = {
 
   nodeDown() { return this.chain.blocks === null; },
 
+ /** True while the daemon is booting, derived from BACKEND state so it
+ * survives page reloads and navigation (regression: the Node view kept
+ * 'starting' in browser memory only, so after a reload the Start button
+ * looked clickable while the node was already booting).
+ * - daemon_deferred === false and setup checked -> the daemon HAS been
+ * told to start (entrypoint removed the deferred marker).
+ * - node still not answering -> it is scanning its block index.
+ * - daemon_deferred === true -> the daemon was NEVER started: keep the
+ * button enabled so the user can start it here. */
+ nodeStarting() {
+ if (this.node.starting) return true; // optimistic in-session flag
+ if (!this.setup.checked) return false;
+ if (this.setup.daemon_deferred === null || this.setup.daemon_deferred === undefined) return false;
+ return this.setup.daemon_deferred === false && this.nodeDown();
+ },
+
   /** Honest sync progress: local blocks against the explorer tip, never raw
    *  verificationprogress (which reports ~100% at 30k/820k on this chain).
    *  The backend already computes this in chain.py; we only present it. */

@@ -25,7 +25,7 @@ export const nodeMixin = {
       this.chain.summary = d;
       this.chain.sync = d.sync || null;
       // The node answered: end the honest "starting" state.
-      if (this.node.starting) {
+      if (this.node.starting || this.nodeStarting()) {
         this.node.starting = false;
         this.showToast('Your node is responding');
       }
@@ -168,9 +168,11 @@ export const nodeMixin = {
     this.node.working = true;
     try {
       await this.api('/api/setup/start-node', { method: 'POST' });
-      // working only covers the POST; starting stays true until the
-      // daemon actually answers (loadChain success), so the button
-      // stays disabled instead of looking ready to re-click.
+      // Mirror the backend flag immediately: the entrypoint removes the
+      // deferred marker when it launches the daemon, so from now on
+      // daemon_deferred=false + node-not-answering means "starting" —
+      // nodeStarting() keeps reporting true across reloads until it answers.
+      this.setup.daemon_deferred = false;
       this.node.starting = true;
       this.showToast('Starting your node — this takes a few minutes');
       setTimeout(() => this.pollNow(), 3000);

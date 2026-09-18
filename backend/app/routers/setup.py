@@ -127,6 +127,12 @@ async def setup_status(request: Request):
     return {
         "wizard_done": _wizard_done(s),
         "setup_required": s.setup_mode(),
+        # True while the daemon has NOT been told to start yet (first-run
+        # deferral). After the entrypoint starts the daemon it removes the
+        # marker — so wizard_done + daemon_deferred=false + node not
+        # answering means the daemon IS booting, which the UI uses to keep
+        # "Start node" disabled instead of inviting a duplicate start.
+        "daemon_deferred": Path(s.settings.daemon_deferred_file).is_file(),
         "fresh_chain": _fresh_chain(s),
         "data_persistent": s.data_persistent(),
         "wallet": await _wallet_status(s),

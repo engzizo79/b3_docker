@@ -129,7 +129,17 @@ def settings(tmp_path: Path) -> Settings:
     s.bootstrap_cmd_file = str(tmp_path / "bootstrap.cmd")
     s.bootstrap_progress_file = str(tmp_path / "bootstrap.progress.json")
     s.wizard_marker_file = str(tmp_path / ".wizard_complete")
+    s.daemon_deferred_file = str(tmp_path / ".daemon_deferred")
+    s.start_node_cmd_file = str(tmp_path / "start-node.cmd")
     s.bootstrap_manifest_url = ""
+    # Model the real fresh-install state: the daemon is DEFERRED until the
+    # wizard completes, so the marker EXISTS. The background monitor pauses
+    # while it exists and makes no RPC calls — keeping the shared MockRPC
+    # clean. (Before this attribute existed, the monitor instead crashed
+    # with AttributeError every cycle, which accidentally had the same
+    # effect — and masked this fixture requirement.) Tests that want the
+    # daemon "started" delete the marker.
+    (tmp_path / ".daemon_deferred").touch()
     s.wallet_vault_key = ""
     s.allow_ephemeral_data = True  # tests use tmp_path (not a mount)
     return s

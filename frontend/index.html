@@ -2334,10 +2334,10 @@
 
             <div class="row gap-2 mt-4 wrap">
               <button class="btn btn-primary" type="button" x-show="nodeDown()"
-                      @click="startNode()" :disabled="node.working || node.starting">
-                <span class="spinner" x-show="node.working || node.starting"></span>
-                <svg class="i-sm" x-show="!node.working && !node.starting"><use href="#i-play"/></svg>
-                <span x-text="node.starting ? 'Node starting…' : 'Start node'">Start node</span>
+                      @click="startNode()" :disabled="node.working || nodeStarting()">
+                <span class="spinner" x-show="node.working || nodeStarting()"></span>
+                <svg class="i-sm" x-show="!node.working && !nodeStarting()"><use href="#i-play"/></svg>
+                <span x-text="nodeStarting() ? 'Node starting…' : 'Start node'">Start node</span>
               </button>
               <button class="btn btn-secondary" type="button" @click="restartNode()">
                 <svg class="i-sm"><use href="#i-power"/></svg><span>Restart node</span>

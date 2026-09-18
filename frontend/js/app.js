@@ -183,7 +183,7 @@ function initialState() {
     /* -------------------------------------------------------------- setup */
     setup: {
       checked: false, wizard_done: true, setup_required: false,
-      fresh_chain: null, data_persistent: true,
+      fresh_chain: null, data_persistent: true, daemon_deferred: null,
       wallet: { loaded: [], reachable: false },
       bootstrap: { phase: 'idle' },
       conf: null,
