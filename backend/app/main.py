@@ -77,7 +77,8 @@ def create_app(state: AppState | None = None) -> FastAPI:
         if state0 is not None and not state0.data_persistent() and request.url.path != "/api/health":
             if request.url.path.startswith("/api/"):
                 return JSONResponse(status_code=503, content={"detail": "storage not persistent", "storage_blocked": True})
-            return HTMLResponse(status_code=503, content=_STORAGE_BLOCKED_PAGE)
+            page = _STORAGE_BLOCKED_PAGE.replace("{{DATA_DIR}}", state0.settings.b3_data_dir)
+            return HTMLResponse(status_code=503, content=page)
         if state0 is not None and state0.setup_mode() and not client_is_localhost(request):
             if request.url.path.startswith("/api/"):
                 return JSONResponse(status_code=403, content={"detail": "setup required: finish first-run setup from the local machine"})

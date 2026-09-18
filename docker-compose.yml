@@ -17,6 +17,10 @@ services:
     environment:
       # Data dir inside the container; the host side of this mapping holds
       # chain state, wallet, and b3coin.conf across upgrades.
+      # IMPORTANT: the volume below MUST be mapped to THIS EXACT path.
+      # If you change B3_DATA_DIR, change the volume target to match —
+      # the persistence guard checks this path, and every state file
+      # (wallet, chain, DB, config) lives here. A mismatch = refused startup.
       B3_DATA_DIR: /data
     ports:
       # Only the UI port is published. The node RPC binds to 127.0.0.1

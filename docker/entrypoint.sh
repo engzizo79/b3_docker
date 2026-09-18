@@ -21,9 +21,9 @@ log() { echo "[entrypoint] $*"; }
 
 write_progress() {
     # Atomic-ish JSON progress for the setup wizard UI.
-    printf '%s\n' "$1" > "${B3_BOOTSTRAP_PROGRESS:-/data/bootstrap.progress.json}.tmp"
-    mv "${B3_BOOTSTRAP_PROGRESS:-/data/bootstrap.progress.json}.tmp" \
-       "${B3_BOOTSTRAP_PROGRESS:-/data/bootstrap.progress.json}"
+    PROGRESS_FILE="${B3_BOOTSTRAP_PROGRESS:-${B3_DATA_DIR}/bootstrap.progress.json}"
+    printf '%s\n' "$1" > "${PROGRESS_FILE}.tmp"
+    mv "${PROGRESS_FILE}.tmp" "${PROGRESS_FILE}"
 }
 
 progress_phase() {
@@ -404,7 +404,7 @@ while true; do
     # Bootstrap command polling: the setup wizard writes a JSON command to
     # /data/bootstrap.cmd. Runs blocking inside this loop iteration; the
     # backend stays up to serve /api/setup/bootstrap/progress.
-    BOOTSTRAP_CMD="${B3_BOOTSTRAP_CMD:-/data/bootstrap.cmd}"
+    BOOTSTRAP_CMD="${B3_BOOTSTRAP_CMD:-${B3_DATA_DIR}/bootstrap.cmd}"
     if [ -z "${BLOCKED}" ] && [ -f "${BOOTSTRAP_CMD}" ]; then
         CMD_JSON="$(cat "${BOOTSTRAP_CMD}")"
         rm -f "${BOOTSTRAP_CMD}"
@@ -413,7 +413,7 @@ while true; do
     fi
     # Recovery command polling: the monitor writes a command to
     # /data/recovery.cmd when stall_level is restart or reindex.
-    RECOVERY_CMD="${RECOVERY_CMD_FILE:-/data/recovery.cmd}"
+    RECOVERY_CMD="${RECOVERY_CMD_FILE:-${B3_DATA_DIR}/recovery.cmd}"
     if [ -z "${BLOCKED}" ] && [ -f "${RECOVERY_CMD}" ]; then
         CMD=$(cat "${RECOVERY_CMD}")
         rm -f "${RECOVERY_CMD}"

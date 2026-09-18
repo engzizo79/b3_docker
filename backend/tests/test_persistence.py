@@ -185,3 +185,71 @@ def test_routes_work_normally_when_persistent(setup_client):
     r = setup_client.get("/")
     assert r.status_code == 200
     assert 'x-data="b3app"' in r.text
+
+
+def test_guard_follows_effective_data_dir_not_literal_slash_data(tmp_path):
+    """The exact scenario the user asked about: /data is a persistent bind
+    mount, but B3_DATA_DIR points somewhere else (ephemeral). The guard
+    must check the EFFECTIVE dir, not literal /data — otherwise setup would
+    be allowed while the daemon writes to throwaway storage.
+
+    Also proves the state-path consistency fix: with a custom B3_DATA_DIR,
+    the DB / wizard marker / cmd files must default INTO that dir (not the
+    old hardcoded /data), so state never splits across two directories.
+    """
+    from app.config import Settings
+    import os
+
+    custom = tmp_path / "customdata"
+    custom.mkdir()
+
+    # Point B3_DATA_DIR at the custom dir; leave everything else default.
+    old = os.environ.get("B3_DATA_DIR")
+    os.environ["B3_DATA_DIR"] = str(custom)
+    try:
+        s = Settings()
+        # Every state path derives from the effective data dir.
+        assert str(custom) in s.db_path, s.db_path
+        assert str(custom) in s.wizard_marker_file
+        assert str(custom) in s.bootstrap_cmd_file
+        assert str(custom) in s.start_node_cmd_file
+        assert str(custom) in s.recovery_cmd_file
+        # The literal /data must not leak into any default.
+        assert s.db_path != "/data/b3hive.db"
+        assert s.wizard_marker_file != "/data/.wizard_complete"
+    finally:
+        if old is None:
+            os.environ.pop("B3_DATA_DIR", None)
+        else:
+            os.environ["B3_DATA_DIR"] = old
+
+    # And the mount check itself: a fake mountinfo where /data IS a
+    # persistent bind mount but the custom dir is overlay (ephemeral).
+    from app.deps import _mount_is_persistent
+    mi = _fake_mountinfo(tmp_path, [
+        "36 35 0:40 / / rw,rel - overlay /var/lib/docker/overlay2/abc/merged",
+        "37 36 253:1 /srv/b3 /data rw,rel - ext4 /dev/sda1",
+        "38 36 0:41 / /customdata rw,rel - overlay /var/lib/docker/overlay2/xyz/merged",
+    ])
+    # The effective dir is ephemeral -> blocked, even though /data is fine.
+    assert _mount_is_persistent(str(custom), mi) is False
+    # Literal /data is persistent in this fake world — proving the check
+    # really consulted the EFFECTIVE dir, not the literal one.
+    assert _mount_is_persistent("/data", mi) is True
+
+
+
+def test_blocked_page_shows_actual_data_dir(setup_client):
+    """The remediation page renders the effective B3_DATA_DIR, not a
+    hardcoded /data (misleading when the operator customized it)."""
+    s = setup_client.app.state.app_state.settings
+    s.allow_ephemeral_data = False
+    try:
+        r = setup_client.get("/")
+        assert r.status_code == 503
+        # The page must contain the REAL data dir the guard checked.
+        assert s.b3_data_dir in r.text
+        # And no un-templated placeholder must leak.
+        assert "{{DATA_DIR}}" not in r.text
+    finally:
+        s.allow_ephemeral_data = True

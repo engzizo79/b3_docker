@@ -37,7 +37,7 @@ fi
 
 # Bootstrap in progress: the daemon is intentionally stopped while the
 # setup wizard applies a chain bootstrap. Container stays healthy.
-PROGRESS="${B3_BOOTSTRAP_PROGRESS:-/data/bootstrap.progress.json}"
+PROGRESS="${B3_BOOTSTRAP_PROGRESS:-${B3_DATA_DIR}/bootstrap.progress.json}"
 if [ -f "${PROGRESS}" ]; then
     PHASE=$(python3 -c "import json;print(json.load(open('${PROGRESS}')).get('phase',''))" 2>/dev/null || true)
     case "${PHASE}" in

@@ -12,8 +12,13 @@ class Settings:
         self.rpc_port: int = int(os.environ.get("B3_RPC_PORT", "32647"))
         self.rpc_user: str = os.environ.get("B3_RPC_USER", "")
         self.rpc_password: str = os.environ.get("B3_RPC_PASSWORD", "")
-        # SQLite DB (user, TOTP, audit log) — lives on the persistent /data volume.
-        self.db_path: str = os.environ.get("B3_DB_PATH", "/data/b3hive.db")
+        # Data dir is the single source of truth: EVERY state path derives
+        # from it so a custom B3_DATA_DIR can never split state across two
+        # directories (which would put the DB/audit log on the image layer
+        # while the daemon writes to the persistent volume).
+        self.b3_data_dir: str = os.environ.get("B3_DATA_DIR", "/data")
+        # SQLite DB (user, TOTP, audit log) — lives on the persistent data volume.
+        self.db_path: str = os.environ.get("B3_DB_PATH", str(Path(self.b3_data_dir) / "b3hive.db"))
         self.ui_password: str = os.environ.get("UI_PASSWORD", "")
         self.session_secret: str = os.environ.get("SESSION_SECRET", "")
         self.totp_key: str = os.environ.get("TOTP_ENCRYPTION_KEY", "")
@@ -27,21 +32,22 @@ class Settings:
         self.explorer_url: str = os.environ.get("EXPLORER_URL", "https://explorer.b3hive.io")
         self.webhook_url: str = os.environ.get("WEBHOOK_URL", "")
         self.monitor_interval: int = int(os.environ.get("MONITOR_INTERVAL", "60"))
-        self.recovery_cmd_file: str = os.environ.get("RECOVERY_CMD_FILE", "/data/recovery.cmd")
+        self.recovery_cmd_file: str = os.environ.get("RECOVERY_CMD_FILE", str(Path(self.b3_data_dir) / "recovery.cmd"))
         # Cookie Secure flag: auto (default, HTTPS-aware via X-Forwarded-Proto), true, false
         self.cookie_secure: str = os.environ.get("COOKIE_SECURE", "auto")
         # Setup wizard / bootstrap
-        self.b3_data_dir: str = os.environ.get("B3_DATA_DIR", "/data")
+        # (b3_data_dir is read at the top of __init__ — every state path
+        # derives from it; see the comment there.)
         # Set by the entrypoint while the daemon is deferred (first UI run, wizard pending).
         self.daemon_deferred_file: str = os.environ.get("B3_DEFERRED_FILE", str(Path(self.b3_data_dir) / ".daemon_deferred"))
-        self.bootstrap_cmd_file: str = os.environ.get("BOOTSTRAP_CMD_FILE", "/data/bootstrap.cmd")
-        self.bootstrap_progress_file: str = os.environ.get("BOOTSTRAP_PROGRESS_FILE", "/data/bootstrap.progress.json")
+        self.bootstrap_cmd_file: str = os.environ.get("BOOTSTRAP_CMD_FILE", str(Path(self.b3_data_dir) / "bootstrap.cmd"))
+        self.bootstrap_progress_file: str = os.environ.get("BOOTSTRAP_PROGRESS_FILE", str(Path(self.b3_data_dir) / "bootstrap.progress.json"))
         # Last known explorer tip height (written by the monitor; read by the
         # chain summary for an honest sync-progress number).
-        self.explorer_tip_file: str = os.environ.get("EXPLORER_TIP_FILE", "/data/explorer_tip_height")
+        self.explorer_tip_file: str = os.environ.get("EXPLORER_TIP_FILE", str(Path(self.b3_data_dir) / "explorer_tip_height"))
         # Setup wizard: user chose sync-from-scratch -> start the node.
-        self.start_node_cmd_file: str = os.environ.get("START_NODE_CMD_FILE", "/data/start-node.cmd")
-        self.wizard_marker_file: str = os.environ.get("WIZARD_MARKER_FILE", "/data/.wizard_complete")
+        self.start_node_cmd_file: str = os.environ.get("START_NODE_CMD_FILE", str(Path(self.b3_data_dir) / "start-node.cmd"))
+        self.wizard_marker_file: str = os.environ.get("WIZARD_MARKER_FILE", str(Path(self.b3_data_dir) / ".wizard_complete"))
         self.bootstrap_manifest_url: str = os.environ.get(
             "BOOTSTRAP_MANIFEST_URL", "https://explorer.b3hive.io/bootstraps/manifest.json")
         # Vault key for the unattended-staking passphrase store (S5).
