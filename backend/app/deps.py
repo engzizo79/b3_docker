@@ -94,19 +94,75 @@ class AppState:
         return sess
 
     # -- data persistence guard ------------------------------------------
-    # If /data is not a Docker volume or bind mount (e.g. user removed the
-    # VOLUME instruction or the compose mapping), wallet actions are blocked
-    # to prevent catastrophic fund loss on container removal.
+    # A plain os.path.ismount() is NOT sufficient: the Dockerfile used to
+    # declare VOLUME ["/data"], so removing the compose mapping silently
+    # created an ANONYMOUS volume — still a mount, but one that dies with
+    # `docker compose down` (or gets orphaned on image swaps). That is
+    # exactly the fund-loss trap this guard exists for. So the mount source
+    # is inspected directly:
+    #   - not a mount at all            -> image layer          -> not persistent
+    #   - fstype overlay or tmpfs       -> image layer / RAM     -> not persistent
+    #   - /var/lib/docker/volumes/<64-hex>/_data -> anonymous vol -> not persistent
+    #   - anything else (bind mount, named volume)                -> persistent
+    # B3_ALLOW_EPHEMERAL_DATA=true is the explicit operator override for
+    # throwaway/demo deployments; the shipped image defaults it to false.
     def data_persistent(self) -> bool:
-        import os
-        return os.path.ismount(self.settings.b3_data_dir) or self.settings.allow_ephemeral_data
+        if self.settings.allow_ephemeral_data:
+            return True
+        return _mount_is_persistent(self.settings.b3_data_dir)
 
-    def require_persistent_data(self) -> None:
+    def require_persistent_data(self, action: str = "wallet actions") -> None:
         if not self.data_persistent():
             raise HTTPException(
                 status_code=403,
-                detail="data directory is not persistent — wallet actions disabled for safety"
+                detail=("data directory is not persistent — " + action
+                        + " disabled for safety")
             )
+
+
+def _mount_is_persistent(data_dir: str,
+                         mountinfo_path: str = "/proc/self/mountinfo") -> bool:
+    """True only when data_dir sits on a bind mount or a NAMED Docker
+    volume — never on the image layer, tmpfs, or an anonymous volume.
+    Pure function over mountinfo so it is unit-testable: tests pass a fake
+    mountinfo file, production reads /proc/self/mountinfo."""
+    import os
+    data_dir = os.path.abspath(data_dir)
+    best = None  # (mount_point, fstype, source) of the longest matching prefix
+    try:
+        with open(mountinfo_path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                fields = line.split()
+                if len(fields) < 4:
+                    continue
+                # mountinfo: ... "sep" source fstype ... — find the separator
+                try:
+                    sep = fields.index("-")
+                except ValueError:
+                    continue
+                mount_point = os.path.abspath(fields[4])
+                # mountinfo after the separator: FSTYPE, then SOURCE.
+                fstype = fields[sep + 1] if len(fields) > sep + 1 else ""
+                source = fields[sep + 2] if len(fields) > sep + 2 else ""
+                if data_dir == mount_point or data_dir.startswith(mount_point.rstrip("/") + "/"):
+                    if best is None or len(mount_point) > len(best[0]):
+                        best = (mount_point, fstype, source)
+    except OSError:
+        return False  # no mountinfo (non-Linux dev host): refuse to claim persistence
+    if best is None:
+        return False  # plain image-layer directory (no mount covers it)
+    _, fstype, source = best
+    if fstype in ("overlay", "tmpfs", "ramfs"):
+        return False
+    # Anonymous Docker volumes have a 64-hex directory name; named volumes
+    # and bind mounts do not. /dev/* sources are real block devices.
+    if source.startswith("/var/lib/docker/volumes/"):
+        rest = source[len("/var/lib/docker/volumes/"):]
+        vol_id = rest.split("/", 1)[0]
+        import re as _re
+        if _re.fullmatch(r"[0-9a-f]{64}", vol_id):
+            return False
+    return True
 
 
 def create_app_state(settings: Settings | None = None,

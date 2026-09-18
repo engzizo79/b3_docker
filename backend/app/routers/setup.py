@@ -173,6 +173,10 @@ async def start_bootstrap(body: BootstrapBody, request: Request):
     ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or \
          (request.client.host if request.client else "unknown")
 
+    # Fund-loss guard: never download a chain snapshot into a container
+    # that loses its data on `docker compose down`.
+    s.require_persistent_data("downloading a chain snapshot")
+
     # Guards: session/CSRF are enforced by dependency wiring; here the rails:
     if not _fresh_chain(s) and not body.wipe_chain:
         raise HTTPException(409, "chain data already exists — bootstrap would "
@@ -236,6 +240,9 @@ async def start_node(request: Request):
     to start the daemon (deferred until first wizard completion in UI mode)."""
     s = _state(request)
     s.require_csrf(request)
+    # Fund-loss guard: starting a sync (and any wallet created afterwards)
+    # on ephemeral storage can silently lose funds on container removal.
+    s.require_persistent_data("starting the node")
     cmd_file = Path(s.settings.start_node_cmd_file)
     cmd_file.parent.mkdir(parents=True, exist_ok=True)
     cmd_file.write_text("start")
@@ -250,9 +257,11 @@ async def complete_wizard(request: Request):
     if s.setup_mode():
         # No password yet: local-only window is still open.
         raise HTTPException(status_code=403, detail="set a login password before finishing setup (Security step)")
-
-    s = _state(request)
+    # Fund-loss guard (CRITICAL): finishing first-run setup and starting a
+    # sync on ephemeral storage can silently lose a wallet and its coins
+    # on container removal. The wizard must stop HERE, not at wallet time.
     s.require_csrf(request)
+    s.require_persistent_data("finishing setup")
     Path(s.settings.wizard_marker_file).parent.mkdir(parents=True, exist_ok=True)
     Path(s.settings.wizard_marker_file).write_text("done")
     db.audit(s.settings.db_path, "setup.complete", s.username,

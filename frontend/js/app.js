@@ -142,7 +142,7 @@ function initialState() {
     node: {
       info: null, peers: [], bridge: null, supply: null,
       conf: null, confForm: {}, confEditing: false,
-      busy: false, working: false,
+      busy: false, working: false, starting: false,
       logs: [], logBusy: false, logNote: '', logCount: 200, logFilter: 'all',
     },
 
@@ -198,7 +198,7 @@ function initialState() {
       wallet: { mode: null, name: '', pw: '', pw2: '', loadName: '', busy: false },
       progress: { phase: 'idle' }, progressTimer: null,
     },
-    applying: { active: false, failed: false, finished: false, tasks: [] },
+    applying: { active: false, failed: false, finished: false, allDone: false, tasks: [] },
   };
 }
 

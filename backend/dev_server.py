@@ -53,7 +53,7 @@ def main() -> None:
     s.bootstrap_progress_file = str(tmp / "bootstrap.progress.json")
     s.wizard_marker_file = str(tmp / ".wizard_complete")
     s.bootstrap_manifest_url = "https://explorer.b3hive.io/bootstraps/manifest.json"
-    s.allow_ephemeral_data = True  # dev server uses temp dir (not a mount)
+    s.allow_ephemeral_data = os.environ.get('ALLOW_EPHEMERAL_DATA', 'true').lower() == 'true'  # dev server uses temp dir (not a mount)
 
     # Dev-only sample node conf so the wizard config view has content.
     (tmp / "b3coin.conf").write_text(

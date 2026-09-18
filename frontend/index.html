@@ -109,10 +109,14 @@
       <!-- Step 1: password -->
       <form x-show="!loginStep2" @submit.prevent="login()">
         <div class="field">
-          <label for="login-pw">Password</label>
+          <label for="login-pw">Login password</label>
           <input id="login-pw" class="input" type="password" x-model="loginPw"
-                 autocomplete="current-password" placeholder="Your wallet password" autofocus>
+                 autocomplete="current-password" placeholder="Your login password" autofocus>
         </div>
+        <p class="callout callout-info mt-2" x-show="setupActive() || applying.active" style="padding:8px 12px;font-size:13px">
+          You are mid-setup. Sign in with the password you chose in the Security step
+          to continue where you left off.
+        </p>
         <p class="err mt-2" x-show="loginErr" x-text="loginErr" role="alert"></p>
         <button class="btn btn-primary btn-block mt-4" type="submit" :disabled="loginBusy || !loginPw">
           <span class="spinner" x-show="loginBusy"></span>
@@ -312,6 +316,16 @@
         </div>
 
         <div class="wiz-body">
+
+          <div class="callout callout-danger" x-show="setup.data_persistent === false" role="alert">
+            <div class="callout-title"><svg class="i-sm"><use href="#i-alert"/></svg>
+              Storage is not persistent — setup is blocked</div>
+            <p class="t-sm">This container has no data volume: your wallet and the
+              blockchain would be <strong>lost when the container is removed</strong>.
+              B3 Hive refuses to set up on throwaway storage.</p>
+            <p class="t-sm mt-2">Fix: stop the container, add a volume mapping for
+              <code>/data</code> in your compose file, then start it again.</p>
+          </div>
 
           <!-- ---- Step 1: Security ---- -->
           <div class="flow" x-show="wizard.step === 1">
@@ -719,12 +733,17 @@
         <div class="wiz-body">
           <div>
             <h2 class="flow-q" x-show="!applying.finished && !applying.failed">Getting everything ready</h2>
-            <h2 class="flow-q" x-show="applying.finished">You're ready</h2>
+            <h2 class="flow-q" x-show="applying.finished && !applying.allDone">Setup is underway</h2>
+            <h2 class="flow-q" x-show="applying.finished && applying.allDone">You're ready</h2>
             <h2 class="flow-q bad" x-show="applying.failed">Setup didn't finish</h2>
             <p class="flow-sub mt-2" x-show="!applying.finished && !applying.failed">
               This takes a few minutes. You can watch it happen.
             </p>
-            <p class="flow-sub mt-2" x-show="applying.finished">
+            <p class="flow-sub mt-2" x-show="applying.finished && !applying.allDone">
+              Everything you chose is applied. Your node is still catching up in the
+              background — you can jump in now; every screen shows its progress.
+            </p>
+            <p class="flow-sub mt-2" x-show="applying.finished && applying.allDone">
               Your wallet is open for business. Anything still downloading carries on in
               the background, and you'll see its progress on every screen.
             </p>
@@ -761,7 +780,7 @@
           <div class="flow-foot">
             <button class="btn btn-primary" type="button" x-show="applying.finished"
                     @click="enterApp()">
-              <span>Open my wallet</span>
+              <span x-text="applying.allDone ? 'Open my wallet' : 'Continue to my wallet'">Open my wallet</span>
               <svg class="i"><use href="#i-arrow-right"/></svg>
             </button>
             <button class="btn btn-secondary" type="button" x-show="applying.failed"
@@ -2315,10 +2334,10 @@
 
             <div class="row gap-2 mt-4 wrap">
               <button class="btn btn-primary" type="button" x-show="nodeDown()"
-                      @click="startNode()" :disabled="node.working">
-                <span class="spinner" x-show="node.working"></span>
-                <svg class="i-sm" x-show="!node.working"><use href="#i-play"/></svg>
-                <span>Start node</span>
+                      @click="startNode()" :disabled="node.working || node.starting">
+                <span class="spinner" x-show="node.working || node.starting"></span>
+                <svg class="i-sm" x-show="!node.working && !node.starting"><use href="#i-play"/></svg>
+                <span x-text="node.starting ? 'Node starting…' : 'Start node'">Start node</span>
               </button>
               <button class="btn btn-secondary" type="button" @click="restartNode()">
                 <svg class="i-sm"><use href="#i-power"/></svg><span>Restart node</span>

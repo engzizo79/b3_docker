@@ -103,8 +103,11 @@ class ChainMonitor:
         self._last_blocks = blocks
         self._last_ts = now
 
-        # Explorer sync-lag comparison
-        await self._check_explorer_lag(blocks)
+        # Explorer sync-lag comparison — only AFTER the initial sync has
+        # finished. During first sync the local node is behind by design,
+        # and a "sync lag" alert is guaranteed noise (user report v0.3.0).
+        if not info.get("initialblockdownload", False):
+            await self._check_explorer_lag(blocks)
 
     async def _check_explorer_lag(self, local_blocks: int) -> None:
         url = self.settings.explorer_url.rstrip("/")

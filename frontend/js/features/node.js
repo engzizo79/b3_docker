@@ -24,6 +24,11 @@ export const nodeMixin = {
       this.chain.mempool = d.mempool?.size ?? null;
       this.chain.summary = d;
       this.chain.sync = d.sync || null;
+      // The node answered: end the honest "starting" state.
+      if (this.node.starting) {
+        this.node.starting = false;
+        this.showToast('Your node is responding');
+      }
     } catch {
       // Expected while the node boots (~5 min index scan). nodeDown() reads
       // chain.blocks === null, which drives the guided "node is starting" card.
@@ -163,6 +168,10 @@ export const nodeMixin = {
     this.node.working = true;
     try {
       await this.api('/api/setup/start-node', { method: 'POST' });
+      // working only covers the POST; starting stays true until the
+      // daemon actually answers (loadChain success), so the button
+      // stays disabled instead of looking ready to re-click.
+      this.node.starting = true;
       this.showToast('Starting your node — this takes a few minutes');
       setTimeout(() => this.pollNow(), 3000);
     } catch (e) { this.reportError(e); }

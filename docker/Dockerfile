@@ -55,13 +55,17 @@ RUN chmod 755 /usr/local/bin/entrypoint.sh /usr/local/bin/healthcheck.sh
 # Node data dir (host-mapped); conf lives at /data/b3coin.conf
 # B3_APP_VERSION: baked in at build time (docker build --build-arg
 # B3_APP_VERSION=$(git describe --tags)); shown in the UI About card.
+# NOTE: no VOLUME instruction on purpose. Declaring VOLUME ["/data"] made
+# Docker silently create an ANONYMOUS volume whenever the compose mapping
+# was missing — data "persisted" until `docker compose down` wiped it.
+# The backend now inspects the mount source (app/deps.py: named bind mount
+# or named volume = persistent; overlay/tmpfs/anonymous volume = refused).
 ARG B3_APP_VERSION=dev
 ENV B3_DATA_DIR=/data \
     RUN_UI=true \
     WEB_PORT=8080 \
     ALLOW_EPHEMERAL_DATA=false \
     B3_APP_VERSION=${B3_APP_VERSION}
-VOLUME ["/data"]
 
 EXPOSE 8080
 

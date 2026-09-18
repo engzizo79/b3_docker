@@ -355,6 +355,10 @@ export const wizardMixin = {
   /* ---------------------------------------------------------- the Finish -- */
 
   async finishWizard() {
+    if (this.setup.data_persistent === false) {
+      this.showToast('Setup is blocked: the data directory is not persistent. Map a Docker volume to /data and restart the container.', 'danger');
+      return;
+    }
     // Re-validate: the user can reach Review and then go back and break things.
     if (this.setup.setup_required && !this.securityOk()) {
       this.wizard.step = 1;
@@ -380,7 +384,7 @@ export const wizardMixin = {
     tasks.push({ key: 'done', label: 'Finishing up' });
 
     this.applying = {
-      active: true, failed: false, finished: false,
+      active: true, failed: false, finished: false, allDone: false,
       tasks: tasks.map((t) => ({ ...t, state: 'pending', detail: '' })),
     };
     const mark = (key, state, detail) => {
@@ -442,14 +446,15 @@ export const wizardMixin = {
       if (this.wizard.syncChoice === 'scratch' || this.wizard.syncChoice === 'keep') {
         mark('node', 'active');
         await this.api('/api/setup/start-node', { method: 'POST' });
-        mark('node', 'done', 'It answers once it has scanned the block index.');
+        // Stays ACTIVE until the daemon actually answers; the outcome
+        // watcher flips it so the checklist never lies.
+        mark('node', 'active', 'It takes a few minutes to scan the block index.');
       }
 
       /* 3) Mark the wizard complete — this is what releases the app shell. */
       mark('done', 'active');
       await this.api('/api/setup/complete', { method: 'POST' });
       this.setup.wizard_done = true;
-      mark('done', 'done');
 
       if (this.pendingQueueCount()) {
         mark('wallets', 'active', 'They are created automatically once your node is up.');
@@ -458,12 +463,73 @@ export const wizardMixin = {
       this.applying.finished = true;
       this.startPolling();
       this.pollNow();
+      // HONEST completion: the 'done' task stays active (spinner) until the
+      // real background work finishes — node answering, queued wallets
+      // processed, snapshot applied. The user can enter the app anytime;
+      // every screen shows live progress in the sync banner.
+      this.watchSetupOutcome();
     } catch (e) {
       this.applying.failed = true;
       const active = this.applying.tasks.find((t) => t.state === 'active');
       if (active) { active.state = 'failed'; active.detail = e.message; }
       this.reportError(e);
     }
+  },
+
+  /** Poll until the node answers, queued wallets are processed and the
+   * bootstrap snapshot (if chosen) is applied — then flip 'Finishing up'
+   * to done with a truthful detail line. 30-minute safety stop; the
+   * background work continues regardless of the watcher. */
+  watchSetupOutcome() {
+    clearInterval(this._setupWatch);
+    let ticks = 0;
+    const watch = async () => {
+      ticks += 1;
+      try {
+        await this.checkSetup(); // refreshes bootstrap phase + wallet queue
+      } catch { /* best-effort */ }
+      const phase = this.bootstrapPhase();
+      const nodeUp = !this.nodeDown(); // strict: the daemon must answer
+      const queueLeft = this.pendingQueueCount();
+      const bootActive = this.bootstrapActive();
+      // Flip the 'node' task only once the daemon actually responds.
+      const tn = this.applying.tasks.find((x) => x.key === 'node');
+      if (tn && tn.state === 'active' && nodeUp) {
+        tn.state = 'done';
+        tn.label = 'Node started';
+        tn.detail = 'It answered and is now syncing.';
+      }
+      // Flip the bootstrap task if its progress polling already stopped.
+      const tb = this.applying.tasks.find((x) => x.key === 'bootstrap');
+      if (tb && tb.state === 'active' && phase === 'done') {
+        tb.state = 'done';
+        tb.label = 'Chain snapshot applied';
+      }
+      const t = this.applying.tasks.find((x) => x.key === 'done');
+      if (t && t.state === 'active') {
+        if (!nodeUp) {
+          t.detail = 'Waiting for your node to answer - this can take a few minutes.';
+        } else if (bootActive) {
+          t.detail = 'Still applying the chain snapshot in the background.';
+        } else if (queueLeft > 0) {
+          t.detail = queueLeft === 1
+            ? 'Setting up 1 wallet that is still waiting for the node.'
+            : 'Setting up ' + queueLeft + ' wallets that are still waiting for the node.';
+        } else {
+          t.state = 'done';
+          t.detail = 'Everything is set up and running.';
+          this.applying.allDone = true;
+          clearInterval(this._setupWatch);
+          this.showToast('Setup finished - your node is up to speed.');
+          return;
+        }
+      }
+      if (ticks > 900) { // 30 min at 2s; work continues regardless
+        clearInterval(this._setupWatch);
+      }
+    };
+    watch();
+    this._setupWatch = setInterval(watch, 2000);
   },
 
   /** Progress polling for the bootstrap download. */
