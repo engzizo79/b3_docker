@@ -1,0 +1,216 @@
+/* B3 Hive — the few genuinely view-specific rules. Everything reusable lives
+   in components.css; this file stays small on purpose. */
+
+/* ============================================================ Login ====== */
+
+.auth-wrap {
+  min-height: 100dvh;
+  display: grid; place-items: center;
+  padding: var(--space-4);
+}
+.auth-card { width: 100%; max-width: 380px; }
+.auth-mark { display: grid; place-items: center; gap: var(--space-2); margin-bottom: var(--space-5); }
+.auth-mark .mark-title { font-size: var(--text-lg); font-weight: 700; color: var(--accent-text); }
+.auth-mark .mark-sub { font-size: var(--text-sm); color: var(--text-muted); }
+
+/* ======================================================= Balance hero ==== */
+
+.hero {
+  display: flex; flex-direction: column; gap: var(--space-4);
+  padding: var(--space-5) var(--space-4);
+}
+.hero-figure { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.hero-actions { display: flex; gap: var(--space-2); }
+.hero-actions .btn { flex: 1; }
+.hero-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+@media (min-width: 640px) {
+  .hero { flex-direction: row; align-items: center; justify-content: space-between; padding: var(--space-5); }
+  .hero-actions { flex: none; }
+  .hero-actions .btn { flex: none; min-width: 124px; }
+}
+
+/* ======================================================= Next step ======= */
+/* The guidance engine's card. When there is nothing to do it collapses to a
+   single line, so a healthy wallet shows no dead whitespace. */
+
+.nextstep {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-4);
+}
+.nextstep .ns-icon {
+  width: 36px; height: 36px; flex: none;
+  display: grid; place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle); color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.nextstep .ns-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.nextstep .ns-title { font-size: var(--text-md); font-weight: 650; }
+.nextstep .ns-text { color: var(--text-muted); }
+.nextstep .ns-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-1); }
+
+.nextstep[data-level="danger"]  { background: var(--danger-bg);  border-color: var(--danger-border); }
+.nextstep[data-level="danger"]  .ns-icon { background: var(--danger); color: var(--danger-on); border-color: var(--danger); }
+.nextstep[data-level="warning"] { background: var(--warning-bg); border-color: var(--warning-border); }
+.nextstep[data-level="warning"] .ns-icon { background: var(--warning); color: var(--warning-on); border-color: var(--warning); }
+.nextstep[data-level="accent"]  { background: var(--accent-bg);  border-color: var(--accent-border); }
+.nextstep[data-level="accent"]  .ns-icon { background: var(--accent); color: var(--accent-on); border-color: var(--accent); }
+.nextstep[data-level="info"]    { background: var(--info-bg);    border-color: var(--info-border); }
+.nextstep[data-level="info"]    .ns-icon { background: var(--info); color: var(--info-on); border-color: var(--info); }
+
+/* The calm state: one line, 44px tall, no card padding. */
+.nextstep--calm {
+  align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--success-bg); border-color: var(--success-border);
+  color: var(--success); font-size: var(--text-sm); font-weight: 600;
+}
+.nextstep--calm .i { flex: none; }
+
+/* Sync progress inside the next-step card. */
+.ns-progress { display: flex; flex-direction: column; gap: var(--space-2); }
+.ns-progress .ns-nums {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  font-variant-numeric: tabular-nums; color: var(--text);
+}
+.ns-progress .ns-nums .pct { font-size: var(--text-lg); font-weight: 700; }
+
+/* ======================================================= Health strip ==== */
+/* Deliberately small: reassurance, not a dashboard. */
+
+.health {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+  padding: var(--space-2);
+}
+.health-cell {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+.health-cell .hk {
+  display: flex; align-items: center; gap: var(--space-1-5);
+  font-size: var(--text-xs); color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: var(--tracking-label); font-weight: 650;
+}
+.health-cell .hv { font-size: var(--text-base); font-weight: 650; font-variant-numeric: tabular-nums; }
+@media (min-width: 560px) { .health { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* ======================================================= Activity ======== */
+
+.act-group-head {
+  padding: var(--space-3) var(--space-4) var(--space-1);
+  font-size: var(--text-xs); font-weight: 650;
+  text-transform: uppercase; letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+  background: var(--bg-card);
+}
+
+/* ======================================================= Receive ========= */
+
+.receive-addr {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
+  padding: var(--space-4);
+}
+.receive-addr .addr-text {
+  font-family: var(--font-mono); font-size: var(--text-base);
+  text-align: center; word-break: break-all; line-height: 1.5;
+  max-width: 320px;
+}
+
+/* ======================================================= Staking ========= */
+
+.stake-row .stake-out { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); }
+
+/* Weight bar: this wallet's share of total network stake weight. */
+.weight-bar {
+  position: relative; height: 10px;
+  background: var(--bg-input); border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.weight-bar .mine { height: 100%; background: var(--accent); border-radius: inherit; }
+
+/* ======================================================= Assets / FN ===== */
+
+.fn-cost {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.fn-tier {
+  display: flex; gap: var(--space-2); flex-wrap: wrap;
+}
+.fn-tier .tier {
+  flex: 1; min-width: 108px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+}
+.fn-tier .tier.now {
+  border-color: var(--accent); background: var(--accent-bg); color: var(--accent-text);
+}
+.fn-tier .tier .tk { font-size: var(--text-xs); text-transform: uppercase;
+  letter-spacing: var(--tracking-label); font-weight: 650; opacity: 0.85; }
+.fn-tier .tier .tv { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.asset-logo {
+  width: 36px; height: 36px; flex: none;
+  display: grid; place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg); color: var(--accent-text);
+  border: 1px solid var(--accent-border);
+  font-weight: 700; font-size: var(--text-sm);
+}
+
+/* ======================================================= More sheet ====== */
+
+.more-group + .more-group { margin-top: var(--space-4); }
+.more-group-head {
+  padding: 0 var(--space-1) var(--space-2);
+  font-size: var(--text-xs); font-weight: 650;
+  text-transform: uppercase; letter-spacing: var(--tracking-label);
+  color: var(--text-muted);
+}
+.more-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; min-height: var(--min-target);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--text); text-align: left; font-weight: 550;
+}
+.more-item:hover { background: var(--bg-subtle); }
+.more-item[aria-current="page"] { background: var(--accent-bg); color: var(--accent-text); }
+.more-item .i { color: var(--text-muted); flex: none; }
+.more-item[aria-current="page"] .i { color: var(--accent-text); }
+
+/* ======================================================= Logs ============ */
+
+.logline { display: block; }
+.logline.warn { color: var(--warning); }
+.logline.err  { color: var(--danger); }
+
+/* ======================================================= Wizard ========== */
+
+.wiz { min-height: 100dvh; display: flex; flex-direction: column; }
+.wiz-head {
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  padding-top: max(var(--space-4), env(safe-area-inset-top, 0px));
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+.wiz-head .wiz-brand {
+  display: flex; align-items: center; gap: var(--space-2);
+  color: var(--accent-text); font-weight: 700; margin-bottom: var(--space-3);
+}
+.wiz-body {
+  flex: 1; width: 100%; max-width: var(--w-flow);
+  margin-inline: auto;
+  padding: var(--space-5) var(--space-4);
+  display: flex; flex-direction: column; gap: var(--space-4);
+}
+@media (max-height: 480px) {
+  .wiz-head { padding-block: var(--space-2); }
+  .wiz-head .wiz-brand { margin-bottom: var(--space-2); }
+  .wiz-body { padding-block: var(--space-3); gap: var(--space-3); }
+}
