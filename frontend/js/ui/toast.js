@@ -19,6 +19,10 @@ export const toastMixin = {
   /** showToast(message) | showToast(message, 'danger') */
   showToast(message, type = 'success', opts = {}) {
     if (!message) return;
+    // Dedup: an identical toast still on screen must not stack on top of
+    // itself (regression: repeated Start-node clicks piled up duplicates).
+    const kind = ICONS[type] ? type : 'info';
+    if (this.toasts.some((t) => t.message === String(message) && t.type === kind)) return;
     const id = ++seq;
     const toast = {
       id,

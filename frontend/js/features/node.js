@@ -165,6 +165,7 @@ export const nodeMixin = {
   },
 
   async startNode() {
+    if (this.node.working || this.nodeStarting()) return; // idempotent: never queue a second start
     this.node.working = true;
     try {
       await this.api('/api/setup/start-node', { method: 'POST' });

@@ -249,6 +249,20 @@ async def start_node(request: Request):
     # Fund-loss guard: starting a sync (and any wallet created afterwards)
     # on ephemeral storage can silently lose funds on container removal.
     s.require_persistent_data("starting the node")
+    # Dedup: if the daemon was already told to start (entrypoint removed the
+    # deferred marker when it launched it) and setup is complete, a second
+    # command would be a duplicate — the UI must never offer it, and the API
+    # never accepts it. Plain language only; no internal file names leak.
+    wizard_done = Path(s.settings.wizard_marker_file).is_file()
+    deferred = Path(s.settings.daemon_deferred_file).is_file()
+    if wizard_done and not deferred:
+        db.audit(s.settings.db_path, "setup.start_node_rejected", s.username,
+                 detail=f"ip={request.client.host if request.client else 'unknown'}")
+        raise HTTPException(
+            status_code=409,
+            detail="Your node is already starting or running. Give it a few minutes "
+                   "to scan its block index, or check the node view.",
+        )
     cmd_file = Path(s.settings.start_node_cmd_file)
     cmd_file.parent.mkdir(parents=True, exist_ok=True)
     cmd_file.write_text("start")

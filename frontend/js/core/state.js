@@ -196,7 +196,23 @@ export const stateMixin = {
       };
     }
 
-    /* 2. Node not answering — nothing else can work. */
+    /* 2. Node already told to start — honest progress, no Start action:
+       on a container restart (or right after the wizard's Finish) the
+       daemon legitimately takes ~5 minutes to boot; offering Start here
+       invited repeated clicks that stacked duplicate toasts (regression). */
+    if (this.nodeStarting() && !this.bootstrapActive()) {
+      return {
+        level: 'info', icon: 'server', title: 'Your node is starting',
+        text: 'It takes a few minutes while the node scans its block index. '
+            + 'Balances and actions unlock as soon as it answers.',
+        actions: [
+          { label: 'Open node view', icon: 'server', go: 'node' },
+        ],
+      };
+    }
+
+    /* 3. Node genuinely never started — the only state where offering
+       Start is correct (fresh deferred install / wizard skipped it). */
     if (this.nodeDown() && !this.bootstrapActive()) {
       return {
         level: 'warning', icon: 'server', title: 'Your node isn’t running',

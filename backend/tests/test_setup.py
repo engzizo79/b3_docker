@@ -370,3 +370,42 @@ def test_setup_status_reports_daemon_deferred(setup_client):
     marker.unlink()
     r = setup_client.get("/api/setup/status")
     assert r.json()["daemon_deferred"] is False
+
+
+def test_start_node_fresh_install_writes_cmd(setup_client):
+    """Fresh install (daemon deferred, wizard not complete): starting is
+    legitimate — the command file is written exactly once."""
+    s = setup_client.app.state.app_state.settings
+    conf = Path(s.b3_data_dir)
+    deferred = Path(s.daemon_deferred_file)
+    marker = Path(s.wizard_marker_file)
+    deferred.parent.mkdir(parents=True, exist_ok=True)
+    deferred.touch()
+    marker.unlink(missing_ok=True)
+    _login(setup_client)
+    r = setup_client.post("/api/setup/start-node", headers=_csrf(setup_client))
+    assert r.status_code == 200
+    assert Path(s.start_node_cmd_file).read_text().strip() == "start"
+    # cleanup for other tests sharing the tmp settings
+    Path(s.start_node_cmd_file).unlink(missing_ok=True)
+    deferred.touch()
+
+
+def test_start_node_rejected_when_already_starting(setup_client):
+    """Regression (v0.3.4): container restart with setup complete — the
+    entrypoint already launched the daemon (deferred marker removed), so a
+    second start command must be refused in plain language, and no command
+    file may be written (the UI used to invite repeated clicks)."""
+    s = setup_client.app.state.app_state.settings
+    deferred = Path(s.daemon_deferred_file)
+    marker = Path(s.wizard_marker_file)
+    deferred.parent.mkdir(parents=True, exist_ok=True)
+    deferred.unlink(missing_ok=True)
+    marker.touch()
+    _login(setup_client)
+    r = setup_client.post("/api/setup/start-node", headers=_csrf(setup_client))
+    assert r.status_code == 409
+    assert "already starting" in r.json()["detail"]
+    assert not Path(s.start_node_cmd_file).exists()
+    marker.unlink(missing_ok=True)
+    deferred.touch()
