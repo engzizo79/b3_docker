@@ -131,7 +131,7 @@ export const routerMixin = {
       case 'activity':   this.loadHistory(); break;
       case 'assets':     this.loadAssets(); break;
       case 'wallet':     this.loadWalletManage(); break;
-      case 'staking':    this.loadStaking(); break;
+      case 'staking':    this.loadStaking(); this.loadValidator(); break;
       case 'automation': this.loadStakingSettings(); this.loadConsolidation(); break;
       case 'tools':      this.loadRecipes(); break;
       case 'node':       this.loadSystemInfo(); this.loadNodeExtras(); break;

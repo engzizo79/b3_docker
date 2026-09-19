@@ -372,3 +372,125 @@ async def consolidation_execute(body: dict, request: Request):
     if not result.get("ok"):
         raise HTTPException(status_code=422, detail=result.get("error", "execute failed"))
     return result
+
+
+# ---------------------------------------------------------------------------
+# Validator pipeline (Modern PoS V1). Block production needs THREE things:
+#   1. STAKE weight   - createstake locks coins into a STAKE output
+#   2. eligibility    - bindfinalitykey registers the BLS FINALITY_KEY
+#                      binding (revokefinalitykey removes block eligibility)
+#   3. the staking loop - startstaking (this was ALL the old start button did)
+# GET /validator exposes the honest per-step state so the UI can guide the
+# user through whatever is missing next instead of silently doing nothing.
+# ---------------------------------------------------------------------------
+
+def _dec0(value) -> Decimal:
+ try:
+  return Decimal(str(value))
+ except Exception:
+  return Decimal(0)
+
+
+@router.get("/validator")
+async def validator_status(request: Request):
+ """Readiness for block production: stake weight, finality-key binding
+ and the staking loop - each reported so the UI can name the exact
+ next step. Read-only (session + 2FA)."""
+ state = _state(request)
+ state.require_2fa(request)
+ info = await state.rpc.call_optional("getstakinginfo") or {}
+ fin = await state.rpc.call_optional("getfinalityinfo") or {}
+ loop = info.get("staking") or {}
+ binding = fin.get("binding") or {}
+ staked = (_dec0(info.get("active")) + _dec0(info.get("pending"))
+           + _dec0(info.get("unconfirmed")))
+ bound = bool(binding.get("bound")) and not bool(binding.get("revoked"))
+ running = bool(loop.get("running"))
+ missing = []
+ if staked <= 0:
+  missing.append("stake")
+ if not bound:
+  missing.append("bind")
+ if not running:
+  missing.append("start")
+ return {
+  "staked": format(staked, ".9f"),
+  "min_stake": info.get("min_stake_amount"),
+  "bound": bound,
+  "revoked": bool(binding.get("revoked")),
+  "member": bool((fin.get("validator_set") or {}).get("member")),
+  "running": running,
+  "blocks_produced": loop.get("blocks_produced"),
+  "ready": not missing,
+  "missing": missing,
+ }
+
+
+@router.post("/stake")
+async def create_stake(body: dict, request: Request):
+ """Lock coins into a STAKE output (step 1 of staking). Wallet-affecting:
+ session + 2FA + CSRF + unlocked wallet, amount validated as exact 9dp,
+ then audit-logged."""
+ state = _state(request)
+ sess = state.require_wallet_unlocked(request)
+ state.require_persistent_data("staking")
+ body = body or {}
+ amount = _amount_or_400(body.get("amount"), "amount")
+ if amount <= 0:
+  raise HTTPException(status_code=400, detail="amount must be positive")
+ try:
+  result = await state.rpc.call("createstake", format(amount, ".9f"))
+ except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
+  raise _plain_stake_error(exc)
+ db.audit(state.settings.db_path, "staking_createstake", sess.username,
+          detail="amount=" + format(amount, ".9f"))
+ return {"ok": True, "stake": result}
+
+
+@router.post("/finality/bind")
+async def finality_bind(request: Request):
+ """Bind this wallet's BLS finality key (step 2 of staking). The key is
+ derived by the wallet itself; there is nothing to type. Takes effect at
+ the next epoch snapshot boundary."""
+ state = _state(request)
+ sess = state.require_wallet_unlocked(request)
+ state.require_persistent_data("staking")
+ try:
+  result = await state.rpc.call("bindfinalitykey")
+ except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
+  raise _plain_stake_error(exc)
+ db.audit(state.settings.db_path, "staking_bind_finality", sess.username)
+ return {"ok": True, "result": result}
+
+
+@router.post("/finality/revoke")
+async def finality_revoke(body: dict, request: Request):
+ """Revoke the finality key binding - the developer-documented procedure
+ for operators LEAVING the validator set (going offline long-term). Not a
+ recovery step: revocation removes block eligibility once the committee
+ handover completes. It does NOT unstake coins and does not erase earlier
+ signatures. Requires an explicit risk acknowledgement."""
+ state = _state(request)
+ sess = state.require_wallet_unlocked(request)
+ state.require_persistent_data("staking")
+ body = body or {}
+ if not body.get("ack"):
+  raise HTTPException(status_code=400, detail="risk acknowledgement required")
+ try:
+  result = await state.rpc.call("revokefinalitykey")
+ except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
+  raise _plain_stake_error(exc)
+ db.audit(state.settings.db_path, "staking_revoke_finality", sess.username)
+ return {"ok": True, "result": result}
+
+
+def _plain_stake_error(exc) -> HTTPException:
+ """No RPC method names or stack traces in browser-facing errors."""
+ if isinstance(exc, RPCError):
+  msg = str(exc.message or "").strip()
+  # Node messages are already operator-facing sentences; cap length and
+  # strip any method-name fragment just in case.
+  if "rpc" in msg.lower() and ":" in msg:
+   msg = msg.split(":", 1)[1].strip()
+  return HTTPException(status_code=422, detail=(msg[:200] or "the node rejected this action"))
+ return HTTPException(status_code=503, detail="node unavailable")

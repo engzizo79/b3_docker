@@ -104,7 +104,17 @@ export const stateMixin = {
 
   synced() {
     const s = this.chain.sync;
-    return !!s && s.behind != null && s.behind === 0;
+    if (!s) return false;
+    if (s.percent != null) {
+      // Honest but tolerant: the cached explorer tip legitimately runs a
+      // few blocks ahead of the node tip on this ~1-minute chain, and
+      // percent rounds to 100.0 near the tip. A node within a short
+      // transient lag counts as synced; a real catch-up does not.
+      return s.percent >= 100 && (s.behind == null || s.behind <= 10);
+    }
+    // No explorer tip on record: fall back to the node's own headers.
+    const h = this.chain.headers;
+    return h != null && this.chain.blocks != null && this.chain.blocks >= h - 2;
   },
 
   /** Rough catch-up estimate. B3 targets ~1-minute blocks. */
@@ -452,7 +462,14 @@ export const stateMixin = {
   },
 
   /** Pending/immature coins need explaining, not just a number. */
-  balanceChips() {
+  /** Trusted spendable balance as a plain number (excludes staked, pending and immature coins). */
+ spendableAmount() {
+  const b = Number(this.wallet.balance);
+  return Number.isFinite(b) ? b : 0;
+ },
+
+ /** Pending/immature coins need explaining, not just a number. */
+ balanceChips() {
     const chips = [];
     if (isPositiveAmount(this.wallet.pending)) {
       chips.push({

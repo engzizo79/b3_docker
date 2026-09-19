@@ -263,3 +263,127 @@ def test_unstake_mempool_reject_blocks_broadcast(client, mock_rpc, settings):
                     headers=out["headers"])
     assert r.status_code == 422
     assert not mock_rpc.called("sendrawtransaction")
+
+
+# --- validator pipeline (createstake / finality key / readiness) -------------
+
+def test_validator_status_reports_missing_steps(client: TestClient, mock_rpc: MockRPC):
+    out = login(client)
+    mock_rpc.responses["getstakinginfo"] = {
+        "staking": {"available": True, "running": False, "state": "idle"},
+        "stakes": [], "active": "0.000000000", "pending": "0.000000000",
+        "unconfirmed": "0.000000000", "min_stake_amount": "100.000000000",
+    }
+    mock_rpc.responses["getfinalityinfo"] = {
+        "binding": {"bound": False, "revoked": False}, "validator_set": {"member": False},
+    }
+    r = client.get("/api/staking/validator", headers=out["headers"])
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["ready"] is False
+    assert d["missing"] == ["stake", "bind", "start"]
+    assert d["min_stake"] == "100.000000000"
+
+
+def test_validator_status_ready(client: TestClient, mock_rpc: MockRPC):
+    out = login(client)
+    mock_rpc.responses["getstakinginfo"] = {
+        "staking": {"available": True, "running": True, "state": "staking", "blocks_produced": 2},
+        "stakes": [], "active": "1000.000000000", "pending": "0", "unconfirmed": "0",
+    }
+    mock_rpc.responses["getfinalityinfo"] = {
+        "binding": {"bound": True, "revoked": False, "seq": 0},
+        "validator_set": {"member": True, "weight": 1000},
+    }
+    r = client.get("/api/staking/validator", headers=out["headers"])
+    assert r.status_code == 200
+    d = r.json()
+    assert d["ready"] is True and d["missing"] == []
+    assert d["running"] is True and d["member"] is True
+
+
+def test_create_stake_calls_createstake_and_audits(client: TestClient, mock_rpc: MockRPC):
+    out = login(client)
+    unlock(client, out["headers"])
+    r = client.post("/api/staking/stake", json={"amount": "250.5"},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert mock_rpc.called("createstake")
+    assert mock_rpc.calls[-1][1] == ("250.500000000",)
+    assert r.json()["stake"]["status"] == "UNCONFIRMED"
+
+
+def test_create_stake_rejects_bad_amount(client: TestClient, mock_rpc: MockRPC):
+    out = login(client)
+    unlock(client, out["headers"])
+    r = client.post("/api/staking/stake", json={"amount": "-1"},
+                    headers=out["headers"])
+    assert r.status_code == 400
+    r = client.post("/api/staking/stake", json={"amount": "0.1234567891"},
+                    headers=out["headers"])
+    assert r.status_code == 400
+
+
+def test_create_stake_requires_unlocked_wallet(client: TestClient):
+    out = login(client)
+    r = client.post("/api/staking/stake", json={"amount": "250.5"},
+                    headers=out["headers"])
+    assert r.status_code == 423
+
+
+def test_finality_bind_calls_bindfinalitykey(client: TestClient, mock_rpc: MockRPC):
+    out = login(client)
+    unlock(client, out["headers"])
+    mock_rpc.responses["bindfinalitykey"] = {
+        "txid": "ff" * 32, "action": "bind", "status": "UNCONFIRMED", "seq": 0}
+    r = client.post("/api/staking/finality/bind", headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert mock_rpc.called("bindfinalitykey")
+    assert r.json()["result"]["action"] == "bind"
+
+
+def test_finality_revoke_needs_ack(client: TestClient, mock_rpc: MockRPC):
+    out = login(client)
+    unlock(client, out["headers"])
+    r = client.post("/api/staking/finality/revoke", json={}, headers=out["headers"])
+    assert r.status_code == 400  # risk acknowledgement required
+    mock_rpc.responses["revokefinalitykey"] = {
+        "txid": "ee" * 32, "action": "revoke", "status": "UNCONFIRMED"}
+    r = client.post("/api/staking/finality/revoke", json={"ack": True},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert mock_rpc.called("revokefinalitykey")
+
+
+def test_finality_revoke_requires_unlocked_wallet(client: TestClient):
+    out = login(client)
+    r = client.post("/api/staking/finality/revoke", json={"ack": True},
+                    headers=out["headers"])
+    assert r.status_code == 423
+
+
+def test_reconcile_binds_when_unbound(client, mock_rpc, settings):
+    # No FINALITY_KEY binding -> reconcile must bind before it can earn.
+    vault = _enable(settings)
+    mock_rpc.responses["listwallets"] = ["wallet"]
+    mock_rpc.responses["getfinalityinfo"] = {"binding": {"bound": False, "revoked": False}}
+    mock_rpc.responses["bindfinalitykey"] = {"txid": "ab" * 32, "action": "bind"}
+    result = asyncio.run(reconcile(settings, mock_rpc, vault))
+    assert result["ran"] is True
+    assert result.get("bound") is True
+    assert mock_rpc.called("bindfinalitykey")
+    # Relock still the last wallet-state call in the window.
+    wallet_calls = [m for m, _ in mock_rpc.calls
+                   if m in ("walletpassphrase", "walletlock")]
+    assert wallet_calls[-1] == "walletlock"
+
+
+def test_reconcile_skips_bind_when_already_bound(client, mock_rpc, settings):
+    vault = _enable(settings)
+    mock_rpc.responses["listwallets"] = ["wallet"]
+    mock_rpc.responses["getfinalityinfo"] = {
+        "binding": {"bound": True, "revoked": False, "seq": 0}}
+    result = asyncio.run(reconcile(settings, mock_rpc, vault))
+    assert result["ran"] is True
+    assert "bound" not in result  # nothing new to do
+    assert not mock_rpc.called("bindfinalitykey")

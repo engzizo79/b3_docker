@@ -77,16 +77,174 @@ export const stakingMixin = {
 
   /* ------------------------------------------------------- start and stop */
 
+  /* ------------------------------------------- guided start (the pipeline) */
+
+  /* Earning blocks needs THREE things, in order (verified against the
+     node source): (1) locked STAKE weight (createstake), (2) an on-chain
+     finality key binding (bindfinalitykey) - without it the validator is
+     NOT block-eligible, (3) the running staking loop (startstaking).
+     The old button did only (3) and silently earned nothing. */
   async startStaking() {
     const blocker = this.stakingBlocker();
     if (blocker) { this.showToast(blocker, 'warning'); return; }
     this.staking.working = true;
     try {
-      await this.api('/api/wallet/staking/start', { method: 'POST' });
-      await this.loadStakingSnapshot();
-      this.showToast('Staking started — your coins are now working');
+      await this.loadValidator();
+      const v = this.staking.validator;
+      if (v && v.missing && v.missing.length) {
+        this.openStartFlow();
+      } else {
+        await this.api('/api/wallet/staking/start', { method: 'POST' });
+        await this.loadStakingSnapshot();
+        this.showToast('Staking started — your coins are now working');
+      }
     } catch (e) { this.reportError(e); }
     this.staking.working = false;
+  },
+
+  async loadValidator() {
+    try {
+      this.staking.validator = await this.api('/api/staking/validator');
+    } catch { this.staking.validator = null; }
+  },
+
+  openStartFlow() {
+    const v = this.staking.validator || {};
+    const min = v.min_stake ? Number(v.min_stake) : null;
+    const spendable = Number(this.spendableAmount()) || 0;
+    // Suggest: everything spendable if the whole balance can stake, else the
+    // network minimum. Never suggest more than the user has.
+    let suggest = spendable > 0 ? spendable : (min || 0);
+    if (min && suggest < min) suggest = min;
+    this.startFlow = {
+      show: true, amount: String(suggest), err: '', busy: false,
+    };
+    this.$nextTick(() => document.getElementById('startflow-amount')?.focus());
+  },
+
+  startFlowAmountCheck() {
+    const v = this.staking.validator || {};
+    const min = v.min_stake ? Number(v.min_stake) : null;
+    const amt = Number(this.startFlow.amount);
+    if (!this.startFlow.amount || !Number.isFinite(amt) || amt <= 0) {
+      return { ok: false, msg: 'Enter an amount to lock' };
+    }
+    if (min && amt < min) {
+      return { ok: false, msg: 'The network minimum stake is ' + min + ' B3' };
+    }
+    const spendable = Number(this.spendableAmount());
+    if (Number.isFinite(spendable) && amt > spendable) {
+      return { ok: false, msg: 'You only have ' + this.fmtAmount(this.spendableAmount(), { unit: true }) + ' available' };
+    }
+    return { ok: true, msg: '' };
+  },
+
+  startFlowAmountValid() { return this.startFlowAmountCheck().ok; },
+
+  /** Performs the NEXT missing pipeline step. Called by the modal's
+      primary button; re-checks /validator after each step so the
+      checklist stays honest even if a step failed silently. */
+  async runStartFlowStep() {
+    const f = this.startFlow;
+    if (!f || f.busy) return;
+    await this.loadValidator();
+    const v = this.staking.validator;
+    if (!v) { f.err = 'Could not read staking status. Try again.'; return; }
+    if (!v.missing || !v.missing.length) {
+      f.show = false;
+      this.showToast('Staking is fully set up');
+      await this.loadStakingSnapshot();
+      return;
+    }
+    const step = v.missing[0];
+    f.busy = true; f.err = '';
+    try {
+      if (step === 'stake') {
+        const c = this.startFlowAmountCheck();
+        if (!c.ok) { f.err = c.msg; f.busy = false; return; }
+        await this.api('/api/staking/stake', {
+          method: 'POST', body: JSON.stringify({ amount: this.startFlow.amount }) });
+        this.showToast('Coins locked — the stake is on its way to active');
+      } else if (step === 'bind') {
+        await this.api('/api/staking/finality/bind', { method: 'POST' });
+        this.showToast('Finality key bound — you are now block-eligible');
+      } else { // start
+        await this.api('/api/wallet/staking/start', { method: 'POST' });
+        this.showToast('Staking loop started');
+      }
+      await this.loadValidator();
+      const nv = this.staking.validator;
+      if (nv && (!nv.missing || !nv.missing.length)) {
+        f.show = false;
+        this.showToast('Staking is fully set up — you are earning', 'success');
+      }
+    } catch (e) { f.err = (e && e.message) || 'That step failed. Try again.'; }
+    f.busy = false;
+    await this.loadStakingSnapshot();
+  },
+
+  /* Checklist helpers for the start-flow modal. */
+  startFlowStepDone(step) {
+    const v = this.staking.validator;
+    if (!v || !v.missing) return false;
+    return !v.missing.includes(step);
+  },
+
+  startFlowStepLabel(step) {
+    if (this.startFlowStepDone(step)) return 'Done';
+    if (step === 'stake') return 'Locks coins as stake weight';
+    if (step === 'bind') return 'Makes you block-eligible';
+    return 'Runs the block production';
+  },
+
+  startFlowNextLabel() {
+    const v = this.staking.validator;
+    if (!v || !v.missing || !v.missing.length) return 'Done';
+    const step = v.missing[0];
+    if (step === 'stake') return 'Lock ' + (this.startFlow.amount || '') + ' B3';
+    if (step === 'bind') return 'Register finality key';
+    return 'Turn on staking';
+  },
+
+  /* ------------------------------------------- leaving the validator set */
+
+  /* The developer-documented procedure for operators going offline
+     long-term: revokefinalitykey. NEVER automatic, needs an explicit
+     acknowledgement, and is not a recovery step. */
+  revokeFinality() {
+    this.confirm({
+      title: 'Revoke your finality key?',
+      body: 'This is only for leaving the validator set and going offline for a '
+      + 'long time. It broadcasts a revocation that removes your eligibility to '
+      + 'produce staking blocks once the updated committee takes effect. It is '
+      + 'not a recovery step. It does NOT unstake your coins and does not erase '
+      + 'earlier signatures. Keep some spendable B3 for the transaction fee. If '
+      + 'you are still signing, keep running until your validator has left the '
+      + 'active committee.',
+      detail: [
+        { key: 'What happens', value: 'You stop being block-eligible' },
+        { key: 'Your staked coins', value: 'Stay locked — unstake separately anytime' },
+        { key: 'Takes effect', value: 'At the next epoch boundary' },
+        { key: 'Reversible', value: 'Only by binding a new key later' },
+      ],
+      confirmLabel: 'I understand — revoke',
+      danger: true,
+      run: async () => {
+        this.staking.working = true;
+        try {
+          const r = await this.api('/api/staking/finality/revoke', {
+            method: 'POST', body: JSON.stringify({ ack: true }) });
+          this.showToast('Revocation submitted — confirm it on the Staking page');
+          await this.loadValidator();
+          await this.loadStakingSnapshot();
+        } catch (e) { this.reportError(e); }
+        this.staking.working = false;
+      },
+    });
+  },
+
+  closeStartFlow() {
+    this.startFlow = { show: false, amount: '', err: '', busy: false };
   },
 
   stopStaking() {

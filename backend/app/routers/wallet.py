@@ -94,7 +94,10 @@ async def unlock_wallet(body: dict, request: Request):
     except RPCError as exc:
         db.audit(state.settings.db_path, "wallet_unlock", sess.username, ip, success=False)
         # Wrong passphrase -> uniform message (no node error passthrough).
-        raise HTTPException(status_code=401, detail="wrong passphrase")
+        # 403 (not 401): the session is valid; the passphrase is simply
+        # wrong. 401 means "sign in again" to the frontend, which logged
+        # users out over a typo.
+        raise HTTPException(status_code=403, detail="wrong passphrase")
     except (RPCNotAllowed, RPCUnavailable) as exc:
         raise _translate(exc)
 

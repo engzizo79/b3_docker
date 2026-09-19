@@ -54,6 +54,10 @@ class MockRPC:
  ],
 			"startstaking": None,
 			"stopstaking": None,
+			"getfinalityinfo": {
+				"binding": {"bound": True, "revoked": False, "seq": 0},
+				"validator_set": {"member": True, "weight": 1000, "total_weight": 2000},
+			},
             "getwalletinfo": {"unlocked_until": 0},
             "getbalances": {"mine": {"trusted": 1.0}},
             "getaddressesbylabel": {},

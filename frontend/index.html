@@ -1588,6 +1588,35 @@
             </template>
           </div>
         </div>
+
+<div class="card danger-card mt-4" x-data="{ open: false }" x-show="mode === 'advanced'">
+ <div class="card-pad">
+  <div class="between">
+   <div class="row gap-2">
+    <svg class="i" style="color:var(--danger)"><use href="#i-alert"/></svg>
+    <div>
+     <strong>Leaving the validator set?</strong>
+     <p class="help mb-0">Going offline for a long time? Revoke your finality key first.</p>
+    </div>
+   </div>
+   <button class="btn btn-ghost btn-sm" type="button" @click="open = !open" :aria-expanded="open">
+    <svg class="i-sm" :class="open ? 'rot-180' : ''"><use href="#i-chevron-down"/></svg>
+   </button>
+  </div>
+  <div x-show="open" x-collapse>
+   <p class="help mt-3 mb-2">These instructions are only for operators who intend to stop validating. Revoking removes your eligibility to produce staking blocks once the updated committee takes effect. This is not a recovery step. Your staked coins are NOT withdrawn.</p>
+   <ul class="help mb-2" style="padding-left:1.25rem;list-style:disc">
+    <li>Keep some spendable B3 for the transaction fee.</li>
+    <li>The revocation takes effect when the current committee handover completes — keep running until your validator has left the active committee.</li>
+    <li>Do not delete the finality_signer folder; revocation does not erase earlier signatures.</li>
+   </ul>
+   <button class="btn btn-danger" type="button" @click="revokeFinality()" :disabled="staking.working">
+    <span class="spinner" x-show="staking.working"></span>
+    <svg class="i" x-show="!staking.working"><use href="#i-alert"/></svg>
+    <span>Revoke finality key…</span>
+   </button>
+  </div>
+</div>
       </section>
 
       <!-- ================================================= AUTOMATION ===== -->
@@ -3246,6 +3275,66 @@
 <!-- ================================================ POINT-OF-ACTION UNLOCK ==
      Raised by api() on HTTP 423, from ANY action. On submit the original
      request is retried transparently; on cancel it rejects cleanly. -->
+<template x-if="startFlow.show">
+  <div class="backdrop" @click="backdropClose($event, () => closeStartFlow())"
+       x-init="trapFocus($el, () => closeStartFlow())">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="startflow-title">
+      <div class="modal-head">
+        <div>
+          <h2 id="startflow-title">Start earning</h2>
+          <p class="sub">Three steps make your coins earn — do them in order</p>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="details">
+          <div class="drow">
+            <span class="dkey">
+              <svg class="i-sm" x-show="startFlowStepDone('stake')" style="color:var(--success)"><use href="#i-check"/></svg>
+              <svg class="i-sm" x-show="!startFlowStepDone('stake')" style="color:var(--muted)"><use href="#i-circle"/></svg>
+              &nbsp;Lock coins as stake weight
+            </span>
+            <span class="dval t-sm muted" x-text="startFlowStepLabel('stake')"></span>
+          </div>
+          <div class="drow">
+            <span class="dkey">
+              <svg class="i-sm" x-show="startFlowStepDone('bind')" style="color:var(--success)"><use href="#i-check"/></svg>
+              <svg class="i-sm" x-show="!startFlowStepDone('bind')" style="color:var(--muted)"><use href="#i-circle"/></svg>
+              &nbsp;Register your finality key
+            </span>
+            <span class="dval t-sm muted" x-text="startFlowStepLabel('bind')"></span>
+          </div>
+          <div class="drow">
+            <span class="dkey">
+              <svg class="i-sm" x-show="startFlowStepDone('start')" style="color:var(--success)"><use href="#i-check"/></svg>
+              <svg class="i-sm" x-show="!startFlowStepDone('start')" style="color:var(--muted)"><use href="#i-circle"/></svg>
+              &nbsp;Turn on the staking loop
+            </span>
+            <span class="dval t-sm muted" x-text="startFlowStepLabel('start')"></span>
+          </div>
+        </div>
+        <p class="help mt-2">Without all three, your coins sit idle: stake weight makes you eligible to be
+        chosen, the finality key makes you block-eligible on-chain, and the loop does the work.</p>
+        <div class="field mt-3" x-show="staking.validator && staking.validator.missing && staking.validator.missing[0] === 'stake'">
+          <label for="startflow-amount">Amount to lock (B3)</label>
+          <input id="startflow-amount" class="input" type="number" step="any" min="0"
+                 x-model="startFlow.amount" inputmode="decimal" :aria-invalid="startFlow.err ? 'true' : 'false'">
+          <span class="err" x-show="startFlow.err" x-text="startFlow.err" role="alert"></span>
+          <span class="help" x-show="!startFlow.err && staking.validator && staking.validator.min_stake"
+                x-text="'The network minimum stake is ' + staking.validator.min_stake + ' B3'"></span>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-secondary" type="button" @click="closeStartFlow()">Not now</button>
+        <button class="btn btn-primary" type="button" :disabled="startFlow.busy"
+                @click="runStartFlowStep()">
+          <span class="spinner" x-show="startFlow.busy"></span>
+          <svg class="i-sm" x-show="!startFlow.busy"><use href="#i-spark"/></svg>
+          <span x-text="startFlowNextLabel()"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
 <template x-if="unlockPrompt.show">
   <div class="backdrop" @click="backdropClose($event, () => dismissUnlockPrompt())"
        x-init="trapFocus($el, () => dismissUnlockPrompt())">

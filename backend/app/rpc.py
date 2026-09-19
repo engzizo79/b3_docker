@@ -52,11 +52,12 @@ ALLOWED: dict[str, set[str]] = {
         "fundrawtransaction", "signrawtransactionwithwallet",
         "sendrawtransaction", "testmempoolaccept", "startstaking",
         "stopstaking", "signmessage", "createstake", "sendall",
+        "bindfinalitykey", "revokefinalitykey",
     },
     "wallet_messaging": { "setlabel", "verifymessage", "gettransaction" },
 	"wallet_security": { "walletpassphrasechange" },
 	"network_read": {"getpeerinfo"},
-	"staking_read": {"getstakinginfo"},
+	"staking_read": {"getstakinginfo", "getfinalityinfo"},
     "assets_read": {
         "getwalletassets", "listflowmeshmarkets", "getflowmeshmarketdata",
     },

@@ -18,8 +18,10 @@ def test_unlock_wrong_passphrase(client: TestClient, mock_rpc: MockRPC):
     mock_rpc.fail_methods.add("walletpassphrase")
     r = client.post("/api/wallet/unlock",
                     json={"passphrase": "wrong"}, headers=out["headers"])
-    assert r.status_code == 401
-    assert "detail" in r.json()
+    # 403, NOT 401: a valid session with a wrong passphrase must never
+    # read as "session expired" in the frontend (that logged users out).
+    assert r.status_code == 403
+    assert r.json()["detail"] == "wrong passphrase"
 
 
 def test_unlock_then_lock(client: TestClient, mock_rpc: MockRPC):

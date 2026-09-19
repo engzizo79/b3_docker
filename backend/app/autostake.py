@@ -72,6 +72,20 @@ async def reconcile(settings, rpc, vault, reason="startup"):
             db.audit(dbp, "autostake_startstaking", success=False,
                      detail=str(exc))
 
+        # Block eligibility needs an on-chain FINALITY_KEY binding
+        # (revokefinalitykey removes it; revocation is NEVER automatic).
+        # Bind once when none exists; rotations stay operator-only.
+        try:
+            fin = await rpc.call("getfinalityinfo")
+            binding = (fin or {}).get("binding") or {}
+            if not binding.get("bound") or binding.get("revoked"):
+                await rpc.call("bindfinalitykey")
+                result["bound"] = True
+                db.audit(dbp, "autostake_bind_finality", detail="reason=" + reason)
+        except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
+            db.audit(dbp, "autostake_bind_finality", success=False,
+                     detail=str(exc))
+
         target = _dec(cfg["autostake_target"])
         if target > 0:
             info = await rpc.call("getstakinginfo")
