@@ -151,8 +151,9 @@ def test_staking_start_calls_startstaking(client: TestClient, mock_rpc: MockRPC)
 
 
 def test_staking_stop_calls_stopstaking(client: TestClient, mock_rpc: MockRPC):
+    # stopstaking needs NO unlocked wallet: the staker holds its own
+    # signing material (staking survives re-lock). Stop while LOCKED.
     out = login(client, headers=LOCAL)
-    unlock(client, out["headers"])
     r = client.post("/api/wallet/staking/stop", headers=out["headers"])
     assert r.status_code == 200, r.text
     assert mock_rpc.called("stopstaking")

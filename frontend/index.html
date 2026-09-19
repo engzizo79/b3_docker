@@ -3370,7 +3370,7 @@
  </div>
 </template>
 <template x-if="unlockPrompt.show">
-  <div class="backdrop" @click="backdropClose($event, () => dismissUnlockPrompt())"
+  <div class="backdrop backdrop--top" @click="backdropClose($event, () => dismissUnlockPrompt())"
        x-init="trapFocus($el, () => dismissUnlockPrompt())">
     <div class="modal modal--sm" role="dialog" aria-modal="true"
          aria-labelledby="unlock-title">

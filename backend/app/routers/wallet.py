@@ -273,10 +273,12 @@ async def staking_start(request: Request):
 
 @router.post("/staking/stop")
 async def staking_stop(request: Request):
-    """Stop staking. Wallet-affecting action: session + 2FA + CSRF + unlocked,
-    then audit-log it."""
+    """Stop staking. Needs NO unlocked wallet: the staker copied its own
+    signing material at Start (same reason staking survives re-lock), so
+    stopping works while locked. Session + 2FA + CSRF, then audit-log it.
+    Moving staked coins back (unstake) is the step that needs unlocking."""
     state = _state(request)
-    sess = state.require_wallet_unlocked(request)
+    sess = state.require_session(request)
     try:
         await state.rpc.call("stopstaking")
     except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:

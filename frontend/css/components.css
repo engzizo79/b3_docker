@@ -585,6 +585,12 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: var(--text-base);
   padding: var(--space-4);
   overscroll-behavior: contain;
 }
+/* The 423 point-of-action unlock prompt must float ABOVE any action
+ modal that triggered it (unstake, send, consolidation...), which all
+ live at --z-300. 350 sits below toasts (400) but above every modal. */
+.backdrop--top {
+  z-index: 350;
+}
 .modal {
   display: flex; flex-direction: column;
   width: 100%; max-width: 440px;
