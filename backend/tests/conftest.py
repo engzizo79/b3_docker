@@ -83,6 +83,10 @@ class MockRPC:
                                              "txid": "deadbeef"},
             "testmempoolaccept": [{"allowed": True}],
             "sendrawtransaction": "deadbeef",
+ "getblockhash": "0000000000000000000000000000000000000000000000000000000000000000",
+ "verifytxoutproof": {"txid": "a" * 64},
+ "validateaddress": {"isvalid": True, "address": "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"},
+ "help": "== Chain ==\ngetblockchaininfo",
             # Wallet lifecycle (setup wizard create/migrate)
             "listwallets": [],
             "createwallet": {"name": "wallet"},
@@ -118,6 +122,12 @@ def settings(tmp_path: Path) -> Settings:
     s.rpc_user = "u"
     s.rpc_password = "p"
     s.db_path = str(tmp_path / "test.db")
+    # Expert console settings must mirror Settings.__init__ defaults so
+    # tests model the real app (the fixture builds Settings via __new__).
+    if not hasattr(s, "console_networks"):
+        s.console_networks = "127.0.0.1/8,::1/128,172.16.0.0/12"
+    if not hasattr(s, "extra_console_methods"):
+        s.extra_console_methods = ""
     s.ui_password = "correct horse battery staple"
     s.session_secret = "test-session-secret"
     s.totp_key = "test-totp-key"

@@ -30,6 +30,7 @@ import { assetsMixin } from './features/assets.js';
 import { batchMixin } from './features/batch.js';
 import { nodeMixin } from './features/node.js';
 import { alertsMixin } from './features/alerts.js';
+import { consoleMixin } from './features/console.js';
 import { wizardMixin } from './features/wizard.js';
 
 /** Formatting helpers exposed to markup by name. */
@@ -145,6 +146,10 @@ function initialState() {
       busy: false, working: false, starting: false,
       logs: [], logBusy: false, logNote: '', logCount: 200, logFilter: 'all',
     },
+  console: {
+    input: '', lines: [], history: [], histPos: -1,
+    catalog: null, loaded: false, gate: null, gateMsg: '', busy: false,
+  },
 
     /* ------------------------------------------------------------ staking */
     staking: {
@@ -223,6 +228,7 @@ function b3app() {
     batchMixin,
     nodeMixin,
     alertsMixin,
+    consoleMixin,
     wizardMixin,
     {
       init() {

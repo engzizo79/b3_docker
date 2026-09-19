@@ -42,6 +42,9 @@ def main() -> None:
     s.explorer_url = "https://explorer.b3hive.io"
     s.webhook_url = ""
     s.monitor_interval = 3600
+    # Expert console gate: dev browser reaches the backend via loopback.
+    s.console_networks = "127.0.0.1/8,::1/128,172.16.0.0/12"
+    s.extra_console_methods = ""
     s.recovery_cmd_file = str(tmp / "recovery.cmd")
     s.b3_data_dir = str(tmp)
     s.daemon_deferred_file = str(tmp / ".daemon_deferred")

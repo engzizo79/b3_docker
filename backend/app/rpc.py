@@ -36,6 +36,7 @@ ALLOWED: dict[str, set[str]] = {
         "getblockchaininfo", "getnetworkinfo", "getblock", "getblockheader",
         "getblockstats", "gettxout", "gettxoutproof", "getrawtransaction",
         "getblockcount", "getbestblockhash", "getdifficulty",
+        "getblockhash", "verifytxoutproof", "validateaddress", "help",
     },
     "finality_bridge_read": {
         "getfinalitystatus", "getbridgeinfo", "getassetstate", "getindexinfo",

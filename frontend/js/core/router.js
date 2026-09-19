@@ -62,6 +62,11 @@ export const VIEWS = {
     title: 'Tools', sub: 'Batch actions, message signing and coin control',
     keywords: 'batch recipe sign verify message utxo coin control',
   },
+  console: {
+    label: 'Console', icon: 'terminal', width: 'data', advanced: true,
+    title: 'Expert console', sub: 'Run node RPC commands (trusted networks only)',
+    keywords: 'rpc terminal command expert debug console',
+  },
   settings: {
     label: 'Settings', icon: 'settings', width: 'flow',
     title: 'Settings', sub: 'Security, appearance and setup',
@@ -75,7 +80,7 @@ export const NAV_GROUPS = [
   { id: 'money',  label: 'Money',   views: ['send', 'receive', 'activity', 'addresses'] },
   { id: 'earn',   label: 'Earn',    views: ['staking', 'automation'] },
   { id: 'assets', label: 'Assets',  views: ['assets'] },
-  { id: 'system', label: 'System',  views: ['wallet', 'node', 'tools', 'settings'] },
+  { id: 'system', label: 'System',  views: ['wallet', 'node', 'tools', 'console', 'settings'] },
 ];
 
 /** Mobile thumb-zone bar. Send and Receive are the two money verbs, so they
@@ -88,7 +93,7 @@ export const MORE_GROUPS = [
   { label: 'Money',  views: ['activity', 'addresses'] },
   { label: 'Earn',   views: ['automation'] },
   { label: 'Assets', views: ['assets'] },
-  { label: 'System', views: ['wallet', 'node', 'tools', 'settings'] },
+  { label: 'System', views: ['wallet', 'node', 'tools', 'console', 'settings'] },
 ];
 
 const DEFAULT_VIEW = 'home';
@@ -134,6 +139,7 @@ export const routerMixin = {
       case 'staking':    this.loadStaking(); this.loadValidator(); break;
       case 'automation': this.loadStakingSettings(); this.loadConsolidation(); break;
       case 'tools':      this.loadRecipes(); break;
+      case 'console': this.consoleLoad(); break;
       case 'node':       this.loadSystemInfo(); this.loadNodeExtras(); break;
       case 'settings':   this.loadSystemInfo(); break;
       case 'send':       this.resetSend(opts.keep); this.loadAddressBook(); break;

@@ -61,6 +61,13 @@ class Settings:
         # UI/backend version — injected at Docker build time from `git describe`
         # (Dockerfile ARG B3_APP_VERSION). "dev" outside a build.
         self.app_version: str = os.environ.get("B3_APP_VERSION", "dev")
+        # Expert console: operator-declared extra methods (comma-separated).
+        # Still enforced by the RPC allowlist choke point underneath.
+        self.extra_console_methods: str = os.environ.get("EXTRA_CONSOLE_METHODS", "")
+        # Console IP gate: full console access only from these networks
+        # (comma-separated CIDRs or single IPs). Default: local machine
+        # only (loopback + Docker bridge nets). "*" disables the gate.
+        self.console_networks: str = os.environ.get("CONSOLE_NETWORKS", "127.0.0.1/8,::1/128,172.16.0.0/12")
         # Daemon stdout log (entrypoint redirects -printtoconsole here; a tail
         # mirror keeps `docker logs` working). Backend tails this for the UI.
         self.daemon_log_file: str = os.environ.get(

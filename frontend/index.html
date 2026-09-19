@@ -35,6 +35,7 @@
 <symbol id="i-server" viewBox="0 0 24 24"><rect x="2.5" y="3" width="19" height="7" rx="2"/><rect x="2.5" y="14" width="19" height="7" rx="2"/><path d="M6.5 6.5h.01M6.5 17.5h.01"/></symbol>
 <symbol id="i-tool" viewBox="0 0 24 24"><path d="M5 21v-6M5 11V3M12 21v-9M12 8V3M19 21v-5M19 12V3"/><path d="M2 15h6M9 8h6M16 16h6"/></symbol>
 <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 8h16M4 16h16"/><circle cx="9" cy="8" r="2.4"/><circle cx="15" cy="16" r="2.4"/></symbol>
+<symbol id="i-terminal" viewBox="0 0 24 24"><path d="M4 17l6-5-6-5"/><path d="M12 19h8"/></symbol>
 <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></symbol>
 <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3.5" y="10.5" width="17" height="11" rx="2.5"/><path d="M7.5 10.5V7a4.5 4.5 0 0 1 9 0v3.5"/></symbol>
 <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="3.5" y="10.5" width="17" height="11" rx="2.5"/><path d="M7.5 10.5V7a4.5 4.5 0 0 1 8.9-.9"/></symbol>
@@ -3023,7 +3024,98 @@
         </div>
       </section>
 
-      <!-- =================================================== SETTINGS ===== -->
+     <!-- =================================================== CONSOLE ===== -->
+<section x-show="view === 'console'" class="stack">
+
+ <!-- IP gate remediation (remote sessions get 403, not a shell) -->
+ <div class="card" x-show="console.gate === true">
+ <div class="card-head">
+ <div>
+ <strong>Console unavailable from this network</strong>
+ <span class="sub">A deliberate limit, not a bug</span>
+ </div>
+ </div>
+ <div class="card-pad">
+ <div class="callout callout-warn">
+ <div class="callout-title">
+ <svg class="i-sm"><use href="#i-shield"/></svg>
+ <span>Trusted networks only</span>
+ </div>
+ <p class="t-sm">The expert console can inspect node and wallet state directly, so it is
+ restricted to connections from your server's local or operator-declared networks. This
+ browser session is coming from somewhere else.</p>
+ <p class="t-sm" x-show="console.gateMsg" x-text="console.gateMsg"></p>
+ <p class="t-sm">To use it, open the UI from the machine running the container (or a network
+ listed in <code>CONSOLE_NETWORKS</code> in your compose file), or ask the operator to add
+ your network there.</p>
+ </div>
+ </div>
+ </div>
+
+ <!-- The console itself -->
+ <div class="card" x-show="console.gate === false">
+ <div class="card-head">
+ <div>
+ <strong>Expert console</strong>
+ <span class="sub">Run node commands directly — read-only while the wallet stays locked</span>
+ </div>
+ <div class="row gap-2">
+ <button class="btn btn-sm" type="button" @click="consoleCopy()">
+ <svg class="i-sm"><use href="#i-copy"/></svg><span>Copy</span>
+ </button>
+ <button class="btn btn-sm" type="button" @click="consoleClear()">Clear</button>
+ </div>
+ </div>
+
+ <div class="card-pad">
+ <div class="callout callout-info">
+ <div class="callout-title">
+ <svg class="i-sm"><use href="#i-info"/></svg>
+ <span>What this console will and will not do</span>
+ </div>
+ <p class="t-sm">Inspect the chain, mempool, peers, wallet and staking state with read-only
+ commands. Wallet-affecting commands (<code>createstake</code>, <code>send</code> family,
+ <code>walletpassphrase</code>, key exports) are blocked here on purpose — they belong to
+ the guided flows with their own confirmations. Sign/verify commands ask for the
+ passphrase at the action.</p>
+ </div>
+
+ <!-- output -->
+ <div id="console-scroll" class="console-out" aria-live="polite">
+ <template x-for="(l, i) in console.lines" :key="i">
+ <div class="console-line" :class="'console-' + l.kind">
+ <span class="console-prompt" x-show="l.kind === 'in'">&gt;</span>
+ <pre class="console-text" x-text="l.text"></pre>
+ </div>
+ </template>
+ <div class="console-empty" x-show="!console.lines.length && !console.busy">
+ Try <button class="link" type="button" @click="consoleAccept('getblockchaininfo')">getblockchaininfo</button>
+ or <button class="link" type="button" @click="consoleAccept('help')">help</button> — ↑/↓ reuses history.
+ </div>
+ </div>
+
+ <!-- autocomplete -->
+ <div class="console-sugs" x-show="consoleSuggestions().length">
+ <template x-for="s in consoleSuggestions()" :key="s">
+ <button class="console-sug" type="button" @click="consoleAccept(s)" x-text="s"></button>
+ </template>
+ </div>
+
+ <!-- input -->
+ <div class="console-inrow">
+ <span class="console-prompt console-inprompt">&gt;</span>
+ <input id="console-input" class="input console-input" type="text" spellcheck="false"
+ autocomplete="off" placeholder="type a command…"
+ x-model="console.input" @keydown="consoleEnter($event)"
+ :disabled="console.busy">
+ <button class="btn btn-primary btn-sm" type="button" @click="consoleSubmit()"
+ :disabled="console.busy || !console.input.trim()">Run</button>
+ </div>
+ </div>
+ </div>
+</section>
+
+ <!-- =================================================== SETTINGS ===== -->
       <section x-show="view === 'settings'" class="stack">
 
         <!-- Appearance + mode -->
