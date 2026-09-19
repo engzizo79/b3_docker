@@ -2,10 +2,12 @@
 passphrase change. Same gating rules as wallet.py:
 - read endpoints: session + 2FA; mutations: + CSRF; signing: + unlocked."""
 
+import os
 import re
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import db
@@ -211,7 +213,30 @@ async def wallet_manage_backup(request: Request):
         raise _translate(exc)
     db.audit(state.settings.db_path, "wallet.backup", sess.username,
              detail=f"ip={ip} dest={dest.name}")
-    return {"ok": True, "path": str(dest)}
+    return {"ok": True, "path": str(dest), "file": dest.name}
+
+
+@router.get("/manage/backup/download")
+async def wallet_backup_download(request: Request, file: str = ""):
+    """Stream a previously-created backup file to the browser as a download.
+    The filename is validated to stay inside the backups directory — no
+    path traversal. Contains private keys: persistence-guarded, audited.
+    CSRF-protected (double-submit) so only the SPA can fetch it."""
+    state = _state(request)
+    sess = state.require_csrf(request)
+    state.require_persistent_data()
+    ip = _client_ip(request)
+    backups_dir = _data_dir(state) / "backups"
+    safe_name = os.path.basename(file)
+    if not safe_name or safe_name != file:
+        raise HTTPException(status_code=400, detail="invalid filename")
+    dest = backups_dir / safe_name
+    if not dest.is_file():
+        raise HTTPException(status_code=404, detail="backup file not found")
+    db.audit(state.settings.db_path, "wallet.backup_download", sess.username,
+             detail=f"ip={ip} file={safe_name}")
+    return FileResponse(str(dest), filename=safe_name,
+                        media_type="application/octet-stream")
 
 
 @router.post("/receive")
@@ -377,18 +402,22 @@ async def passphrase_change(body: PassphraseChangeBody, request: Request):
 @router.get("/book")
 async def address_book(request: Request):
     """Address book: all wallet addresses with labels and amounts.
-    One listaddressgroupings call; label key tolerated for both
-    Bitcoin-31 (label) and legacy (account) shapes."""
+
+    Descriptor wallets (which the setup wizard creates with
+    descriptors=true) do not support listaddressgroupings, so
+    listreceivedbyaddress is the primary path; listaddressgroupings
+    is the fallback for legacy wallets. Stake owner addresses from
+    getstakinginfo are merged in so the user sees their staking
+    address even though it never appears in receive listings."""
     state = _state(request)
     state.require_2fa(request)
-    try:
-        groupings = await state.rpc.call("listaddressgroupings")
-    except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
-        raise _translate(exc)
     out = []
     seen = set()
-    for grp in groupings or []:
-        for e in grp:
+
+    # Primary: listreceivedbyaddress (works on descriptor wallets).
+    try:
+        received = await state.rpc.call("listreceivedbyaddress", 0, True, True)
+        for e in received or []:
             addr = e.get("address")
             if not addr or addr in seen:
                 continue
@@ -399,7 +428,56 @@ async def address_book(request: Request):
                 amt = Decimal(0)
             out.append({
                 "address": addr,
-                "label": e.get("label", "") or e.get("account", "") or "",
+                "label": e.get("label", "") or "",
                 "amount": format(amt, ".9f"),
             })
+    except (RPCError, RPCNotAllowed, RPCUnavailable):
+        # Fallback: listaddressgroupings (legacy wallets only).
+        try:
+            groupings = await state.rpc.call("listaddressgroupings")
+            for grp in groupings or []:
+                for e in grp:
+                    addr = e.get("address")
+                    if not addr or addr in seen:
+                        continue
+                    seen.add(addr)
+                    try:
+                        amt = parse_amount(str(e.get("amount", "0")))
+                    except (ValueError, ArithmeticError):
+                        amt = Decimal(0)
+                    out.append({
+                        "address": addr,
+                        "label": e.get("label", "") or e.get("account", "") or "",
+                        "amount": format(amt, ".9f"),
+                    })
+        except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
+            raise _translate(exc)
+
+    # Merge stake owner addresses so the staking address is visible.
+    try:
+        info = await state.rpc.call_optional("getstakinginfo") or {}
+        for s in info.get("stakes") or []:
+            addr = s.get("owner_address")
+            if not addr:
+                continue
+            if addr in seen:
+                for entry in out:
+                    if entry["address"] == addr:
+                        entry["stake"] = True
+                        break
+            else:
+                seen.add(addr)
+                try:
+                    amt = parse_amount(str(s.get("amount", "0")))
+                except (ValueError, ArithmeticError):
+                    amt = Decimal(0)
+                out.append({
+                    "address": addr,
+                    "label": "staking",
+                    "amount": format(amt, ".9f"),
+                    "stake": True,
+                })
+    except (RPCError, RPCNotAllowed, RPCUnavailable):
+        pass  # stakes are optional enrichment
+
     return {"addresses": out}

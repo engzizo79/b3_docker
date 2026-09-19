@@ -2144,9 +2144,13 @@
               <span>Back up</span>
             </button>
           </div>
-          <p class="ok-note mt-2" x-show="manage.backupPath">
-            Saved to <span class="mono" x-text="manage.backupPath"></span>
-          </p>
+          <div class="col gap-1 mt-2" x-show="manage.backupPath">
+            <p class="ok-note">Saved to <span class="mono" x-text="manage.backupPath"></span></p>
+            <button class="btn btn-secondary btn-sm" type="button" x-show="manage.backupFile"
+                    @click="downloadBackup(manage.backupFile)">
+              <svg class="i-sm"><use href="#i-download"/></svg><span>Download copy</span>
+            </button>
+          </div>
         </div>
 
         <template x-if="manage.persistent === false">
@@ -3325,11 +3329,11 @@
       </div>
       <div class="modal-foot">
         <button class="btn btn-secondary" type="button" @click="closeStartFlow()">Not now</button>
-        <button class="btn btn-primary" type="button" :disabled="startFlow.busy"
+        <button class="btn btn-primary" type="button" :disabled="startFlow.busy || startFlow.confirming"
                 @click="runStartFlowStep()">
-          <span class="spinner" x-show="startFlow.busy"></span>
-          <svg class="i-sm" x-show="!startFlow.busy"><use href="#i-spark"/></svg>
-          <span x-text="startFlowNextLabel()"></span>
+          <span class="spinner" x-show="startFlow.busy || startFlow.confirming"></span>
+          <svg class="i-sm" x-show="!startFlow.busy && !startFlow.confirming"><use href="#i-spark"/></svg>
+          <span x-text="startFlow.confirming ? 'Confirming…' : startFlowNextLabel()"></span>
         </button>
       </div>
     </div>

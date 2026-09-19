@@ -12,7 +12,7 @@ from app.rpc import (ALLOWED_METHODS, FORBIDDEN, RPCNotAllowed,
 def test_allowlist_categories_covered():
     for method in ("getblockchaininfo", "getfinalitystatus", "listunspent",
                   "walletpassphrase", "sendrawtransaction", "startstaking",
-                  "loadwallet", "getstakinginfo"):
+                  "loadwallet", "getstakinginfo", "listreceivedbyaddress"):
         assert method in ALLOWED_METHODS, method
 
 

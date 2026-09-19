@@ -44,7 +44,7 @@ ALLOWED: dict[str, set[str]] = {
     "supply_read": {"gettxoutsetinfo"},
     "wallet_read": {
         "getwalletinfo", "listunspent", "getaddressesbylabel",
-        "listaddressgroupings", "listtransactions", "getbalance", "getbalances",
+        "listaddressgroupings", "listreceivedbyaddress", "listtransactions", "getbalance", "getbalances",
         "getnewaddress", "getaccountaddress", "listlabels",
     },
     "wallet_write": {  # gated: require unlocked wallet in the API layer

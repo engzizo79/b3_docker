@@ -63,6 +63,7 @@ class MockRPC:
             "getaddressesbylabel": {},
             "listlabels": ["*"],
  "listaddressgroupings": [[{"address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv", "label": "mining", "amount": 1.92}]],
+			"listreceivedbyaddress": [{"address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv", "label": "mining", "amount": 1.92, "confirmations": 500, "involvesWatchonly": False}],
             "listtransactions": [],
  "listunspent": [
  {"txid": "utxo1", "vout": 0, "address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv",

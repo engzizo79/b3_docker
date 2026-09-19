@@ -142,10 +142,37 @@ def test_address_book_lists_labels(client: TestClient, mock_rpc: MockRPC):
     r = client.get("/api/wallet/book", headers=out["headers"])
     assert r.status_code == 200
     addrs = r.json()["addresses"]
-    assert len(addrs) == 1
-    assert addrs[0]["label"] == "mining"
-    assert addrs[0]["amount"] == "1.920000000"
+    # listreceivedbyaddress (primary, works on descriptor wallets) returns
+    # the mining address; getstakinginfo stakes merge adds the owner.
+    assert mock_rpc.called("listreceivedbyaddress")
+    by_addr = {a["address"]: a for a in addrs}
+    assert "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv" in by_addr
+    assert by_addr["SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"]["label"] == "mining"
+    assert by_addr["SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"]["amount"] == "1.920000000"
+    # Stake owner address merged from getstakinginfo.
+    assert "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2" in by_addr
+    assert by_addr["SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"]["stake"] is True
+    assert by_addr["SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"]["label"] == "staking"
+
+
+def test_address_book_fallback_to_groupings(client: TestClient, mock_rpc: MockRPC):
+    """If listreceivedbyaddress raises (e.g. on a legacy wallet), the
+    endpoint falls back to listaddressgroupings."""
+    from app.rpc import RPCError
+    out = login(client, headers=LOCAL)
+    # Simulate a legacy wallet where listreceivedbyaddress is not
+    # supported: raise an RPCError, which the endpoint catches.
+    orig_call = mock_rpc.call
+    async def fail_call(method, *params):
+        if method == "listreceivedbyaddress":
+            raise RPCError(-32601, "Method not found")
+        return await orig_call(method, *params)
+    mock_rpc.call = fail_call
+    r = client.get("/api/wallet/book", headers=out["headers"])
+    assert r.status_code == 200
     assert mock_rpc.called("listaddressgroupings")
+    addrs = r.json()["addresses"]
+    assert any(a["address"] == "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv" for a in addrs)
 
 
 from pathlib import Path
@@ -231,6 +258,29 @@ class TestWalletManagement:
         # Middleware intercepts with 503 before the per-endpoint guard.
         assert r.status_code == 503
         assert r.json().get("storage_blocked") is True
+
+    def test_backup_download_success(self, client, mock_rpc):
+        out = login(client, headers=LOCAL)
+        st = client.app.state.app_state
+        backups_dir = Path(st.settings.b3_data_dir) / "backups"
+        backups_dir.mkdir(parents=True, exist_ok=True)
+        (backups_dir / "backup-20260101T000000Z.dat").write_bytes(b"WALLET")
+        r = client.get("/api/wallet/manage/backup/download?file=backup-20260101T000000Z.dat",
+                       headers=out["headers"])
+        assert r.status_code == 200
+        assert r.content == b"WALLET"
+
+    def test_backup_download_traversal_blocked(self, client, mock_rpc):
+        out = login(client, headers=LOCAL)
+        r = client.get("/api/wallet/manage/backup/download?file=../../etc/passwd",
+                       headers=out["headers"])
+        assert r.status_code == 400
+
+    def test_backup_download_not_found(self, client, mock_rpc):
+        out = login(client, headers=LOCAL)
+        r = client.get("/api/wallet/manage/backup/download?file=nope.dat",
+                       headers=out["headers"])
+        assert r.status_code == 404
 
     def test_manage_requires_auth(self, client):
         r = client.get("/api/wallet/manage")

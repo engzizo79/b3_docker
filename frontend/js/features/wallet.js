@@ -302,10 +302,35 @@ export const walletMixin = {
     try {
       const r = await this.api('/api/wallet/manage/backup', { method: 'POST' });
       this.manage.backupPath = r.path || '';
+      this.manage.backupFile = r.file || '';
       this.markBackedUp();
-      this.showToast('Backup saved');
+      this.showToast('Backup saved — downloading…');
+      if (this.manage.backupFile) this.downloadBackup(this.manage.backupFile);
     } catch (e) { this.reportError(e); }
     this.manage.backupBusy = false;
+  },
+
+  downloadBackup(file) {
+    const name = file || this.manage.backupFile;
+    if (!name) return;
+    const tok = document.cookie.match(/(?:^|; )b3_csrf=([^;]+)/);
+    const url = '/api/wallet/manage/backup/download?file=' + encodeURIComponent(name)
+      + '&t=' + Date.now();
+    fetch(url, { headers: { 'x-csrf-token': tok ? tok[1] : '' } })
+      .then((r) => {
+        if (!r.ok) throw new Error('download failed');
+        return r.blob();
+      })
+      .then((b) => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b);
+        a.download = name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      })
+      .catch(() => this.showToast('Could not download backup — it is still saved on the server', 'warning'));
   },
 
   /* ------------------------------------------------- coin control (UTXOs) */

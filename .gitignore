@@ -37,3 +37,4 @@ data/
 .a0proj/
 tmp/\nbackend/tmp/
 tmp/
+graphify-out/

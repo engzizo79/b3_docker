@@ -35,8 +35,11 @@ scan_file() {
         FAILED=1
         return
     fi
-    # Binary files: skip content scan
-    if file "$f" 2>/dev/null | grep -q 'binary'; then return 0; fi
+    # Binary files: skip content scan. Portable check via grep -I
+    # (treats files containing binary data as non-matching). The old
+    # `file`-based check silently failed when `file` is not installed,
+    # so the scanner line-scanned PNGs and other binaries and hung.
+    if ! grep -Iq . "$f" 2>/dev/null; then return 0; fi
     # Secret-value scan
     while IFS= read -r line; do
         if echo "$line" | grep -Eq "$SECRET_VALUE_RE"; then

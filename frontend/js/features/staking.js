@@ -136,6 +136,12 @@ export const stakingMixin = {
     if (Number.isFinite(spendable) && amt > spendable) {
       return { ok: false, msg: 'You only have ' + this.fmtAmount(this.spendableAmount(), { unit: true }) + ' available' };
     }
+    // Staking 100% of the spendable balance fails on chain because the
+    // stake transaction needs a fee. Reserve a small dust amount so the
+    // node can fund it. 0.001 B3 is a safe floor above any relay minimum.
+    if (Number.isFinite(spendable) && amt >= spendable && spendable > 0.001) {
+      return { ok: false, msg: 'Leave a small amount for the stake transaction fee (try ' + this.fmtAmount(String(Math.max(0, spendable - 0.001)), { unit: true }) + ')' };
+    }
     return { ok: true, msg: '' };
   },
 
@@ -167,7 +173,20 @@ export const stakingMixin = {
         this.showToast('Coins locked — the stake is on its way to active');
       } else if (step === 'bind') {
         await this.api('/api/staking/finality/bind', { method: 'POST' });
-        this.showToast('Finality key bound — you are now block-eligible');
+        this.showToast('Finality key submitted — confirming on-chain');
+        f.confirming = true;
+        try {
+          for (let i = 0; i < 20; i++) {
+            await new Promise((r) => setTimeout(r, 6000));
+            await this.loadValidator();
+            const pv = this.staking.validator;
+            if (pv && (!pv.missing || !pv.missing.includes('bind'))) break;
+          }
+        } finally { f.confirming = false; }
+        const bv = this.staking.validator;
+        if (bv && bv.missing && bv.missing.includes('bind')) {
+          f.err = 'Binding not confirmed yet — it takes effect at the next epoch boundary. Close and reopen in a minute.';
+        }
       } else { // start
         await this.api('/api/wallet/staking/start', { method: 'POST' });
         this.showToast('Staking loop started');
@@ -244,7 +263,7 @@ export const stakingMixin = {
   },
 
   closeStartFlow() {
-    this.startFlow = { show: false, amount: '', err: '', busy: false };
+    this.startFlow = { show: false, amount: '', err: '', busy: false, confirming: false };
   },
 
   stopStaking() {
@@ -260,7 +279,25 @@ export const stakingMixin = {
         try {
           await this.api('/api/wallet/staking/stop', { method: 'POST' });
           await this.loadStakingSnapshot();
+          await this.loadValidator();
           this.showToast('Staking stopped');
+          const v = this.staking.validator;
+          if (v && v.bound && !v.revoked) {
+            this.$nextTick(() => {
+              this.confirm({
+                title: 'Also revoke your finality key?',
+                body: 'You have stopped staking but your finality key is still '
+                  + 'bound. The B3Hive developers recommend revoking it if you '
+                  + 'intend to go offline long-term — it removes your block '
+                  + 'eligibility once the committee handover completes. It does '
+                  + 'NOT unstake your coins. If you plan to restart staking soon, '
+                  + 'keep it bound and skip this step.',
+                confirmLabel: 'Revoke finality key',
+                danger: true,
+                run: async () => { await this.revokeFinality(); },
+              });
+            });
+          }
         } catch (e) { this.reportError(e); }
         this.staking.working = false;
       },

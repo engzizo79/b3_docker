@@ -118,7 +118,7 @@ function initialState() {
     book: { addresses: [], labels: [], loaded: false, busy: false, query: '', editing: null, draftLabel: '' },
     manage: {
       loaded: [], onDisk: [], persistent: true, busy: false, working: false, err: '',
-      pane: null, loadName: '', backupBusy: false, backupPath: '',
+      pane: null, loadName: '', backupBusy: false, backupPath: '', backupFile: '',
       create: { name: '', pw: '', pw2: '', reveal: false },
     },
     utxos: { list: [], busy: false, loaded: false, minconf: 1 },
@@ -151,7 +151,7 @@ function initialState() {
       active: false, available: true, state: null, info: null, stakes: [],
       weight: null, netWeight: null, busy: false, working: false, validator: null,
     },
- startFlow: { show: false, amount: "", err: "", busy: false },
+ startFlow: { show: false, amount: "", err: "", busy: false, confirming: false },
     unstake: { target: null, preview: null, busy: false },
     autostake: {
       settings: null, form: { enabled: false, target: '', reserve: '' },
