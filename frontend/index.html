@@ -3027,95 +3027,150 @@
      <!-- =================================================== CONSOLE ===== -->
 <section x-show="view === 'console'" class="stack">
 
- <!-- IP gate remediation (remote sessions get 403, not a shell) -->
- <div class="card" x-show="console.gate === true">
- <div class="card-head">
- <div>
- <strong>Console unavailable from this network</strong>
- <span class="sub">A deliberate limit, not a bug</span>
- </div>
- </div>
- <div class="card-pad">
- <div class="callout callout-warn">
- <div class="callout-title">
- <svg class="i-sm"><use href="#i-shield"/></svg>
- <span>Trusted networks only</span>
- </div>
- <p class="t-sm">The expert console can inspect node and wallet state directly, so it is
- restricted to connections from your server's local or operator-declared networks. This
- browser session is coming from somewhere else.</p>
- <p class="t-sm" x-show="console.gateMsg" x-text="console.gateMsg"></p>
- <p class="t-sm">To use it, open the UI from the machine running the container (or a network
- listed in <code>CONSOLE_NETWORKS</code> in your compose file), or ask the operator to add
- your network there.</p>
- </div>
- </div>
- </div>
+  <!-- Trust gate remediation (untrusted remotes get 403, not a shell) -->
+  <div class="card" x-show="console.gate === true">
+    <div class="card-head">
+      <div>
+        <strong>Console unavailable from this network</strong>
+        <span class="sub">A deliberate limit, not a bug</span>
+      </div>
+    </div>
+    <div class="card-pad">
+      <div class="callout callout-warn">
+        <div class="callout-title">
+          <svg class="i-sm"><use href="#i-shield"/></svg>
+          <span>Trusted networks only</span>
+        </div>
+        <p class="t-sm">The expert console executes node commands, so it is limited to
+          connections the operator trusts: the machine running the container, or networks the
+          operator added in the trust settings. This browser session is coming from somewhere
+          else. If you are the operator, open the UI from the server itself (or a trusted
+          network) and add this network there.</p>
+        <p class="t-sm" x-show="console.gateMsg" x-text="console.gateMsg"></p>
+      </div>
+    </div>
+  </div>
 
- <!-- The console itself -->
- <div class="card" x-show="console.gate === false">
- <div class="card-head">
- <div>
- <strong>Expert console</strong>
- <span class="sub">Run node commands directly — read-only while the wallet stays locked</span>
- </div>
- <div class="row gap-2">
- <button class="btn btn-sm" type="button" @click="consoleCopy()">
- <svg class="i-sm"><use href="#i-copy"/></svg><span>Copy</span>
- </button>
- <button class="btn btn-sm" type="button" @click="consoleClear()">Clear</button>
- </div>
- </div>
+  <!-- The console itself -->
+  <div class="card" x-show="console.gate === false">
+    <div class="card-head">
+      <div>
+        <strong>Expert console</strong>
+        <span class="sub">Run node commands directly — QT parity on trusted connections</span>
+      </div>
+      <div class="row gap-2">
+        <button class="btn btn-sm" type="button" @click="consoleCopy()">
+          <svg class="i-sm"><use href="#i-copy"/></svg><span>Copy</span>
+        </button>
+        <button class="btn btn-sm" type="button" @click="consoleClear()">Clear</button>
+      </div>
+    </div>
 
- <div class="card-pad">
- <div class="callout callout-info">
- <div class="callout-title">
- <svg class="i-sm"><use href="#i-info"/></svg>
- <span>What this console will and will not do</span>
- </div>
- <p class="t-sm">Inspect the chain, mempool, peers, wallet and staking state with read-only
- commands. Wallet-affecting commands (<code>createstake</code>, <code>send</code> family,
- <code>walletpassphrase</code>, key exports) are blocked here on purpose — they belong to
- the guided flows with their own confirmations. Sign/verify commands ask for the
- passphrase at the action.</p>
- </div>
+    <div class="card-pad">
+      <div class="callout callout-info" x-show="console.mode === 'full'">
+        <div class="callout-title">
+          <svg class="i-sm"><use href="#i-info"/></svg>
+          <span>Full access — warn, never prohibit</span>
+        </div>
+        <p class="t-sm">You are on a trusted connection, so this console runs every node command
+          the QT console does — including spends, unlock and key material. Dangerous commands
+          get an honest warning first; the rest run as typed. A locked-wallet error opens the
+          passphrase prompt right here. Everything is audit-logged; key exports are redacted
+          from the log. You are the operator — it's your call.</p>
+      </div>
+      <div class="callout callout-warn" x-show="console.mode === 'restricted'">
+        <div class="callout-title">
+          <svg class="i-sm"><use href="#i-shield"/></svg>
+          <span>Read-only mode from this network</span>
+        </div>
+        <p class="t-sm">The operator restricted remote sessions to read-only commands.
+          Inspection and wallet queries work; spends, unlock and other state-changing commands
+          do not — ask the operator to add your network to the trust settings for full
+          access.</p>
+      </div>
 
- <!-- output -->
- <div id="console-scroll" class="console-out" aria-live="polite">
- <template x-for="(l, i) in console.lines" :key="i">
- <div class="console-line" :class="'console-' + l.kind">
- <span class="console-prompt" x-show="l.kind === 'in'">&gt;</span>
- <pre class="console-text" x-text="l.text"></pre>
- </div>
- </template>
- <div class="console-empty" x-show="!console.lines.length && !console.busy">
- Try <button class="link" type="button" @click="consoleAccept('getblockchaininfo')">getblockchaininfo</button>
- or <button class="link" type="button" @click="consoleAccept('help')">help</button> — ↑/↓ reuses history.
- </div>
- </div>
+      <!-- output -->
+      <div id="console-scroll" class="console-out" aria-live="polite">
+        <template x-for="(l, i) in console.lines" :key="i">
+          <div class="console-line" :class="'console-' + l.kind">
+            <span class="console-prompt" x-show="l.kind === 'in'">&gt;</span>
+            <pre class="console-text" x-text="l.text"></pre>
+          </div>
+        </template>
+        <div class="console-empty" x-show="!console.lines.length && !console.busy">
+          Try <button class="link" type="button" @click="consoleAccept('getblockchaininfo')">getblockchaininfo</button>
+          or <button class="link" type="button" @click="consoleAccept('help')">help</button> — ↑/↓ reuses history.
+        </div>
+      </div>
 
- <!-- autocomplete -->
- <div class="console-sugs" x-show="consoleSuggestions().length">
- <template x-for="s in consoleSuggestions()" :key="s">
- <button class="console-sug" type="button" @click="consoleAccept(s)" x-text="s"></button>
- </template>
- </div>
+      <!-- autocomplete -->
+      <div class="console-sugs" x-show="consoleSuggestions().length">
+        <template x-for="s in consoleSuggestions()" :key="s">
+          <button class="console-sug" type="button" @click="consoleAccept(s)" x-text="s"></button>
+        </template>
+      </div>
 
- <!-- input -->
- <div class="console-inrow">
- <span class="console-prompt console-inprompt">&gt;</span>
- <input id="console-input" class="input console-input" type="text" spellcheck="false"
- autocomplete="off" placeholder="type a command…"
- x-model="console.input" @keydown="consoleEnter($event)"
- :disabled="console.busy">
- <button class="btn btn-primary btn-sm" type="button" @click="consoleSubmit()"
- :disabled="console.busy || !console.input.trim()">Run</button>
- </div>
- </div>
- </div>
+      <!-- input -->
+      <div class="console-inrow">
+        <span class="console-prompt console-inprompt">&gt;</span>
+        <input id="console-input" class="input console-input" type="text" spellcheck="false"
+          autocomplete="off" placeholder="type a command…"
+          x-model="console.input" @keydown="consoleEnter($event)"
+          :disabled="console.busy">
+        <button class="btn btn-primary btn-sm" type="button" @click="consoleSubmit()"
+          :disabled="console.busy || !console.input.trim()">Run</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trust settings: networks + remote policy (operator's call) -->
+  <div class="card" x-show="console.gate === false && console.catalog && console.catalog.editable">
+    <div class="card-head">
+      <div>
+        <strong>Console trust settings</strong>
+        <span class="sub">Who gets full access — the operator decides, the platform warns</span>
+      </div>
+    </div>
+    <div class="card-pad">
+      <div class="form-grid">
+        <label class="field">
+          <span class="field-label">Trusted networks</span>
+          <input class="input" type="text" spellcheck="false"
+            placeholder="e.g. 192.168.1.0/24, 10.0.0.5"
+            x-model="console.sform.networks">
+          <span class="help">Comma-separated networks or single IPs whose sessions are treated
+            like localhost: full console access, settings editing, no 2FA needed. Leave empty
+            to keep the <code>CONSOLE_NETWORKS</code> value from your compose file. localhost
+            is always trusted.</span>
+        </label>
+        <div class="field">
+          <span class="field-label">Remote sessions with 2FA</span>
+          <label class="toggle-row">
+            <input type="checkbox" x-model="console.sform.remote_full_access">
+            <span class="toggle-text">
+              <strong class="t-sm">Full access</strong>
+              <span class="help">On (default): a remote session that passes 2FA can run
+                everything, like localhost. Off: remotes are read-only even with 2FA. Turning
+                this off is the safer choice if your node is exposed to the internet.</span>
+            </span>
+          </label>
+        </div>
+      </div>
+      <div class="row gap-2 mt-3">
+        <button class="btn btn-primary" type="button" @click="consoleSaveSettings()"
+          :disabled="console.sbusy">Save trust settings</button>
+      </div>
+      <p class="help mt-2" x-show="console.settings">
+        Current: networks
+        <span x-text="console.settings.networks || '(from compose file)'"></span>,
+        remotes
+        <span x-text="console.settings.remote_full_access ? 'full access' : 'read-only'"></span>
+      </p>
+    </div>
+  </div>
 </section>
 
- <!-- =================================================== SETTINGS ===== -->
+<!-- =================================================== SETTINGS ===== -->
       <section x-show="view === 'settings'" class="stack">
 
         <!-- Appearance + mode -->

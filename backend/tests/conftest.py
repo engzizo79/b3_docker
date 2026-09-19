@@ -4,6 +4,12 @@ No test requires a real node or a funded wallet."""
 from pathlib import Path
 
 import pytest
+import os
+
+# The TestClient's direct peer is "testclient"; treat it as a trusted
+# proxy so X-Forwarded-For fixtures behave like a real trusted proxy.
+os.environ.setdefault("B3_TRUSTED_PROXIES", "testclient")
+
 from fastapi.testclient import TestClient
 
 from app import db
@@ -83,6 +89,7 @@ class MockRPC:
                                              "txid": "deadbeef"},
             "testmempoolaccept": [{"allowed": True}],
             "sendrawtransaction": "deadbeef",
+ "stop": "B3 Hive server stopping",
  "getblockhash": "0000000000000000000000000000000000000000000000000000000000000000",
  "verifytxoutproof": {"txid": "a" * 64},
  "validateaddress": {"isvalid": True, "address": "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"},
@@ -109,6 +116,17 @@ class MockRPC:
         except RPCNotAllowed:
             return None
         return await self.call(method, *params)
+
+    async def call_unrestricted(self, method: str, *params):
+        # Console full-trust path: no allowlist check in the mock either.
+        # Unknown methods fail like the real node (RPCError, not a mock
+        # AssertionError) so error mapping is exercised realistically.
+        self.calls.append((method, params))
+        if method in self.fail_methods:
+            raise RPCError(-14, "wallet passphrase entered was incorrect")
+        if method not in self.responses:
+            raise RPCError(-32601, "Method not found")
+        return self.responses[method]
 
     def called(self, method: str) -> bool:
         return any(m == method for m, _ in self.calls)

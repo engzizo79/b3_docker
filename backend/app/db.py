@@ -82,6 +82,12 @@ CREATE TABLE IF NOT EXISTS alerts (
  message TEXT NOT NULL,
  acknowledged INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS console_settings (
+ id INTEGER PRIMARY KEY CHECK (id = 1), -- single row
+ networks TEXT NOT NULL DEFAULT '', -- trusted CIDRs, comma-separated; '' = env seed
+ remote_full_access INTEGER NOT NULL DEFAULT 1, -- 2FA remotes: full (1) or read-only (0)
+ updated_ts REAL NOT NULL
+);
 """
 
 
@@ -413,3 +419,30 @@ def remove_wallet_intent(db_path: str, intent_id: int) -> bool:
             "DELETE FROM wizard_wallet_queue WHERE id=? AND status='pending'",
             (intent_id,))
         return cur.rowcount > 0
+
+def get_console_settings(db_path: str, seed_networks: str = "") -> dict:
+    """Single-row console trust config. An empty networks string means
+    "not set yet" -> the env CONSOLE_NETWORKS seed is used. remote_full_access
+    only affects non-allowlisted remote sessions (they always need 2FA)."""
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute("SELECT * FROM console_settings WHERE id=1").fetchone()
+    if row is None:
+        return {"networks": seed_networks, "remote_full_access": True,
+                "seeded": True}
+    # Empty networks means "keep the env seed" - but the operator's
+    # remote_full_access choice must survive either way.
+    return {"networks": row["networks"] or seed_networks,
+            "remote_full_access": bool(row["remote_full_access"]),
+            "seeded": False}
+
+
+def set_console_settings(db_path: str, networks: str,
+                         remote_full_access: bool) -> None:
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO console_settings (id, networks, remote_full_access,"
+            " updated_ts) VALUES (1,?,?,?) ON CONFLICT(id) DO UPDATE SET"
+            " networks=excluded.networks," 
+            " remote_full_access=excluded.remote_full_access,"
+            " updated_ts=excluded.updated_ts",
+            (networks, 1 if remote_full_access else 0, time.time()))

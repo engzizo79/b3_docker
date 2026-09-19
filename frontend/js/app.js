@@ -149,6 +149,7 @@ function initialState() {
   console: {
     input: '', lines: [], history: [], histPos: -1,
     catalog: null, loaded: false, gate: null, gateMsg: '', busy: false,
+    mode: null, settings: null, sform: null, sbusy: false,
   },
 
     /* ------------------------------------------------------------ staking */

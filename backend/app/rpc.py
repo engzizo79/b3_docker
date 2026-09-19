@@ -51,13 +51,14 @@ ALLOWED: dict[str, set[str]] = {
     "wallet_write": {  # gated: require unlocked wallet in the API layer
         "walletpassphrase", "walletlock", "createrawtransaction",
         "fundrawtransaction", "signrawtransactionwithwallet",
-        "sendrawtransaction", "testmempoolaccept", "startstaking",
+        "sendrawtransaction", "sendtoaddress", "sendmany",
+ "testmempoolaccept", "startstaking",
         "stopstaking", "signmessage", "createstake", "sendall",
         "bindfinalitykey", "revokefinalitykey",
     },
     "wallet_messaging": { "setlabel", "verifymessage", "gettransaction" },
 	"wallet_security": { "walletpassphrasechange" },
-	"network_read": {"getpeerinfo"},
+	"network_read": {"getpeerinfo", "stop"},
 	"staking_read": {"getstakinginfo", "getfinalityinfo"},
     "assets_read": {
         "getwalletassets", "listflowmeshmarkets", "getflowmeshmarketdata",
@@ -152,3 +153,27 @@ class B3RPCClient:
         except RPCNotAllowed:
             return None
         return await self.call(method, *params)
+
+    async def call_unrestricted(self, method: str, *params) -> object:
+        """Raw RPC call WITHOUT the allowlist choke point.
+
+        Used ONLY by the expert console in full-trust mode (localhost /
+        operator-allowlisted networks), where the operator has explicitly
+        chosen QT-parity: allow everything, warn but never prohibit.
+        Every other code path MUST use call() / call_optional() so the
+        allowlist stays the hard boundary for the regular API surface.
+        """
+        payload = {"jsonrpc": "2.0", "id": 1, "method": method,
+                   "params": list(params)}
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.post(self._url, json=payload, auth=self._auth)
+        except httpx.HTTPError as exc:
+            raise RPCUnavailable(str(exc)) from exc
+        if resp.status_code == 401:
+            raise RPCError(-1, "node RPC rejected credentials")
+        data = resp.json()
+        if "error" in data and data["error"] is not None:
+            raise RPCError(data["error"].get("code", -1),
+                           data["error"].get("message", "unknown error"))
+        return data.get("result")

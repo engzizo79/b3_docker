@@ -23,8 +23,8 @@ def test_key_exfiltration_rpcs_blocked():
 
 
 def test_unknown_rpc_blocked():
-    for method in ("dumpprivkey", "stop", "invalidateblock",
-                  "whatever", "", "getwalletinfo\u0000"):
+    for method in ("dumpprivkey", "invalidateblock", "whatever",
+                  "", "getwalletinfo\u0000"):
         with pytest.raises(RPCNotAllowed):
             assert_allowed(method)
 

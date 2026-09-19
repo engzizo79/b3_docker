@@ -4,6 +4,7 @@ client classification (localhost vs remote).
 Session store is in-memory: sessions die with the process (acceptable — the
 user simply logs in again; it also invalidates stolen cookies on restart)."""
 
+import ipaddress
 import os
 import secrets
 import time
@@ -51,21 +52,55 @@ def local_addresses() -> set:
     return addrs
 
 
+def peer_is_trusted_proxy(request) -> bool:
+    """Is the DIRECT connection peer a proxy whose X-Forwarded-For we
+    may believe? Only the local machine and entries of B3_TRUSTED_PROXIES
+    (CIDRs or exact names) qualify. Without this, any remote client could
+    spoof X-Forwarded-For: 127.0.0.1 and become "localhost" — bypassing
+    2FA and gaining full console trust. Fails closed."""
+    host = (request.client.host if request.client else "") or ""
+    if not host:
+        return False
+    if host in local_addresses():  # the local machine itself
+        return True
+    names, nets = [], []
+    for tok in os.environ.get("B3_TRUSTED_PROXIES", "").split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(tok, strict=False))
+        except ValueError:
+            names.append(tok.lower())
+    if host.lower() in names:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return any(ip in net for net in nets)
+
+
+def effective_client_ip(request) -> str:
+    """The real client IP. X-Forwarded-For is honored ONLY when the
+    direct peer is a trusted proxy (see peer_is_trusted_proxy); a
+    spoofed XFF from any other peer is ignored and the peer IP itself
+    is the answer."""
+    host = (request.client.host if request.client else "") or ""
+    if peer_is_trusted_proxy(request):
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return host
+
+
 def client_is_localhost(request) -> bool:
     """True when the request originates from the local machine: the
     container itself, the host loopback, or the Docker bridge gateway
     (host connections to a published port arrive from the gateway IP).
-    A reverse proxy only counts when it forwards a loopback client.
-    """
-    host = request.client.host if request.client else ""
-    forwarded = request.headers.get("x-forwarded-for", "")
-    local = local_addresses()
-    # Behind a reverse proxy the direct client is the proxy; only proxy-
-    # forwarded loopback counts as local.
-    if forwarded:
-        first = forwarded.split(",")[0].strip()
-        return first in local
-    return host in local
+    A reverse proxy only counts when it forwards a loopback client —
+    and only when the proxy itself is trusted (XFF is not spoofable)."""
+    return effective_client_ip(request) in local_addresses()
 
 @dataclass
 class Session:
