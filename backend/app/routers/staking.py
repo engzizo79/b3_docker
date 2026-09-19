@@ -438,6 +438,33 @@ async def create_stake(body: dict, request: Request):
  amount = _amount_or_400(body.get("amount"), "amount")
  if amount <= 0:
   raise HTTPException(status_code=400, detail="amount must be positive")
+ # Defense-in-depth: coins already locked in stakes cannot fund a new
+ # one. Compare against the LIQUID balance (trusted minus every stake
+ # output in getstakinginfo) so a stale client cannot over-lock. The
+ # 0.001 floor keeps a fee reserve, mirroring the frontend check.
+ try:
+  balances = await state.rpc.call("getbalances")
+  staking_info = await state.rpc.call("getstakinginfo")
+ except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
+  raise _plain_stake_error(exc)
+ liquid = None
+ try:
+  trusted = parse_amount(str((balances.get("mine") or {}).get("trusted") or "0"))
+  staked = Decimal("0")
+  for st in (staking_info.get("stakes") or []):
+   staked += parse_amount(str(st.get("amount") or "0"))
+  liquid = trusted - staked
+ except (InvalidOperation, ValueError, TypeError):
+  liquid = None
+ if liquid is not None and amount >= liquid:
+  free = liquid - Decimal("0.001")
+  raise HTTPException(
+   status_code=400,
+   detail=(
+    "Only " + format(free if free > 0 else Decimal("0"), ".9f")
+    + " B3 is free to lock — coins already staked cannot fund another stake"
+   ),
+  )
  try:
   result = await state.rpc.call("createstake", format(amount, ".9f"))
  except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:

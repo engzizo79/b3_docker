@@ -112,10 +112,11 @@ export const stakingMixin = {
  but without touching the already-done bind/start steps, so the loop keeps
  running and no unstake is needed first. */
  openAddStake() {
- const spendable = Number(this.spendableAmount()) || 0;
+ const liquid = Number(this.liquidAmount()) || 0;
  const v = this.staking.validator || {};
  const min = v.min_stake ? Number(v.min_stake) : null;
- let suggest = spendable > 0 ? spendable : (min || 0);
+ const reserve = 0.001; // fee floor: the suggested value must pass its own check
+ let suggest = liquid > reserve ? liquid - reserve : (min || 0);
  if (min && suggest < min) suggest = min;
  this.addStake = { show: true, amount: String(suggest), err: '', busy: false };
  this.$nextTick(() => document.getElementById('addstake-amount').focus());
@@ -128,11 +129,16 @@ export const stakingMixin = {
  if (!f.amount || !Number.isFinite(amt) || amt <= 0) {
  f.err = 'Enter an amount to lock'; return;
  }
- const spendable = Number(this.spendableAmount()) || 0;
+ const liquid = Number(this.liquidAmount()) || 0;
  const reserve = 0.001; // fee floor: never lock literally everything
- if (amt > spendable - reserve) {
+ if (amt > liquid) {
+ f.err = 'Only ' + fmtAmount(liquid, { maxDecimals: 3, unit: true })
+ + ' is free to lock — coins already staked cannot fund another stake';
+ return;
+ }
+ if (amt > liquid - reserve) {
  f.err = 'Leave a small amount for the stake transaction fee (try '
- + fmtAmount(Math.max(0, spendable - reserve), { maxDecimals: 3 }) + ' B3)';
+ + fmtAmount(Math.max(0, liquid - reserve), { maxDecimals: 3 }) + ' B3)';
  return;
  }
  f.busy = true; f.err = '';
@@ -154,10 +160,10 @@ export const stakingMixin = {
  openStartFlow() {
     const v = this.staking.validator || {};
     const min = v.min_stake ? Number(v.min_stake) : null;
-    const spendable = Number(this.spendableAmount()) || 0;
-    // Suggest: everything spendable if the whole balance can stake, else the
-    // network minimum. Never suggest more than the user has.
-    let suggest = spendable > 0 ? spendable : (min || 0);
+    const liquid = Number(this.liquidAmount()) || 0;
+    // Suggest: everything not already locked in stakes, else the network
+    // minimum. Never suggest more than the user could actually lock.
+    let suggest = liquid > 0 ? liquid : (min || 0);
     if (min && suggest < min) suggest = min;
     this.startFlow = {
       show: true, amount: String(suggest), err: '', busy: false, confirming: false,
@@ -175,15 +181,15 @@ export const stakingMixin = {
     if (min && amt < min) {
       return { ok: false, msg: 'The network minimum stake is ' + min + ' B3' };
     }
-    const spendable = Number(this.spendableAmount());
-    if (Number.isFinite(spendable) && amt > spendable) {
-      return { ok: false, msg: 'You only have ' + this.fmtAmount(this.spendableAmount(), { unit: true }) + ' available' };
+    const liquid = Number(this.liquidAmount());
+    if (Number.isFinite(liquid) && amt > liquid) {
+      return { ok: false, msg: 'You only have ' + this.fmtAmount(liquid, { unit: true }) + ' free to lock — staked coins cannot fund another stake' };
     }
-    // Staking 100% of the spendable balance fails on chain because the
+    // Staking 100% of the liquid balance fails on chain because the
     // stake transaction needs a fee. Reserve a small dust amount so the
     // node can fund it. 0.001 B3 is a safe floor above any relay minimum.
-    if (Number.isFinite(spendable) && amt >= spendable && spendable > 0.001) {
-      return { ok: false, msg: 'Leave a small amount for the stake transaction fee (try ' + this.fmtAmount(String(Math.max(0, spendable - 0.001)), { unit: true }) + ')' };
+    if (Number.isFinite(liquid) && amt >= liquid && liquid > 0.001) {
+      return { ok: false, msg: 'Leave a small amount for the stake transaction fee (try ' + this.fmtAmount(String(Math.max(0, liquid - 0.001)), { unit: true }) + ')' };
     }
     return { ok: true, msg: '' };
   },

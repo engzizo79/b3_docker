@@ -468,6 +468,24 @@ export const stateMixin = {
   return Number.isFinite(b) ? b : 0;
  },
 
+
+ /** Truly liquid coins: total balance MINUS everything already locked in
+ * stakes (active + pending + unconfirmed). Staked coins can never fund a
+ * new stake, so add-stake and the start-flow must work from this number,
+ * not the raw balance. String-based 9dp math, no float drift. */
+ liquidAmount() {
+  const toUnits = (v) => {
+   const m = String(v || '0').match(/^(\d+)(?:\.(\d*))?$/);
+   if (!m) return 0n;
+   return BigInt(m[1] + (m[2] || '').padEnd(9, '0').slice(0, 9));
+  };
+  const bal = toUnits(this.wallet.balance);
+  const staked = toUnits(this.stakeTotals().total);
+  const u = bal > staked ? bal - staked : 0n;
+  const s = u.toString().padStart(10, '0');
+  return s.slice(0, -9) + '.' + s.slice(-9);
+ },
+
  /** Pending/immature coins need explaining, not just a number. */
  balanceChips() {
     const chips = [];

@@ -305,12 +305,51 @@ def test_validator_status_ready(client: TestClient, mock_rpc: MockRPC):
 def test_create_stake_calls_createstake_and_audits(client: TestClient, mock_rpc: MockRPC):
     out = login(client)
     unlock(client, out["headers"])
+    # Realistic funded wallet: the trusted balance includes coins already
+    # locked in stakes, so it must exceed the base mock's 1000 B3 stake.
+    mock_rpc.responses["getbalances"] = {"mine": {"trusted": 5000.0}}
     r = client.post("/api/staking/stake", json={"amount": "250.5"},
                     headers=out["headers"])
     assert r.status_code == 200, r.text
     assert mock_rpc.called("createstake")
     assert mock_rpc.calls[-1][1] == ("250.500000000",)
     assert r.json()["stake"]["status"] == "UNCONFIRMED"
+
+
+def test_create_stake_refuses_amount_over_liquid(client: TestClient, mock_rpc: MockRPC):
+    """User scenario: 495 of 500 already staked; asking for 499.9 must be
+    refused with plain language, not a cryptic daemon error."""
+    out = login(client)
+    unlock(client, out["headers"])
+    mock_rpc.responses["getbalances"] = {"mine": {"trusted": 500.0}}
+    mock_rpc.responses["getstakinginfo"] = {
+        "staking": {"available": True, "running": True, "state": "staking"},
+        "stakes": [{"txid": "cs" + "b" * 62, "vout": 1,
+                    "amount": "495.000000000", "status": "ACTIVE"}],
+        "active": "495.000000000", "pending": "0.000000000",
+        "unconfirmed": "0.000000000"}
+    r = client.post("/api/staking/stake", json={"amount": "499.9"},
+                    headers=out["headers"])
+    assert r.status_code == 400
+    assert "free to lock" in r.json()["detail"]
+    assert not mock_rpc.called("createstake")
+
+
+def test_create_stake_allows_amount_under_liquid(client: TestClient, mock_rpc: MockRPC):
+    """4 B3 with 5 liquid (500 total, 495 staked) goes through."""
+    out = login(client)
+    unlock(client, out["headers"])
+    mock_rpc.responses["getbalances"] = {"mine": {"trusted": 500.0}}
+    mock_rpc.responses["getstakinginfo"] = {
+        "staking": {"available": True, "running": True, "state": "staking"},
+        "stakes": [{"txid": "cs" + "b" * 62, "vout": 1,
+                    "amount": "495.000000000", "status": "ACTIVE"}],
+        "active": "495.000000000", "pending": "0.000000000",
+        "unconfirmed": "0.000000000"}
+    r = client.post("/api/staking/stake", json={"amount": "4"},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert mock_rpc.called("createstake")
 
 
 def test_create_stake_rejects_bad_amount(client: TestClient, mock_rpc: MockRPC):

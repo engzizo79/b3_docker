@@ -107,6 +107,10 @@ def main() -> None:
             "unconfirmed": "0.000000000"}
         mock.responses["getfinalityinfo"] = {
             "binding": {"bound": True, "revoked": False, "seq": 0}}
+        # Mirror the user's live wallet: 500 trusted total, 495 already
+        # locked in the ACTIVE stake -> only ~5 truly liquid.
+        mock.responses["getbalances"] = {
+            "mine": {"trusted": 500.0, "untrusted_pending": 0, "immature": 0}}
     elif os.environ.get("B3DEV_VALIDATOR_UNBOUND"):
 
         # Fresh-install staking reality: no stake weight, key never bound, loop off.

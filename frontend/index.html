@@ -3356,7 +3356,7 @@
  inputmode="decimal" :aria-invalid="addStake.err ? 'true' : 'false'">
  <span class="err" x-show="addStake.err" x-text="addStake.err" role="alert"></span>
  <span class="help" x-show="!addStake.err">You have
- <span x-text="fmtAmount(spendableAmount(), { unit: true, maxDecimals: 2 })"></span> spendable.
+ <span x-text="fmtAmount(liquidAmount(), { unit: true, maxDecimals: 2 })"></span> free to lock — staked coins are excluded.
  Leave a little for the transaction fee.</span>
  </div>
  <div class="modal-foot">
