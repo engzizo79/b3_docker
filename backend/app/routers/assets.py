@@ -69,6 +69,11 @@ async def assets_overview(request: Request):
             "modern_issued": fn_state.get("modern_issued"),
             "modern_capacity": fn_state.get("modern_capacity"),
             "pod_active": fn_state.get("pod_active", False),
+# counter_known gates createfncoin on the node (getassetstate);
+# dropping it made the UI claim an eternal FN-counter sync.
+"counter_known": fn_state.get("counter_known", True),
+# Legacy-era FN coins predate the modern pod counter.
+"historical_issued": fn_state.get("historical_issued", 0),
         },
         "wallet_loaded": state.rpc.wallet_loaded() if hasattr(state.rpc, "wallet_loaded") else None,
     }

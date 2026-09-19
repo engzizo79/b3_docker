@@ -899,7 +899,7 @@
           <div class="card-head">
             <div class="row gap-2">
               <svg class="i" style="color:var(--accent-text)"><use href="#i-spark"/></svg>
-              <strong>Earning</strong>
+              <strong x-text="staking.active ? 'Earning' : 'Staking'"></strong>
             </div>
             <button class="btn btn-ghost btn-sm" type="button" @click="go('staking')">
               Open <svg class="i-sm"><use href="#i-chevron-right"/></svg>
@@ -1473,7 +1473,7 @@
 
             <div class="stat-grid mt-4">
               <div class="stat">
-                <span class="label">Earning</span>
+                <span class="label">Staked</span>
                 <span class="stat-val" x-text="fmtAmount(stakeTotals().active, { maxDecimals: 2, unit: true })"></span>
               </div>
               <div class="stat">
@@ -1557,7 +1557,8 @@
                 <span x-text="staking.stakes.length"></span> total
               </span>
             </div>
-          </div>
+          <button class="btn btn-ghost btn-sm" type="button" x-show="staking.stakes.length" @click="openAddStake()">+ Add stake</button>
+</div>
           <div class="empty empty--tight" x-show="!staking.stakes.length">
             <span class="empty-icon"><svg class="i-lg"><use href="#i-scale"/></svg></span>
             <h3>No stakes yet</h3>
@@ -1959,8 +1960,8 @@
 
             <div class="stat-grid mt-4">
               <div class="stat">
-                <span class="label">Created so far</span>
-                <span class="stat-val" x-text="fmtInt(assets.fn && assets.fn.modern_issued)"></span>
+                <span class="label">Created so far (modern + legacy)</span>
+                <span class="stat-val" x-text="fmtInt((assets.fn && (Number(assets.fn.modern_issued) || 0) + (Number(assets.fn.historical_issued) || 0)))"></span>
               </div>
               <div class="stat">
                 <span class="label">Still available</span>
@@ -3338,6 +3339,35 @@
       </div>
     </div>
   </div>
+</template>
+<template x-if="addStake.show">
+ <div class="backdrop" @click="backdropClose($event, () => addStake.show = false)"
+ x-init="trapFocus($el, () => addStake.show = false)">
+ <div class="modal modal--sm" role="dialog" aria-modal="true" aria-labelledby="addstake-title">
+ <div class="modal-head">
+ <div>
+ <h2 id="addstake-title">Lock more coins</h2>
+ <p class="sub">Adds another stake alongside your existing ones — no unstaking needed.</p>
+ </div>
+ </div>
+ <div class="modal-body">
+ <label class="lbl" for="addstake-amount">Amount</label>
+ <input id="addstake-amount" class="input" type="text" x-model="addStake.amount"
+ inputmode="decimal" :aria-invalid="addStake.err ? 'true' : 'false'">
+ <span class="err" x-show="addStake.err" x-text="addStake.err" role="alert"></span>
+ <span class="help" x-show="!addStake.err">You have
+ <span x-text="fmtAmount(spendableAmount(), { unit: true, maxDecimals: 2 })"></span> spendable.
+ Leave a little for the transaction fee.</span>
+ </div>
+ <div class="modal-foot">
+ <button class="btn btn-ghost" type="button" @click="addStake.show = false">Cancel</button>
+ <button class="btn btn-primary" type="button" :disabled="addStake.busy" @click="submitAddStake()">
+ <span class="spinner" x-show="addStake.busy"></span>
+ <span x-text="addStake.busy ? 'Locking…' : 'Lock coins'"></span>
+ </button>
+ </div>
+ </div>
+ </div>
 </template>
 <template x-if="unlockPrompt.show">
   <div class="backdrop" @click="backdropClose($event, () => dismissUnlockPrompt())"

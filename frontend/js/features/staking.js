@@ -108,7 +108,50 @@ export const stakingMixin = {
     } catch { this.staking.validator = null; }
   },
 
-  openStartFlow() {
+  /* Locking MORE coins alongside existing stakes: the same createstake RPC,
+ but without touching the already-done bind/start steps, so the loop keeps
+ running and no unstake is needed first. */
+ openAddStake() {
+ const spendable = Number(this.spendableAmount()) || 0;
+ const v = this.staking.validator || {};
+ const min = v.min_stake ? Number(v.min_stake) : null;
+ let suggest = spendable > 0 ? spendable : (min || 0);
+ if (min && suggest < min) suggest = min;
+ this.addStake = { show: true, amount: String(suggest), err: '', busy: false };
+ this.$nextTick(() => document.getElementById('addstake-amount').focus());
+ },
+
+ async submitAddStake() {
+ const f = this.addStake;
+ if (!f || f.busy) return;
+ const amt = Number(f.amount);
+ if (!f.amount || !Number.isFinite(amt) || amt <= 0) {
+ f.err = 'Enter an amount to lock'; return;
+ }
+ const spendable = Number(this.spendableAmount()) || 0;
+ const reserve = 0.001; // fee floor: never lock literally everything
+ if (amt > spendable - reserve) {
+ f.err = 'Leave a small amount for the stake transaction fee (try '
+ + fmtAmount(Math.max(0, spendable - reserve), { maxDecimals: 3 }) + ' B3)';
+ return;
+ }
+ f.busy = true; f.err = '';
+ try {
+ await this.api('/api/staking/stake', {
+ method: 'POST',
+ body: JSON.stringify({ amount: f.amount }),
+ });
+ this.showToast('Coins locked — the new stake is on its way to active');
+ f.show = false;
+ await Promise.allSettled([this.loadStakingSnapshot(), this.loadValidator(), this.loadBalances()]);
+ } catch (e) {
+ if (f.show) f.err = (e && e.message) ? e.message : 'Could not lock the coins. Try again.';
+ else this.reportError(e);
+ }
+ f.busy = false;
+ },
+
+ openStartFlow() {
     const v = this.staking.validator || {};
     const min = v.min_stake ? Number(v.min_stake) : null;
     const spendable = Number(this.spendableAmount()) || 0;
@@ -117,7 +160,7 @@ export const stakingMixin = {
     let suggest = spendable > 0 ? spendable : (min || 0);
     if (min && suggest < min) suggest = min;
     this.startFlow = {
-      show: true, amount: String(suggest), err: '', busy: false,
+      show: true, amount: String(suggest), err: '', busy: false, confirming: false,
     };
     this.$nextTick(() => document.getElementById('startflow-amount')?.focus());
   },

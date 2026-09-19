@@ -426,7 +426,7 @@ export const stateMixin = {
 
   stakeStatusText(status) {
     const map = {
-      ACTIVE: 'Earning',
+      ACTIVE: 'Locked', // ACTIVE = weight confirmed; loop state shows in the Running/Off badge
       PENDING: 'Activating',
       UNCONFIRMED: 'Confirming',
     };

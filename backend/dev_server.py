@@ -92,7 +92,23 @@ def main() -> None:
         "colored": {"configured": True, "active": True, "issuance_fee": "50.000000000"}}
     mock.responses["listflowmeshmarkets"] = [
         {"market_id": "ef" * 32, "asset_id": "ab" * 32, "state": "open"}]
-    if os.environ.get("B3DEV_VALIDATOR_UNBOUND"):
+    if os.environ.get("B3DEV_HALF_STAKED"):
+        # User live state at v0.4.1: stake ACTIVE but loop never started, key bound,
+        # wallet funded, FN counter known. Reproduces reported UX bugs.
+        mock.responses["getblockchaininfo"] = {"blocks": 828897, "chain": "main", "headers": 828897}
+        mock.responses["getstakinginfo"] = {
+            "staking": {"available": True, "running": False, "state": "stopped",
+                        "finality_signing": False, "last_signed_height": -1,
+                        "blocks_produced": 0, "min_stake_amount": "333.000000000"},
+            "stakes": [{"txid": "cs" + "b" * 62, "vout": 1,
+                        "amount": "495.000000000", "status": "ACTIVE",
+                        "confirmations": 149}],
+            "active": "495.000000000", "pending": "0.000000000",
+            "unconfirmed": "0.000000000"}
+        mock.responses["getfinalityinfo"] = {
+            "binding": {"bound": True, "revoked": False, "seq": 0}}
+    elif os.environ.get("B3DEV_VALIDATOR_UNBOUND"):
+
         # Fresh-install staking reality: no stake weight, key never bound, loop off.
         mock.responses["getblockchaininfo"] = {"blocks": 828553, "chain": "main", "headers": 828553}
         mock.responses["getstakinginfo"] = {
@@ -103,42 +119,46 @@ def main() -> None:
             "unconfirmed": "0.000000000"}
         mock.responses["getfinalityinfo"] = {
             "binding": {"bound": False, "revoked": False}}
-        mock.responses["createstake"] = {
-            "txid": "cs" + "b" * 62, "vout": 1, "amount": "100.000000000",
-            "status": "UNCONFIRMED"}
-        mock.responses["bindfinalitykey"] = {"txid": "bf" + "b" * 62, "action": "bind"}
-        mock.responses["revokefinalitykey"] = {"txid": "rv" + "b" * 62, "action": "revoke"}
-        _orig_call = mock.call
+    mock.responses["createstake"] = {
+        "txid": "cs" + "b" * 62, "vout": 1, "amount": "100.000000000",
+        "status": "UNCONFIRMED"}
+    mock.responses["bindfinalitykey"] = {"txid": "bf" + "b" * 62, "action": "bind"}
+    mock.responses["revokefinalitykey"] = {"txid": "rv" + "b" * 62, "action": "revoke"}
+    _orig_call = mock.call
 
-        async def _stateful_call(method, *params):
-            # The frozen mock chain must track the live explorer tip the
-            # monitor writes, or the node looks perpetually behind in dev.
-            if method == "getblockchaininfo":
-                try:
-                    tip = int(Path(s.explorer_tip_file).read_text().strip())
-                except Exception:
-                    tip = 828553
-                mock.responses["getblockchaininfo"] = {
-                    "blocks": tip, "headers": tip, "chain": "main"}
-            if method == "walletpassphrase" and params and params[0] == "wrong-pass":
-                from tests.conftest import RPCError
-                raise RPCError(-14, "wallet passphrase entered was incorrect")
-            r = await _orig_call(method, *params)
-            if method == "createstake":
-                mock.responses["getstakinginfo"]["active"] = "100.000000000"
-                mock.responses["getstakinginfo"]["stakes"] = [
-                    {"txid": "cs" + "b" * 62, "vout": 1, "amount": "100.000000000",
-                     "status": "ACTIVE", "confirmations": 500}]
-            elif method == "bindfinalitykey":
-                mock.responses["getfinalityinfo"]["binding"] = {"bound": True, "revoked": False, "seq": 0}
-            elif method == "startstaking":
-                mock.responses["getstakinginfo"]["staking"]["running"] = True
-                mock.responses["getstakinginfo"]["staking"]["state"] = "staking"
-            elif method == "revokefinalitykey":
-                mock.responses["getfinalityinfo"]["binding"] = {"bound": False, "revoked": True, "seq": 1}
-            return r
+    async def _stateful_call(method, *params):
+        # The frozen mock chain must track the live explorer tip the
+        # monitor writes, or the node looks perpetually behind in dev.
+        if method == "getblockchaininfo":
+            try:
+                tip = int(Path(s.explorer_tip_file).read_text().strip())
+            except Exception:
+                tip = 828553
+            mock.responses["getblockchaininfo"] = {
+                "blocks": tip, "headers": tip, "chain": "main"}
+        if method == "walletpassphrase" and params and params[0] == "wrong-pass":
+            from tests.conftest import RPCError
+            raise RPCError(-14, "wallet passphrase entered was incorrect")
+        print(f"WRAPPER: {method} params={params}", flush=True)
+        r = await _orig_call(method, *params)
+        if method == "createstake":
+            mock.responses["getstakinginfo"]["active"] = "100.000000000"
+            mock.responses["getstakinginfo"]["stakes"] = [
+                {"txid": "cs" + "b" * 62, "vout": 1, "amount": "100.000000000",
+                 "status": "ACTIVE", "confirmations": 500}]
+        elif method == "bindfinalitykey":
+            mock.responses["getfinalityinfo"]["binding"] = {"bound": True, "revoked": False, "seq": 0}
+        elif method == "startstaking":
+            mock.responses["getstakinginfo"]["staking"]["running"] = True
+            mock.responses["getstakinginfo"]["staking"]["state"] = "staking"
+        elif method == "stopstaking":
+            mock.responses["getstakinginfo"]["staking"]["running"] = False
+            mock.responses["getstakinginfo"]["staking"]["state"] = "stopped"
+        elif method == "revokefinalitykey":
+            mock.responses["getfinalityinfo"]["binding"] = {"bound": False, "revoked": True, "seq": 1}
+        return r
 
-        mock.call = _stateful_call
+    mock.call = _stateful_call
 
     state = AppState(s, mock, SessionStore(s.session_secret), username="admin")
     app = create_app(state)

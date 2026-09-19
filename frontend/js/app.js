@@ -152,6 +152,7 @@ function initialState() {
       weight: null, netWeight: null, busy: false, working: false, validator: null,
     },
  startFlow: { show: false, amount: "", err: "", busy: false, confirming: false },
+ addStake: { show: false, amount: "", err: "", busy: false },
     unstake: { target: null, preview: null, busy: false },
     autostake: {
       settings: null, form: { enabled: false, target: '', reserve: '' },
