@@ -3567,7 +3567,7 @@
      The single gate for every irreversible action. window.confirm() is banned
      for anything wallet-affecting. -->
 <template x-if="confirmModal.show">
-  <div class="backdrop" @click="backdropClose($event, () => cancelConfirm())"
+  <div class="backdrop backdrop--top" @click="backdropClose($event, () => cancelConfirm())"
        x-init="trapFocus($el, () => cancelConfirm())">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
       <div class="modal-head">
@@ -3617,7 +3617,16 @@
             <div class="mt-1" x-html="amountHtml(unstake.preview.stake.amount, { unit: true, class: 'amt-lg' })"></div>
             <div class="details mt-4">
               <div class="drow"><span class="dkey">Goes to</span>
-                <span class="dval is-mono break-all" x-text="unstake.preview.destination"></span></div>
+                <span class="dval">
+                  <input id="unstake-dest" type="text" class="input is-mono"
+                         x-model="unstake.dest"
+                         @change="repreviewUnstakeDest()"
+                         :disabled="unstake.busy"
+                         spellcheck="false" autocomplete="off"
+                         aria-label="Destination address" />
+                  <p class="err t-sm mt-1" x-show="unstake.destErr" x-text="unstake.destErr"></p>
+                  <p class="muted t-sm mt-1">Your own address by default — paste any address to send the coins elsewhere.</p>
+                </span></div>
               <div class="drow"><span class="dkey">Status</span>
                 <span class="dval">
                   <span class="badge" :class="stakeStatusClass(unstake.preview.stake.status)"

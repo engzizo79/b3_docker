@@ -166,10 +166,17 @@ async def manual_reconcile(request: Request):
     return result
 
 
-async def _build_unstake(state, txid, vout):
+async def _build_unstake(state, txid, vout, destination=None):
     # Verify the stake exists in getstakinginfo (never trust client input
-    # for what to spend), derive a fresh receiving address, and build the
-    # signed-not-broadcast sendall spend of exactly this outpoint.
+    # for what to spend), then build the signed-not-broadcast sendall spend
+    # of exactly this outpoint to the chosen destination.
+    #
+    # CRITICAL: the destination MUST be deterministic across the two phases
+    # (preview + confirm). The CLIENT sends the destination in both phases,
+    # so they match. If the client omits it, we default to the stake's
+    # owner_address (the wallet's own address that owns the stake) — NOT
+    # getnewaddress(), which returns a different address every call on a
+    # real node and breaks the HMAC token binding.
     try:
         info = await state.rpc.call("getstakinginfo")
     except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
@@ -181,8 +188,22 @@ async def _build_unstake(state, txid, vout):
             break
     if stake is None:
         raise HTTPException(status_code=404, detail="stake not found")
+    # Use the client's chosen destination, or default to the stake's own
+    # owner_address — deterministic, and the wallet's own address.
+    dest = (destination or "").strip() or stake.get("owner_address")
+    if not dest:
+        raise HTTPException(status_code=422,
+                            detail="no destination address available")
+    # Validate the address via the node (rejects non-P2PKH, wrong network).
     try:
-        dest = await state.rpc.call("getnewaddress")
+        vinfo = await state.rpc.call("validateaddress", [dest])
+        if not vinfo.get("isvalid"):
+            raise HTTPException(status_code=400, detail="invalid destination address")
+    except RPCError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid destination: {exc}")
+    except (RPCNotAllowed, RPCUnavailable):
+        raise HTTPException(status_code=503, detail="node unreachable")
+    try:
         built = await state.rpc.call(
             "sendall", [dest], None, "unset", None,
             {"inputs": [{"txid": txid, "vout": vout}],
@@ -215,7 +236,7 @@ async def unstake(body: dict, request: Request):
         raise HTTPException(status_code=400, detail="invalid txid")
     confirm = bool(body.get("confirm"))
 
-    stake, dest, tx_hex = await _build_unstake(state, txid, vout)
+    stake, dest, tx_hex = await _build_unstake(state, txid, vout, body.get("destination"))
     preview_id = _txid_from_hex(tx_hex)
     token = _unstake_token(state.settings.session_secret, txid, vout,
                            dest, preview_id)

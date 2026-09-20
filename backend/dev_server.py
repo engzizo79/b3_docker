@@ -103,8 +103,9 @@ def main() -> None:
             "staking": {"available": True, "running": False, "state": "stopped",
                         "finality_signing": False, "last_signed_height": -1,
                         "blocks_produced": 0, "min_stake_amount": "333.000000000"},
-            "stakes": [{"txid": "cs" + "b" * 62, "vout": 1,
+            "stakes": [{"txid": "cb" + "b" * 62, "vout": 1,
                         "amount": "495.000000000", "status": "ACTIVE",
+                        "owner_address": "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2",
                         "confirmations": 149}],
             "active": "495.000000000", "pending": "0.000000000",
             "unconfirmed": "0.000000000"}
@@ -127,7 +128,7 @@ def main() -> None:
         mock.responses["getfinalityinfo"] = {
             "binding": {"bound": False, "revoked": False}}
     mock.responses["createstake"] = {
-        "txid": "cs" + "b" * 62, "vout": 1, "amount": "100.000000000",
+        "txid": "cb" + "b" * 62, "vout": 1, "amount": "100.000000000",
         "status": "UNCONFIRMED"}
     mock.responses["bindfinalitykey"] = {"txid": "bf" + "b" * 62, "action": "bind"}
     mock.responses["revokefinalitykey"] = {"txid": "rv" + "b" * 62, "action": "revoke"}
@@ -151,8 +152,9 @@ def main() -> None:
         if method == "createstake":
             mock.responses["getstakinginfo"]["active"] = "100.000000000"
             mock.responses["getstakinginfo"]["stakes"] = [
-                {"txid": "cs" + "b" * 62, "vout": 1, "amount": "100.000000000",
-                 "status": "ACTIVE", "confirmations": 500}]
+                {"txid": "cb" + "b" * 62, "vout": 1, "amount": "100.000000000",
+                 "status": "ACTIVE", "confirmations": 500,
+                 "owner_address": "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"}]
         elif method == "bindfinalitykey":
             mock.responses["getfinalityinfo"]["binding"] = {"bound": True, "revoked": False, "seq": 0}
         elif method == "startstaking":

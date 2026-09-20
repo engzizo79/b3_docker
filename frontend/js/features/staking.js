@@ -356,23 +356,51 @@ export const stakingMixin = {
   /* --------------------------------------------------- S3 one-click unstake */
 
   async previewUnstake(stake) {
-    this.unstake = { target: stake, preview: null, busy: true };
+  this.unstake = {
+    target: stake, preview: null, busy: true,
+    dest: stake.owner_address || '', destErr: '',
+  };
+  try {
+    this.unstake.preview = await this.api('/api/staking/unstake', {
+      method: 'POST',
+      body: JSON.stringify({
+        txid: stake.txid, vout: stake.vout,
+        destination: this.unstake.dest, confirm: false,
+      }),
+    });
+    // Show the backend's resolved destination (defaults to owner_address).
+    if (this.unstake.preview.destination) this.unstake.dest = this.unstake.preview.destination;
+  } catch (e) {
+    this.unstake = { target: null, preview: null, busy: false, dest: '', destErr: '' };
+    this.reportError(e);
+    return;
+  }
+  this.unstake.busy = false;
+  },
+
+  /** Rebuild the preview when the user edits the destination field. */
+  async repreviewUnstakeDest() {
+    if (!this.unstake.target || !this.unstake.dest) return;
+    this.unstake.busy = true;
+    this.unstake.destErr = '';
     try {
       this.unstake.preview = await this.api('/api/staking/unstake', {
         method: 'POST',
-        body: JSON.stringify({ txid: stake.txid, vout: stake.vout, confirm: false }),
+        body: JSON.stringify({
+          txid: this.unstake.target.txid, vout: this.unstake.target.vout,
+          destination: this.unstake.dest, confirm: false,
+        }),
       });
+      if (this.unstake.preview.destination) this.unstake.dest = this.unstake.preview.destination;
     } catch (e) {
-      this.unstake = { target: null, preview: null, busy: false };
-      this.reportError(e);
-      return;
+      this.unstake.destErr = (e && e.message) || 'Invalid address';
     }
     this.unstake.busy = false;
   },
 
-  cancelUnstake() { this.unstake = { target: null, preview: null, busy: false }; },
+  cancelUnstake() { this.unstake = { target: null, preview: null, busy: false, dest: '', destErr: '' }; },
 
-  confirmUnstake() {
+confirmUnstake() {
     const p = this.unstake.preview;
     if (!p) return;
     const amountText = fmtAmount(p.stake.amount, { unit: true });
@@ -401,7 +429,7 @@ export const stakingMixin = {
               txid: this.unstake.target.txid,
               vout: this.unstake.target.vout,
               confirm: true,
-              confirm_token: p.confirm_token,
+              confirm_token: p.confirm_token, destination: this.unstake.dest,
             }),
           });
           this.showToast('Unstaked — ' + amountText + ' is on its way back');

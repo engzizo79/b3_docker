@@ -426,3 +426,71 @@ def test_reconcile_skips_bind_when_already_bound(client, mock_rpc, settings):
     assert result["ran"] is True
     assert "bound" not in result  # nothing new to do
     assert not mock_rpc.called("bindfinalitykey")
+
+
+def test_unstake_default_destination_is_owner_address(client, mock_rpc, settings):
+ out = login(client)
+ unlock(client, out["headers"])
+ r = client.post("/api/staking/unstake",
+ json={"txid": STAKE_TXID, "vout": 0, "confirm": False},
+ headers=out["headers"])
+ assert r.status_code == 200, r.text
+ d = r.json()
+ # No client destination -> backend defaults to the stake's owner_address
+ assert d["destination"] == "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"
+ sendall_call = [c for m, c in mock_rpc.calls if m == "sendall"][0]
+ assert sendall_call[0] == ["SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"]
+ assert mock_rpc.called("validateaddress")
+
+
+def test_unstake_client_destination_honored_across_phases(client, mock_rpc, settings):
+ out = login(client)
+ unlock(client, out["headers"])
+ custom = "SxyExampleCustomDestinationAddress111111111"
+ prev = client.post("/api/staking/unstake",
+ json={"txid": STAKE_TXID, "vout": 0, "confirm": False,
+ "destination": custom},
+ headers=out["headers"]).json()
+ assert prev["destination"] == custom
+ r = client.post("/api/staking/unstake",
+ json={"txid": STAKE_TXID, "vout": 0, "confirm": True,
+ "destination": custom,
+ "confirm_token": prev["confirm_token"]},
+ headers=out["headers"])
+ assert r.status_code == 200, r.text
+ # Both sendall builds used the SAME client-chosen destination
+ dests = [c[0][0] for m, c in mock_rpc.calls if m == "sendall"]
+ assert dests == [custom, custom]
+ assert mock_rpc.called("sendrawtransaction")
+
+
+def test_unstake_destination_swap_rejected(client, mock_rpc, settings):
+ out = login(client)
+ unlock(client, out["headers"])
+ custom = "SxyExampleCustomDestinationAddress111111111"
+ prev = client.post("/api/staking/unstake",
+ json={"txid": STAKE_TXID, "vout": 0, "confirm": False,
+ "destination": custom},
+ headers=out["headers"]).json()
+ # Swap the destination between phases: the HMAC token binds the
+ # destination, so this must fail as a token mismatch, never broadcast.
+ r = client.post("/api/staking/unstake",
+ json={"txid": STAKE_TXID, "vout": 0, "confirm": True,
+ "destination": "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2",
+ "confirm_token": prev["confirm_token"]},
+ headers=out["headers"])
+ assert r.status_code == 400
+ assert not mock_rpc.called("sendrawtransaction")
+
+
+def test_unstake_invalid_destination_400(client, mock_rpc, settings):
+ out = login(client)
+ unlock(client, out["headers"])
+ mock_rpc.responses["validateaddress"] = {"isvalid": False}
+ r = client.post("/api/staking/unstake",
+ json={"txid": STAKE_TXID, "vout": 0, "confirm": False,
+ "destination": "NotARealAddress"},
+ headers=out["headers"])
+ assert r.status_code == 400
+ assert "invalid" in r.json()["detail"].lower()
+ assert not mock_rpc.called("sendall")
