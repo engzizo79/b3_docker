@@ -270,6 +270,12 @@ elif [ "${B3_DAEMON_MODE}" = "external" ]; then
 elif [ "${RUN_UI}" != "false" ] && [ ! -f "${WIZARD_MARKER}" ]; then
     touch "${DEFERRED_FILE}"
     log "First UI run — daemon deferred until the setup wizard is completed (Finish Setup)"
+elif [ ! -x "${DAEMON_BIN}" ]; then
+    # v0.6.0+: the daemon is no longer baked into the image. On upgrade from
+    # an older version the wizard marker exists but the binary doesn't. Defer
+    # and let the UI guide the user through downloading it.
+    touch "${DEFERRED_FILE}"
+    log "Daemon binary missing on completed setup — deferred (use the UI to install)"
 else
     start_daemon
 fi

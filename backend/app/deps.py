@@ -9,6 +9,7 @@ from fastapi import HTTPException, Request
 
 from app import db
 from app.config import Settings
+from app.crypto_envelope import server_keypair
 from app.rpc import B3RPCClient
 from app.session import CSRF_COOKIE, SESSION_COOKIE, Session, SessionStore, client_is_localhost
 
