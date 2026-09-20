@@ -344,10 +344,49 @@
                 Right now B3 Hive only answers on this machine. Set a password to sign in,
                 and to open access from your other devices.
               </p>
-              <p class="flow-sub mt-2" x-show="!setup.setup_required">
-                Your login password is already set, so there is nothing to do here.
+              <p class="flow-sub mt-2" x-show="!setup.setup_required && session.authenticated">
+                Your login password is already set and you are signed in — nothing
+                to do here.
+              </p>
+              <p class="flow-sub mt-2" x-show="wizardSigninNeeded()">
+                Your login password is already set. Sign in with it to finish
+                setting up this device.
               </p>
             </div>
+
+            <!-- Sign-in form: wizard reopened while an operator account exists
+                 (restart before Finish, restored data dir). Finish calls
+                 protected endpoints, so a real session is required first. -->
+            <template x-if="wizardSigninNeeded()">
+              <div class="card card-pad">
+                <div class="field">
+                  <label for="wiz-signin">Login password</label>
+                  <input id="wiz-signin" class="input" type="password"
+ x-model="wizard.signinPw" autocomplete="current-password"
+ @keydown.enter="wizardSignin()" placeholder="Your existing login password">
+                </div>
+                <template x-if="wizard.signinTotpNeeded">
+                  <div class="field">
+                    <label for="wiz-signin-totp">Two-factor code</label>
+                    <input id="wiz-signin-totp" class="input input-mono" type="text"
+ x-model="wizard.signinTotp" inputmode="numeric" autocomplete="one-time-code"
+ @keydown.enter="wizardSignin2fa()" placeholder="6-digit code">
+                  </div>
+                </template>
+                <span class="err" x-show="wizard.signinErr" x-text="wizard.signinErr"></span>
+                <button class="btn btn-primary mt-3" type="button"
+ :disabled="wizard.signinBusy || !wizard.signinPw"
+ @click="wizardSignin()">
+                  <span class="spinner" x-show="wizard.signinBusy"></span>
+                  <span>Sign in</span>
+                </button>
+                <button class="btn btn-secondary mt-2" type="button"
+ x-show="wizard.signinTotpNeeded" :disabled="wizard.signinBusy || !wizard.signinTotp"
+ @click="wizardSignin2fa()">
+                  <span>Verify code</span>
+                </button>
+              </div>
+            </template>
 
             <template x-if="setup.setup_required">
               <div class="card card-pad">
@@ -3266,7 +3305,40 @@
 </div>
 
 
-        <!-- Appearance + mode -->
+       <!-- Node connection (v0.6.5): shows daemon mode + switch, not a one-way street -->
+<div class="card" x-init="loadNodeConn()">
+  <div class="card-head">
+    <div>
+      <strong>Node connection</strong>
+      <span class="sub">How this UI talks to the B3 node</span>
+    </div>
+    <span class="badge" x-show="nodeConn.loaded && nodeConnMode() === 'managed'">Integrated daemon</span>
+    <span class="badge badge-warning" x-show="nodeConn.loaded && nodeConnMode() === 'external'">External node</span>
+  </div>
+  <div class="card-pad">
+    <div class="stack gap-2">
+      <div class="flex items-center gap-2">
+        <svg class="i"><use href="#i-server"/></svg>
+        <span class="t-sm" x-show="nodeConn.loaded && nodeConnMode() === 'managed'">
+          The node daemon runs inside this container, supervised and kept up to date here. RPC stays on loopback.
+        </span>
+        <span class="t-sm" x-show="nodeConn.loaded && nodeConnMode() === 'external'">
+          Connected to an external node
+          <code x-text="nodeConn.choice ? (nodeConn.choice.ext_host + ':' + nodeConn.choice.ext_port) : ''"></code>.
+        </span>
+        <span class="t-sm muted" x-show="!nodeConn.loaded">Loading…</span>
+      </div>
+      <div>
+        <button class="btn btn-ghost btn-sm" type="button" @click="openNodeConnSwitch()">
+          <svg class="i-sm"><use href="#i-repeat"/></svg>
+          <span x-text="nodeConnMode() === 'external' ? 'Use integrated daemon instead' : 'Connect to another node instead'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+ <!-- Appearance + mode -->
         <div class="card">
           <div class="card-head"><strong>Appearance</strong></div>
           <div class="card-pad">
@@ -4001,6 +4073,84 @@
     </div>
   </div>
 </div>
+</template>
+
+<!-- ===== Node connection switch modal (v0.6.5) ===== -->
+<template x-if="nodeConn.open">
+  <div class="backdrop" @click.self="closeNodeConnSwitch()" x-init="trapFocus($el, () => closeNodeConnSwitch())">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="nodeconn-title">
+      <div class="modal-head">
+        <div>
+          <h2 id="nodeconn-title">Switch node connection</h2>
+          <p class="sub">The UI reloads to apply the new connection</p>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-icon" type="button" @click="closeNodeConnSwitch()" aria-label="Close" x-show="!nodeConn.busy">
+          <svg class="i-sm"><use href="#i-close"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <template x-if="!nodeConn.done">
+          <div>
+            <div class="banner banner-info">
+              <svg class="i"><use href="#i-info"/></svg>
+              <span class="t-sm"><strong x-text="nodeConn.form.mode === 'managed' ? 'Use the integrated daemon' : 'Connect to an external node'"></strong><br>
+              <span x-show="nodeConn.form.mode === 'managed'">The daemon runs in this container and is managed here (start, logs, upgrades, backups).</span>
+              <span x-show="nodeConn.form.mode === 'external'">The daemon runs elsewhere (your own machine or server). This UI then manages it read-mostly: node control, logs, upgrades and backup downloads are unavailable.</span>
+              </span>
+            </div>
+
+            <template x-if="nodeConn.form.mode === 'managed'">
+              <div class="mt-4">
+                <label class="label" for="nodeconn-version">Daemon version</label>
+                <select id="nodeconn-version" class="input" style="width:auto" x-model="nodeConn.form.version"
+                        :disabled="nodeConn.busy || install.releasesBusy">
+                  <option value="" disabled>Select a version</option>
+                  <template x-for="r in install.releases" :key="r.tag">
+                    <option :value="r.tag" x-text="r.tag"></option>
+                  </template>
+                </select>
+                <p class="t-sm muted mt-2" x-show="install.releasesBusy">Loading available versions…</p>
+                <p class="t-sm danger mt-2" x-show="install.releasesErr" x-text="install.releasesErr"></p>
+              </div>
+            </template>
+
+            <template x-if="nodeConn.form.mode === 'external'">
+              <div class="stack gap-2 mt-4">
+                <label class="label" for="nodeconn-host">RPC host</label>
+                <input id="nodeconn-host" class="input" type="text" x-model="nodeConn.form.extHost" placeholder="192.168.1.10" :disabled="nodeConn.busy">
+                <label class="label" for="nodeconn-port">RPC port</label>
+                <input id="nodeconn-port" class="input" type="number" x-model="nodeConn.form.extPort" placeholder="38647" :disabled="nodeConn.busy">
+                <label class="label" for="nodeconn-user">RPC user</label>
+                <input id="nodeconn-user" class="input" type="text" x-model="nodeConn.form.extUser" placeholder="rpcuser" :disabled="nodeConn.busy">
+                <label class="label" for="nodeconn-pass">RPC password</label>
+                <input id="nodeconn-pass" class="input" type="password" x-model="nodeConn.form.extPassword" placeholder="rpcpassword" :disabled="nodeConn.busy">
+              </div>
+            </template>
+
+            <p class="t-sm danger mt-2" x-show="nodeConn.error" x-text="nodeConn.error"></p>
+
+            <div class="mt-4 flex gap-2">
+              <button class="btn btn-primary" type="button" @click="applyNodeConnSwitch()"
+                      :disabled="nodeConn.busy || !nodeConnFormOk()">
+                <svg class="i-sm"><use href="#i-repeat"/></svg>
+                <span x-text="nodeConn.busy ? 'Applying…' : 'Apply and reload'" class="btn-label"></span>
+              </button>
+              <button class="btn btn-ghost" type="button" @click="closeNodeConnSwitch()" x-show="!nodeConn.busy">Cancel</button>
+            </div>
+          </div>
+        </template>
+        <template x-if="nodeConn.done">
+          <div>
+            <div class="flex items-center gap-2 mb-4" style="color:var(--success)">
+              <svg class="i"><use href="#i-check"/></svg>
+              <span class="font-semibold">Applied</span>
+            </div>
+            <p class="mb-4">The backend is reloading with the new node connection. This page will automatically reconnect in a few seconds. If it doesn't, reload manually.</p>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
 </template>
 
 <!-- ============================================================ TOASTS ==== -->

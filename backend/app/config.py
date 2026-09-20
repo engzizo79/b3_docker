@@ -12,6 +12,12 @@ class Settings:
         self.rpc_port: int = int(os.environ.get("B3_RPC_PORT", "32647"))
         self.rpc_user: str = os.environ.get("B3_RPC_USER", "")
         self.rpc_password: str = os.environ.get("B3_RPC_PASSWORD", "")
+        # v0.6.0+ dual-mode daemon deployment
+        self.daemon_mode: str = os.environ.get("B3_DAEMON_MODE", "managed").strip().lower()
+        self.ext_rpc_host: str = os.environ.get("EXT_RPC_HOST", "")
+        self.ext_rpc_port: int = int(os.environ.get("EXT_RPC_PORT", "0"))
+        self.ext_rpc_user: str = os.environ.get("EXT_RPC_USER", "")
+        self.ext_rpc_password: str = os.environ.get("EXT_RPC_PASSWORD", "")
         # Data dir is the single source of truth: EVERY state path derives
         # from it so a custom B3_DATA_DIR can never split state across two
         # directories (which would put the DB/audit log on the image layer
@@ -40,12 +46,6 @@ class Settings:
         # "managed": the container downloads/supervises b3coind from official
         # GitHub releases (default). "external": UI-only mode, the daemon runs
         # elsewhere and the user configures the RPC connection.
-        self.daemon_mode: str = os.environ.get("B3_DAEMON_MODE", "managed").strip().lower()
-        # External-node RPC connection (UI-only mode; managed keeps loopback).
-        self.ext_rpc_host: str = os.environ.get("EXT_RPC_HOST", "")
-        self.ext_rpc_port: int = int(os.environ.get("EXT_RPC_PORT", "0"))
-        self.ext_rpc_user: str = os.environ.get("EXT_RPC_USER", "")
-        self.ext_rpc_password: str = os.environ.get("EXT_RPC_PASSWORD", "")
         # Minimum daemon version the UI supports; the wizard/upgrade flow
         # refuses anything older. Parsed as a dotted triple.
         self.min_daemon_version: str = os.environ.get("MIN_DAEMON_VERSION", "1.1.4")
@@ -103,6 +103,68 @@ class Settings:
         # mirror keeps `docker logs` working). Backend tails this for the UI.
         self.daemon_log_file: str = os.environ.get(
             "B3_DAEMON_LOG", str(Path(self.b3_data_dir) / "daemon.log"))
+        # In managed mode, b3coin.conf is the credential source of truth.
+        # The entrypoint passes env vars from its grep, but that's fragile
+        # (migration, grep failures, generated vs migrated confs). Read
+        # directly so the backend ALWAYS uses the daemon's own credentials.
+        if self.daemon_mode == "managed":
+            self._read_rpc_from_conf()
+
+    def _read_rpc_from_conf(self) -> None:
+        """In managed mode b3coin.conf IS the credential source of truth —
+        the daemon authenticates against exactly these values. Env vars
+        passed by the entrypoint are a fragile grep away; if they disagree
+        with the conf the backend hammers the node with wrong credentials
+        forever. So when the conf has rpcuser/rpcpassword, they WIN over
+        env vars. External mode is unaffected (EXT_RPC_* from the wizard)."""
+        import re as _re
+        conf_path = Path(self.node_datadir) / "b3coin.conf"
+        if not conf_path.is_file():
+            return
+        try:
+            text = conf_path.read_text()
+        except OSError:
+            return
+        creds = {}
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip()
+            if key in ("rpcuser", "rpcpassword", "rpcport", "rpcbind") and val:
+                creds[key] = val
+        # The conf IS the daemon's credential source of truth. If env
+        # vars passed by the entrypoint disagree (fragile grep, migration
+        # edge cases, regenerated conf), the backend would hammer the node
+        # with wrong Basic auth on every poll ("incorrect password attempt"
+        # flood). So conf values WIN over env vars, period.
+        if "rpcuser" in creds and "rpcpassword" in creds:
+            self.rpc_user = creds["rpcuser"]
+            self.rpc_password = creds["rpcpassword"]
+        else:
+            # No rpcuser/rpcpassword in the conf: Bitcoin-derived daemons
+            # fall back to COOKIE auth (<datadir>/.cookie). Presenting
+            # user/password Basic auth against a cookie-auth daemon yields
+            # exactly the "incorrect password attempt" flood. Use the cookie
+            # so the backend authenticates the way the daemon expects.
+            cookie_path = Path(self.node_datadir) / ".cookie"
+            try:
+                cookie = cookie_path.read_text().strip()
+                if cookie and ":" in cookie:
+                    self.rpc_user, self.rpc_password = cookie.split(":", 1)
+            except OSError:
+                pass
+        if "rpcport" in creds:
+            try:
+                self.rpc_port = int(creds["rpcport"])
+            except ValueError:
+                pass
+        if "rpcbind" in creds:
+            self.rpc_host = creds["rpcbind"]
+        if not self.rpc_port or self.rpc_port == 0:
+            self.rpc_port = 32647  # final fallback
 
 
 settings = Settings()

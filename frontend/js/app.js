@@ -33,6 +33,7 @@ import { alertsMixin } from './features/alerts.js';
 import { consoleMixin } from './features/console.js';
 import { wizardMixin } from './features/wizard.js';
 import { installMixin } from './features/wizard.js';
+import { nodeConnMixin } from './features/wizard.js';
 
 /** Formatting helpers exposed to markup by name. */
 const formatMixin = {
@@ -104,6 +105,7 @@ function initialState() {
     /* ------------------------------------------------------------ session */
     session: { authenticated: false, wallet_unlocked: false, totp_configured: false },
  sysMode: { checked: false, mode: 'managed', managed: true, node_restart: true, bootstrap: true, daemon_logs: true, daemon_upgrade: true, backup_download: true },
+  nodeConn: { loaded: false, choice: null, open: false, busy: false, error: '', done: false, restart: false, form: { mode: 'managed', version: '', extHost: '', extPort: 38647, extUser: '', extPassword: '' } },
     loginPw: '', loginStep2: false, loginBusy: false, loginErr: '', totpCode: '',
     unlockPrompt: { show: false, pw: '', busy: false, err: '', reveal: false, retry: null },
     unlockLeft: 0,
@@ -209,6 +211,13 @@ function initialState() {
     wizard: {
       step: 1, seeded: false, reopened: false,
       pw: '', pw2: '',
+      // Sign-in mode: the wizard can reopen when an operator account already
+      // exists but the setup marker is missing (restart before Finish,
+      // restored data dir). Security then collects the EXISTING login
+      // password instead of saying 'nothing to do' while every Finish call
+      // would 401.
+      signinPw: '', signinTotp: '', signinErr: '',
+      signinBusy: false, signinTotpNeeded: false,
       confForm: {}, confExpanded: false,
       bootstraps: [], bootstrapsBusy: false, bootstrapsErr: '',
       // v0.6.0 daemon mode + version picker (Node step)
@@ -245,6 +254,7 @@ function b3app() {
     consoleMixin,
     wizardMixin,
     installMixin,
+    nodeConnMixin,
     {
        async fetchSysMode() {
  try {

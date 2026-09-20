@@ -71,7 +71,10 @@ def main() -> None:
     s.allow_ephemeral_data = os.environ.get('ALLOW_EPHEMERAL_DATA', 'true').lower() == 'true'  # dev server uses temp dir (not a mount)
 
     # Dev-only sample node conf so the wizard config view has content.
-    (tmp / "b3coin.conf").write_text(
+    # v0.6.0 layout: the node datadir is <data>/node, so the conf lives there
+    # (matches the entrypoint and backend _read_conf/_apply_conf paths).
+    (tmp / "node").mkdir(parents=True, exist_ok=True)
+    (tmp / "node" / "b3coin.conf").write_text(
     	"# dev sample\n"
     	"txindex=1\n"
     	"listen=1\n"

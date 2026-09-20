@@ -1,3 +1,5 @@
+import { seal } from '../core/envelope.js';
+
 /* B3 Hive — first-run setup.
 
    Hard requirements this implements (brief §5.1 / §5.2):
@@ -102,8 +104,50 @@ export const wizardMixin = {
     return ['Too short', 'Weak', 'Fair', 'Good', 'Strong'][this.passwordStrength()];
   },
 
+  /* The wizard reopened but an operator account already exists: the user
+     must SIGN IN (existing password) before any protected Finish call. */
+  wizardSigninNeeded() {
+    return !this.setup.setup_required && !this.session.authenticated;
+  },
+
+  async wizardSignin() {
+    this.wizard.signinErr = ''; this.wizard.signinBusy = true;
+    try {
+      const env = await seal(this.wizard.signinPw, 'b3hive-login');
+      const r = await this.api('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify(env ? { env } : { password: this.wizard.signinPw }),
+      });
+      if (r.totp_required) {
+        this.wizard.signinTotpNeeded = true;
+      } else {
+        this.session.authenticated = true;
+        this.wizard.signinPw = '';
+      }
+    } catch (e) {
+      this.wizard.signinErr = e.message;
+    }
+    this.wizard.signinBusy = false;
+  },
+
+  async wizardSignin2fa() {
+    this.wizard.signinErr = ''; this.wizard.signinBusy = true;
+    try {
+      await this.api('/api/auth/2fa', {
+        method: 'POST', body: JSON.stringify({ code: this.wizard.signinTotp.trim() }),
+      });
+      this.session.authenticated = true;
+      this.wizard.signinTotpNeeded = false;
+      this.wizard.signinPw = ''; this.wizard.signinTotp = '';
+    } catch (e) {
+      this.wizard.signinErr = e.message;
+      this.wizard.signinTotp = '';
+    }
+    this.wizard.signinBusy = false;
+  },
+
   securityOk() {
-    if (!this.setup.setup_required) return true;
+    if (!this.setup.setup_required) return !this.wizardSigninNeeded();
     return this.wizard.pw.length >= 8 && this.wizard.pw === this.wizard.pw2;
   },
 
@@ -334,7 +378,9 @@ export const wizardMixin = {
 
   stepProblem() {
     switch (this.wizard.step) {
-      case 1: return this.securityOk() ? null
+      case 1:
+        if (this.wizardSigninNeeded()) return 'Sign in with your login password to continue.';
+        return this.securityOk() ? null
         : (this.wizard.pw.length < 8 ? 'Choose a password of at least 8 characters.'
                                      : 'The two passwords do not match.');
       case 3: return this.syncProblem();
@@ -361,8 +407,10 @@ export const wizardMixin = {
     const plan = [];
     if (this.setup.setup_required) {
       plan.push({ icon: 'shield', text: 'Set your login password and sign you in' });
+    } else if (!this.session.authenticated) {
+      plan.push({ icon: 'shield', text: 'Sign in with your existing login password' });
     } else {
-      plan.push({ icon: 'shield', text: 'Keep your existing login password' });
+      plan.push({ icon: 'shield', text: 'Keep your existing login password (you are signed in)' });
     }
     if (this.setup.conf?.editable) {
       plan.push({ icon: 'sliders', text: 'Write your node settings to b3coin.conf' });
@@ -397,6 +445,11 @@ export const wizardMixin = {
   /* ---------------------------------------------------------- the Finish -- */
 
   async finishWizard() {
+    if (this.wizardSigninNeeded()) {
+      this.wizard.step = 1;
+      this.showToast('Sign in again to finish setup', 'warning');
+      return;
+    }
     if (this.setup.data_persistent === false) {
       this.showToast('Setup is blocked: the data directory is not persistent. Map a Docker volume to /data and restart the container.', 'danger');
       return;
@@ -721,4 +774,77 @@ export const installMixin = {
       this.install.started = false;
     }
   }
+};
+
+/* -------- Node connection card (Settings): mode indicator + switch -------- */
+
+export const nodeConnMixin = {
+
+  async loadNodeConn() {
+    try {
+      const c = await this.api('/api/setup/daemon/choice');
+      this.nodeConn.choice = c.chosen ? c.choice : null;
+    } catch { this.nodeConn.choice = null; }
+    this.nodeConn.loaded = true;
+  },
+
+  nodeConnMode() {
+    if (!this.nodeConn.loaded) return null;
+    if (this.nodeConn.choice) return this.nodeConn.choice.mode;
+    return this.sysMode.mode || 'managed';
+  },
+
+  openNodeConnSwitch() {
+    this.nodeConn.open = true;
+    this.nodeConn.error = '';
+    this.nodeConn.busy = false;
+    this.nodeConn.restart = false;
+    const m = this.nodeConnMode();
+    this.nodeConn.form.mode = (m === 'external') ? 'managed' : 'external';
+    this.nodeConn.form.version = (this.nodeConn.choice && this.nodeConn.choice.version) || '';
+    this.nodeConn.form.extHost = (this.nodeConn.choice && this.nodeConn.choice.ext_host) || '';
+    this.nodeConn.form.extPort = (this.nodeConn.choice && this.nodeConn.choice.ext_port) || 38647;
+    this.nodeConn.form.extUser = '';
+    this.nodeConn.form.extPassword = '';
+    this.loadInstallReleases();
+  },
+
+  closeNodeConnSwitch() {
+    this.nodeConn.open = false;
+  },
+
+  nodeConnFormOk() {
+    if (this.nodeConn.form.mode === 'external') {
+      return Boolean(this.nodeConn.form.extHost)
+        && Boolean(this.nodeConn.form.extUser)
+        && Boolean(this.nodeConn.form.extPassword)
+        && (Number(this.nodeConn.form.extPort) > 0);
+    }
+    return Boolean(this.nodeConn.form.version);
+  },
+
+  async applyNodeConnSwitch() {
+    this.nodeConn.busy = true;
+    this.nodeConn.error = '';
+    try {
+      const body = { mode: this.nodeConn.form.mode };
+      if (this.nodeConn.form.mode === 'managed') {
+        body.version = this.nodeConn.form.version || null;
+      } else {
+        body.ext_host = this.nodeConn.form.extHost;
+        body.ext_port = Number(this.nodeConn.form.extPort);
+        body.ext_user = this.nodeConn.form.extUser;
+        body.ext_password = this.nodeConn.form.extPassword;
+      }
+      const r = await this.api('/api/setup/daemon/choose', {
+        method: 'POST', body: JSON.stringify(body),
+      });
+      this.nodeConn.restart = !!r.backend_restart;
+      this.nodeConn.done = true;
+    } catch (e) {
+      this.nodeConn.error = e.message || 'Switch failed.';
+    } finally {
+      this.nodeConn.busy = false;
+    }
+  },
 };
