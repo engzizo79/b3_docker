@@ -14,7 +14,8 @@ def conf_dir(tmp_path):
     """A temp B3 data dir with a generated-style b3coin.conf."""
     d = tmp_path / "data"
     d.mkdir()
-    (d / "b3coin.conf").write_text(
+    (d / "node").mkdir(exist_ok=True)
+    (d / "node" / "b3coin.conf").write_text(
         "# generated\n"
         "txindex=1\n"
         "listen=1\n"
@@ -34,6 +35,7 @@ def setup_client(client, conf_dir):
     """Logged-in client with setup file paths pointed at the temp dir."""
     s = client.app.state.app_state.settings
     s.b3_data_dir = str(conf_dir)
+    s.node_datadir = str(conf_dir / "node")
     s.bootstrap_cmd_file = str(conf_dir / "bootstrap.cmd")
     s.bootstrap_progress_file = str(conf_dir / "bootstrap.progress.json")
     s.wizard_marker_file = str(conf_dir / ".wizard_complete")
@@ -126,7 +128,7 @@ def test_bootstrap_start_writes_cmd(setup_client):
 def test_bootstrap_start_rejects_existing_chain(setup_client):
     _login(setup_client)
     s = setup_client.app.state.app_state.settings
-    cs = Path(s.b3_data_dir) / "chainstate"
+    cs = Path(s.node_datadir) / "chainstate"
     cs.mkdir()
     (cs / "somefile.ldb").write_text("x")
     r = setup_client.post("/api/setup/bootstrap/start",
@@ -187,7 +189,7 @@ def test_conf_apply_roundtrip(setup_client):
     assert r.status_code == 200
     assert "maxconnections" in r.json()["applied"]
     s = setup_client.app.state.app_state.settings
-    content = (Path(s.b3_data_dir) / "b3coin.conf").read_text()
+    content = (Path(s.node_datadir) / "b3coin.conf").read_text()
     assert "maxconnections=64" in content
     # preserved lines survive verbatim
     assert f"rpcpassword={TEST_RPC_PASS}" in content
@@ -201,7 +203,7 @@ def test_conf_apply_rejects_locked(setup_client):
                           headers=_csrf(setup_client))
     assert r.status_code == 422
     s = setup_client.app.state.app_state.settings
-    assert "hacked" not in (Path(s.b3_data_dir) / "b3coin.conf").read_text()
+    assert "hacked" not in (Path(s.node_datadir) / "b3coin.conf").read_text()
 
 
 def test_conf_apply_rejects_unknown(setup_client):

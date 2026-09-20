@@ -206,6 +206,21 @@ export const stateMixin = {
       };
     }
 
+    /* 1b. Daemon binary missing (v0.6.0+ upgrade path): wizard done, managed
+       mode, but no b3coind on disk. Must NOT claim the node is 'starting'
+       (it can't start without the binary). Offer a targeted install instead
+       of forcing a full wizard re-run. */
+    if (this.setup.daemon_binary_missing && this.setup.daemon_mode === 'managed') {
+      return {
+        level: 'warning', icon: 'download', title: 'Node software is not installed',
+        text: 'The B3 Hive daemon needs to be downloaded before the node can start. '
+            + 'This takes about a minute on most connections.',
+        actions: [
+          { label: 'Install now', icon: 'download', act: 'installDaemon', primary: true },
+        ],
+      };
+    }
+
     /* 2. Node already told to start — honest progress, no Start action:
        on a container restart (or right after the wizard's Finish) the
        daemon legitimately takes ~5 minutes to boot; offering Start here
@@ -347,6 +362,7 @@ export const stateMixin = {
       backupWallet: () => this.backupWallet(),
       snoozeBackup: () => this.snoozeBackup(),
       startStaking: () => this.startStaking(),
+      installDaemon: () => this.openInstallModal(),
     };
     handlers[action.act]?.();
   },

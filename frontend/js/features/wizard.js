@@ -50,6 +50,8 @@ export const wizardMixin = {
         fresh_chain: s.fresh_chain,
         data_persistent: s.data_persistent,
         daemon_deferred: (s.daemon_deferred === undefined) ? null : s.daemon_deferred,
+        daemon_binary_missing: !!s.daemon_binary_missing,
+        daemon_mode: s.daemon_mode || 'managed',
         wallet: s.wallet || { loaded: [], reachable: false },
         bootstrap: s.bootstrap || { phase: 'idle' },
         conf: s.conf || null,
@@ -647,4 +649,76 @@ export const wizardMixin = {
     this.wizard.reopened = false;
     this.go('settings');
   },
+};
+
+/* -------- Targeted daemon install (upgrade path: wizard done, binary missing) -------- */
+
+export const installMixin = {
+
+  async loadInstallReleases() {
+    this.install.releasesBusy = true;
+    this.install.releasesErr = '';
+    try {
+      const r = await this.api('/api/setup/daemon/releases');
+      this.install.releases = (r.releases || []).filter(x => x.meets_minimum);
+      if (!this.install.version && this.install.releases.length) {
+        this.install.version = this.install.releases[0].tag || '';
+      }
+    } catch (e) {
+      this.install.releasesErr = 'Could not load releases. Check your internet connection.';
+    } finally {
+      this.install.releasesBusy = false;
+    }
+  },
+
+  openInstallModal() {
+    this.install.open = true;
+    this.install.busy = false;
+    this.install.error = '';
+    this.install.done = false;
+    this.install.started = false;
+    this.loadInstallReleases();
+  },
+
+  closeInstallModal() {
+    this.install.open = false;
+  },
+
+  async doInstall() {
+    this.install.busy = true;
+    this.install.error = '';
+    try {
+      await this.api('/api/setup/daemon/choose', {
+        method: 'POST',
+        body: JSON.stringify({
+          mode: 'managed',
+          version: this.install.version || null,
+        }),
+      });
+      this.install.done = true;
+    } catch (e) {
+      this.install.error = e.message || 'Download failed.';
+    } finally {
+      this.install.busy = false;
+    }
+  },
+
+  async installAndStart() {
+    if (!this.install.done) {
+      await this.doInstall();
+      if (this.install.error) return;
+    }
+    this.install.started = true;
+    try {
+      await this.api('/api/setup/start-node', { method: 'POST' });
+      this.setup.daemon_deferred = false;
+      this.node.starting = true;
+      this.setup.daemon_binary_missing = false;
+      this.install.open = false;
+      this.showToast('Node software installed - starting up');
+    } catch (e) {
+      this.install.error = e.message || 'Could not start the node.';
+      this.install.started = false;
+    }
+  }
 };

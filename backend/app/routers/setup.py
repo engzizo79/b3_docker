@@ -109,7 +109,7 @@ def _progress(s: AppState) -> dict | None:
 def _fresh_chain(s: AppState) -> bool:
     """A fresh chain has no (or an empty) chainstate directory. Bootstrap
     may only be applied on a fresh chain — never over existing data."""
-    cs = Path(s.settings.b3_data_dir) / "chainstate"
+    cs = Path(s.settings.node_datadir) / "chainstate"
     if not cs.is_dir():
         return True
     return not any(cs.iterdir())
@@ -134,6 +134,15 @@ async def setup_status(request: Request):
         # answering means the daemon IS booting, which the UI uses to keep
         # "Start node" disabled instead of inviting a duplicate start.
         "daemon_deferred": Path(s.settings.daemon_deferred_file).is_file(),
+        # Upgrade path (v0.6.0+): wizard done, managed mode, but the daemon
+        # binary is absent (unbundled image; install predates the daemon/
+        # subfolder). The UI must offer a targeted install screen, NOT a
+        # wizard re-run, and must NOT claim the node is "starting".
+        "daemon_binary_missing": (
+            s.settings.daemon_mode == "managed"
+            and not (Path(s.settings.daemon_dir) / "b3coind").is_file()
+        ),
+        "daemon_mode": s.settings.daemon_mode,
         "fresh_chain": _fresh_chain(s),
         "data_persistent": s.data_persistent(),
         "wallet": await _wallet_status(s),
@@ -263,6 +272,18 @@ async def start_node(request: Request):
             status_code=409,
             detail="Your node is already starting or running. Give it a few minutes "
                    "to scan its block index, or check the node view.",
+        )
+    # Upgrade-path guard: with the wizard complete but the daemon binary
+    # missing (v0.6.0+ unbundled image), a start command is a lie — the
+    # supervisor has nothing to launch. Refuse and point at the install
+    # flow instead of writing a command that silently does nothing.
+    if (wizard_done
+            and s.settings.daemon_mode == "managed"
+            and not (Path(s.settings.daemon_dir) / "b3coind").is_file()):
+        raise HTTPException(
+            status_code=409,
+            detail="The node software is not installed yet. Install it from "
+                   "the update screen first, then start the node.",
         )
     cmd_file = Path(s.settings.start_node_cmd_file)
     cmd_file.parent.mkdir(parents=True, exist_ok=True)
@@ -428,7 +449,7 @@ async def load_wallet(body: LoadWalletBody, request: Request):
 def _read_conf(s: AppState) -> dict:
     """Read the wizard-visible view of b3coin.conf: editable values,
     locked keys reported as present, unknown keys reported as unrecognized."""
-    conf_path = Path(s.settings.b3_data_dir) / "b3coin.conf"
+    conf_path = Path(s.settings.node_datadir) / "b3coin.conf"
     editable: dict[str, str] = {}
     locked: list[str] = []
     unknown: list[str] = []
@@ -454,7 +475,7 @@ def _read_conf(s: AppState) -> dict:
 def _apply_conf(s: AppState, new_vals: dict[str, str]) -> None:
     """Write wizard keys into b3coin.conf, preserving every other line
     verbatim. Locked keys are impossible to reach (rejected earlier)."""
-    conf_path = Path(s.settings.b3_data_dir) / "b3coin.conf"
+    conf_path = Path(s.settings.node_datadir) / "b3coin.conf"
     if not conf_path.is_file():
         raise HTTPException(409, "b3coin.conf not found")
     key_re = re.compile(r"^\s*([A-Za-z0-9_]+)\s*=")

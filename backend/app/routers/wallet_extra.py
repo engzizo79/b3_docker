@@ -46,8 +46,10 @@ def _client_ip(request: Request) -> str:
 
 
 def _data_dir(state: AppState):
+    # v0.6.0: the node datadir (wallets/, wallet.dat) lives under node/;
+    # flat layouts were migrated there by the entrypoint at boot.
     from pathlib import Path
-    return Path(state.settings.b3_data_dir)
+    return Path(state.settings.node_datadir)
 
 
 def _wallets_dir(state: AppState):

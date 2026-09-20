@@ -50,6 +50,16 @@ def main() -> None:
     s.recovery_cmd_file = str(tmp / "recovery.cmd")
     s.b3_data_dir = str(tmp)
     s.daemon_deferred_file = str(tmp / ".daemon_deferred")
+    s.daemon_mode = "managed"
+    s.ext_rpc_host = ""
+    s.ext_rpc_port = 0
+    s.ext_rpc_user = ""
+    s.ext_rpc_password = ""
+    s.min_daemon_version = "1.1.4"
+    s.daemon_dir = str(tmp / "daemon")
+    s.node_datadir = str(tmp / "node")
+    s.daemon_version_file = str(tmp / "daemon" / ".installed_version")
+    s.release_check_file = str(tmp / "release_check.json")
     s.app_version = "dev"
     s.daemon_log_file = os.environ.get("B3_DAEMON_LOG", str(tmp / "daemon.log"))
     s.explorer_tip_file = str(tmp / "explorer_tip_height")

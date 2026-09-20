@@ -184,7 +184,7 @@ class TestWalletManagement:
     def test_manage_lists_loaded_and_on_disk(self, client, mock_rpc):
         out = login(client, headers=LOCAL)
         st = client.app.state.app_state
-        wallets_dir = Path(st.settings.b3_data_dir) / "wallets"
+        wallets_dir = Path(st.settings.node_datadir) / "wallets"
         wallets_dir.mkdir(parents=True, exist_ok=True)
         (wallets_dir / "my-wallet.dat").write_bytes(b"")
         mock_rpc.responses["listwallets"] = ["my-wallet"]
@@ -262,7 +262,7 @@ class TestWalletManagement:
     def test_backup_download_success(self, client, mock_rpc):
         out = login(client, headers=LOCAL)
         st = client.app.state.app_state
-        backups_dir = Path(st.settings.b3_data_dir) / "backups"
+        backups_dir = Path(st.settings.node_datadir) / "backups"
         backups_dir.mkdir(parents=True, exist_ok=True)
         (backups_dir / "backup-20260101T000000Z.dat").write_bytes(b"WALLET")
         r = client.get("/api/wallet/manage/backup/download?file=backup-20260101T000000Z.dat",

@@ -3946,6 +3946,63 @@
   </div>
 </template>
 
+<!-- ===== Daemon install modal (upgrade path) === -->
+<template x-if="install.open">
+<div class="backdrop" @click.self="closeInstallModal()" x-init="trapFocus($el, () => closeInstallModal())">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="install-title">
+    <div class="modal-head">
+      <div>
+        <h2 id="install-title">Install node software</h2>
+        <p class="sub">Download the B3 Hive daemon, then start the node</p>
+      </div>
+      <button class="btn btn-ghost btn-sm btn-icon" type="button" @click="closeInstallModal()" aria-label="Close" x-show="!install.busy">
+        <svg class="i-sm"><use href="#i-close"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Step 1: Pick version & download -->
+      <template x-if="!install.done">
+        <div>
+          <label class="label" for="install-version">Daemon version</label>
+          <select id="install-version" class="input" style="width:auto" x-model="install.version"
+                  :disabled="install.busy || install.releasesBusy">
+            <option value="" disabled>Select a version</option>
+            <template x-for="r in install.releases" :key="r.tag">
+              <option :value="r.tag" x-text="r.tag"></option>
+            </template>
+          </select>
+          <p class="t-sm muted mt-2" x-show="install.releasesBusy">Loading available versions...</p>
+          <p class="t-sm danger mt-2" x-show="install.releasesErr" x-text="install.releasesErr"></p>
+          <button class="btn btn-primary mt-4" type="button"
+                  @click="doInstall()"
+                  :disabled="install.busy || !install.version || install.releasesBusy">
+            <svg class="i-sm"><use href="#i-download"/></svg>
+            <span x-text="install.busy ? 'Downloading...' : 'Download and install'"></span>
+          </button>
+          <p class="t-sm danger mt-2" x-show="install.error" x-text="install.error"></p>
+        </div>
+      </template>
+      <!-- Step 2: Download complete -> start -->
+      <template x-if="install.done">
+        <div>
+          <div class="flex items-center gap-2 mb-4" style="color:var(--success)">
+            <svg class="i"><use href="#i-check"/></svg>
+            <span class="font-semibold">Installed successfully</span>
+          </div>
+          <p class="mb-4">The daemon is ready. Start the node now — it takes a few minutes to scan the block index before it responds.</p>
+          <button class="btn btn-primary" type="button"
+                  @click="installAndStart()"
+                  :disabled="install.started">
+            <svg class="i-sm"><use href="#i-play"/></svg>
+            <span x-text="install.started ? 'Starting...' : 'Start node'"></span>
+          </button>
+        </div>
+      </template>
+    </div>
+  </div>
+</div>
+</template>
+
 <!-- ============================================================ TOASTS ==== -->
 <div id="toast-stack" role="status" aria-live="polite">
   <template x-for="t in toasts" :key="t.id">

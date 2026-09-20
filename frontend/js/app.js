@@ -32,6 +32,7 @@ import { nodeMixin } from './features/node.js';
 import { alertsMixin } from './features/alerts.js';
 import { consoleMixin } from './features/console.js';
 import { wizardMixin } from './features/wizard.js';
+import { installMixin } from './features/wizard.js';
 
 /** Formatting helpers exposed to markup by name. */
 const formatMixin = {
@@ -147,6 +148,12 @@ function initialState() {
       busy: false, working: false, starting: false,
       logs: [], logBusy: false, logNote: '', logCount: 200, logFilter: 'all',
     },
+ // Targeted daemon-install flow (upgrade path: wizard done, binary missing)
+ install: {
+ open: false, busy: false, error: '', done: false,
+ version: '', releases: [], releasesBusy: false, releasesErr: '',
+ started: false,
+ },
   console: {
     input: '', lines: [], history: [], histPos: -1,
     catalog: null, loaded: false, gate: null, gateMsg: '', busy: false,
@@ -193,6 +200,7 @@ function initialState() {
     setup: {
       checked: false, wizard_done: true, setup_required: false,
       fresh_chain: null, data_persistent: true, daemon_deferred: null,
+      daemon_binary_missing: false, daemon_mode: 'managed',
       wallet: { loaded: [], reachable: false },
       bootstrap: { phase: 'idle' },
       conf: null,
@@ -236,6 +244,7 @@ function b3app() {
     alertsMixin,
     consoleMixin,
     wizardMixin,
+    installMixin,
     {
        async fetchSysMode() {
  try {
