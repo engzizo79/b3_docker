@@ -11,6 +11,19 @@ RUN apt-get update \
 
 ENV PYTHONUNBUFFERED=1
 
+# Tailscale (v0.7.0): bundled so remote users get browser-valid HTTPS via
+# their tailnet without owning a domain. Pinned version + official SHA256
+# from pkgs.tailscale.com/stable. Userspace networking: no /dev/net/tun,
+# no extra capabilities. Node identity lives under /data/ts (persistent),
+# so container recreation never loses the tailnet identity.
+ARG TAILSCALE_VERSION=1.102.4
+ARG TAILSCALE_SHA256=50748df1045e60b5b695f19f4c56b0da36c019948b440fb456b6584a50f0d8b9
+RUN curl -fsSL -o /tmp/tailscale.tgz https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_amd64.tgz \
+ && echo "${TAILSCALE_SHA256}  /tmp/tailscale.tgz" | sha256sum -c - \
+ && tar -xzf /tmp/tailscale.tgz -C /tmp tailscale_${TAILSCALE_VERSION}_amd64/tailscaled tailscale_${TAILSCALE_VERSION}_amd64/tailscale \
+ && mv /tmp/tailscale_${TAILSCALE_VERSION}_amd64/tailscaled /tmp/tailscale_${TAILSCALE_VERSION}_amd64/tailscale /usr/local/bin/ \
+ && rm -rf /tmp/tailscale.tgz /tmp/tailscale_${TAILSCALE_VERSION}_amd64
+
 # Non-root daemon user
 RUN groupadd -g 1000 b3coin \
  && useradd -u 1000 -g b3coin -m -s /usr/sbin/nologin b3coin

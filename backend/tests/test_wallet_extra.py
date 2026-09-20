@@ -188,10 +188,16 @@ class TestWalletManagement:
         wallets_dir.mkdir(parents=True, exist_ok=True)
         (wallets_dir / "my-wallet.dat").write_bytes(b"")
         mock_rpc.responses["listwallets"] = ["my-wallet"]
+        mock_rpc.responses["listwalletdir"] = {"wallets": [
+            {"name": "my-wallet.dat"},
+            {"name": "coldstash"},
+        ]}
         r = client.get("/api/wallet/manage", headers=out["headers"])
         assert r.status_code == 200
         assert "my-wallet" in r.json()["loaded"]
         assert "my-wallet.dat" in r.json()["on_disk"]
+        # subdirectory wallets (wallets/<name>/wallet.dat) are reported
+        assert "coldstash" in r.json()["on_disk"]
         assert r.json()["persistent_data"] is True
 
     def test_manage_create_persistence_guard(self, client, monkeypatch):
@@ -235,6 +241,44 @@ class TestWalletManagement:
                         headers=out["headers"])
         assert r.status_code == 200
         assert mock_rpc.called("loadwallet")
+
+    def test_manage_load_by_path_inside_data_dir(self, client, mock_rpc):
+        '''A wallet moved from another machine, placed under the data
+        dir, can be loaded by path without touching settings.json.'''
+        out = login(client, headers=LOCAL)
+        st = client.app.state.app_state
+        moved = Path(st.settings.node_datadir) / "moved-wallet"
+        moved.mkdir(parents=True, exist_ok=True)
+        (moved / "wallet.dat").write_bytes(b"")
+        r = client.post("/api/wallet/manage/load",
+                        json={"filename": str(moved)},
+                        headers=out["headers"])
+        assert r.status_code == 200
+        load_calls = [c for c in mock_rpc.calls if c[0] == "loadwallet"]
+        assert load_calls, "loadwallet was not called"
+
+    def test_manage_load_traversal_rejected(self, client, mock_rpc):
+        '''Paths escaping the data dir are rejected with 422.'''
+        out = login(client, headers=LOCAL)
+        for bad in ["../outside", "/etc/passwd"]:
+            r = client.post("/api/wallet/manage/load",
+                            json={"filename": bad},
+                            headers=out["headers"])
+            assert r.status_code == 422, f"{bad} should be rejected"
+
+    def test_manage_load_fallback_scan_sees_subdir_wallets(self, client, mock_rpc):
+        '''When the node is down (listwalletdir fails), the disk scan
+        still discovers subdirectory wallets.'''
+        out = login(client, headers=LOCAL)
+        st = client.app.state.app_state
+        wallets_dir = Path(st.settings.node_datadir) / "wallets"
+        sub = wallets_dir / "dirwallet"
+        sub.mkdir(parents=True, exist_ok=True)
+        (sub / "wallet.dat").write_bytes(b"")
+        mock_rpc.fail_methods.add("listwalletdir")
+        r = client.get("/api/wallet/manage", headers=out["headers"])
+        assert r.status_code == 200
+        assert "dirwallet" in r.json()["on_disk"]
 
     def test_manage_unload_last_refused(self, client, mock_rpc):
         out = login(client, headers=LOCAL)

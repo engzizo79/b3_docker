@@ -20,6 +20,9 @@ NODE_DATADIR="${B3_DATA_DIR}/node"
 DAEMON_BIN="${DAEMON_DIR}/b3coind"
 DAEMON_VERSION_FILE="${DAEMON_DIR}/.installed_version"
 UPGRADE_CMD_FILE="${B3_DATA_DIR}/upgrade.cmd"
+TS_STATE_DIR="${B3_DATA_DIR}/ts"
+TS_LOG="${B3_DATA_DIR}/tailscale.log"
+TS_SOCKET="${TS_STATE_DIR}/tailscaled.sock"
 CONF="${NODE_DATADIR}/b3coin.conf"  # v0.6.0: conf under node/ (defined after NODE_DATADIR)
 BACKEND_MAX_RESTARTS=5
 
@@ -458,11 +461,38 @@ UPGRADEPY
     fi
 }
 
+start_tailscale() {
+    # v0.7.0: bundled Tailscale, userspace networking (no /dev/net/tun).
+    # State lives under /data/ts — the tailnet IDENTITY persists across
+    # container recreation, so stop/pull/start or upgrade never requires
+    # re-authentication. Runs as the same non-root user as the backend so
+    # the backend can query/control it via the local socket.
+    mkdir -p "${TS_STATE_DIR}"
+    run_as /usr/local/bin/tailscaled \
+        --tun=userspace-networking \
+        --state="${TS_STATE_DIR}/tailscaled.state" \
+        --socket="${TS_SOCKET}" \
+        >> "${TS_LOG}" 2>&1 &
+    TS_PID=$!
+    log "Starting tailscaled (state=${TS_STATE_DIR}, userspace networking)"
+}
+
+ts_status() {
+    # Best-effort status JSON for the backend (never fatal).
+    run_as /usr/local/bin/tailscale --socket="${TS_SOCKET}" \
+        status --json --peers=false 2>/dev/null || echo '{}'
+}
+
 BACKEND_PID=""
 BACKEND_RESTARTS=0
+TS_PID=""
+TS_RESTARTS=0
 if [ "${RUN_UI}" != "false" ]; then
     start_backend
     # (first run is passwordless: the operator sets the login password in the wizard Security step)
+    if [ -x /usr/local/bin/tailscaled ]; then
+        start_tailscale
+    fi
 else
     log "RUN_UI=false — headless mode (daemon only)"
 fi
@@ -478,6 +508,9 @@ terminate() {
     fi
     if [ -n "${TAIL_PID}" ]; then
         kill -TERM "${TAIL_PID}" 2>/dev/null || true
+    fi
+    if [ -n "${TS_PID}" ]; then
+        kill -TERM "${TS_PID}" 2>/dev/null || true
     fi
     wait 2>/dev/null
     exit 0
@@ -506,6 +539,19 @@ while true; do
         else
             log "backend exited — restarting (attempt ${BACKEND_RESTARTS}/${BACKEND_MAX_RESTARTS})"
             start_backend
+        fi
+    fi
+    # Tailscaled death is tolerated: restart it (bounded, same policy as
+    # the backend). Losing it only disables tailnet access, not the wallet.
+    if [ -n "${TS_PID}" ] && ! kill -0 "${TS_PID}" 2>/dev/null; then
+        wait "${TS_PID}" || true
+        TS_RESTARTS=$((TS_RESTARTS + 1))
+        if [ "${TS_RESTARTS}" -gt "${BACKEND_MAX_RESTARTS}" ]; then
+            log "tailscaled exited ${TS_RESTARTS} times — giving up"
+            TS_PID=""
+        else
+            log "tailscaled exited — restarting (attempt ${TS_RESTARTS}/${BACKEND_MAX_RESTARTS})"
+            start_tailscale
         fi
     fi
     # Bootstrap command polling: the setup wizard writes a JSON command to

@@ -66,7 +66,7 @@ ALLOWED: dict[str, set[str]] = {
     "assets_write": {  # gated: require unlocked wallet in the API layer
         "startflowmeshvalidator", "stopflowmeshvalidator",
     },
-    "wallet_lifecycle": {"createwallet", "loadwallet", "listwallets", "unloadwallet", "backupwallet"},
+    "wallet_lifecycle": {"createwallet", "loadwallet", "listwallets", "listwalletdir", "unloadwallet", "backupwallet"},
 }
 
 ALLOWED_METHODS: set[str] = set().union(*ALLOWED.values())

@@ -95,14 +95,26 @@ async def wallet_manage(request: Request):
         loaded = await state.rpc.call("listwallets")
     except (RPCError, RPCNotAllowed, RPCUnavailable):
         loaded = []
-    wallets_dir = _wallets_dir(state)
+    # v0.6.6: modern B3 wallets are SUBDIRECTORIES (wallets/<name>/wallet.dat
+    # plus -journal). Ask the node first via listwalletdir (node truth,
+    # handles both layouts); fall back to a directory-aware disk scan
+    # when the node is down.
     on_disk: list[str] = []
-    if wallets_dir.is_dir():
-        on_disk = sorted(p.name for p in wallets_dir.iterdir()
-                         if p.is_file() and p.suffix == ".dat")
-    legacy = _data_dir(state) / "wallet.dat"
-    if legacy.is_file() and "" not in on_disk:
-        on_disk.insert(0, "wallet.dat")
+    try:
+        wd = await state.rpc.call("listwalletdir")
+        on_disk = sorted(e.get("name") for e in (wd or {}).get("wallets", [])
+                          if e.get("name") is not None)
+    except (RPCError, RPCNotAllowed, RPCUnavailable):
+        wallets_dir = _wallets_dir(state)
+        if wallets_dir.is_dir():
+            for p in sorted(wallets_dir.iterdir()):
+                if p.is_file() and p.suffix == ".dat":
+                    on_disk.append(p.name)
+                elif p.is_dir() and (p / "wallet.dat").is_file():
+                    on_disk.append(p.name)
+        legacy = _data_dir(state) / "wallet.dat"
+        if legacy.is_file() and "" not in on_disk:
+            on_disk.insert(0, "wallet.dat")
     return {"loaded": loaded or [], "on_disk": on_disk,
             "persistent_data": state.data_persistent()}
 
@@ -146,11 +158,34 @@ async def wallet_manage_load(body: LoadWalletBody, request: Request):
     sess = state.require_csrf(request)
     state.require_persistent_data()
     ip = _client_ip(request)
-    name = (body.filename or "").strip()
-    if not _WALLET_NAME_RE.fullmatch(name):
-        raise HTTPException(422, "invalid wallet filename")
+    raw = (body.filename or "").strip()
+    # v0.6.6: loadwallet accepts a wallet name OR a path (its own help
+    # shows "/path/to/walletname/"). Users moving a wallet from another
+    # machine point at it directly instead of editing settings.json by
+    # hand with the node down. Paths must resolve INSIDE the data dir.
+    target = ""
+    if "/" in raw or raw.startswith("."):
+        from pathlib import Path, PurePosixPath
+        data_root = _data_dir(state).resolve()
+        if raw.startswith("/"):
+            abs_cand = Path(raw).resolve()
+        else:
+            abs_cand = (data_root / PurePosixPath(raw)).resolve()
+        try:
+            abs_cand.relative_to(data_root)
+        except ValueError:
+            raise HTTPException(422, "path must stay inside the data directory")
+        if not (abs_cand / "wallet.dat").is_file() and abs_cand.suffix != ".dat":
+            raise HTTPException(422, "no wallet.dat found at that path")
+        target = str(abs_cand)
+        name = abs_cand.name
+    else:
+        name = raw
+        if not _WALLET_NAME_RE.fullmatch(name):
+            raise HTTPException(422, "invalid wallet filename")
+        target = name
     try:
-        await state.rpc.call("loadwallet", name)
+        await state.rpc.call("loadwallet", target, body.load_on_startup)
     except RPCError as exc:
         db.audit(state.settings.db_path, "wallet.load", sess.username,
                  detail=f"ip={ip} name={name}", success=False)

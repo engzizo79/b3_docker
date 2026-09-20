@@ -3305,7 +3305,59 @@
 </div>
 
 
-       <!-- Node connection (v0.6.5): shows daemon mode + switch, not a one-way street -->
+       <!-- Tailscale remote access (v0.7.0): bundled tailscaled, guided join. -->
+<div class="card" x-init="loadTailscale()">
+  <div class="card-head">
+    <div>
+      <strong>Tailscale remote access</strong>
+      <span class="sub">Real HTTPS from anywhere — no domain needed</span>
+    </div>
+    <span class="badge badge-success" x-show="ts.loaded && ts.joined && ts.serve_enabled">HTTPS on</span>
+    <span class="badge" x-show="ts.loaded && ts.joined && !ts.serve_enabled">Joined</span>
+    <span class="badge badge-neutral" x-show="ts.loaded && !ts.joined">Not connected</span>
+  </div>
+  <div class="card-pad">
+    <div class="stack gap-2">
+      <p class="muted t-sm" x-show="ts.loaded && !ts.available">
+        Tailscale is not installed in this container build. Update to the
+        latest image to get guided remote access.
+      </p>
+      <p class="muted t-sm" x-show="ts.loaded && ts.available && !ts.joined">
+        This container bundles Tailscale. Paste an auth key from
+        <code>login.tailscale.com/admin/settings/keys</code> to join your
+        private network and get a real HTTPS address
+        (<code>&lt;node&gt;.ts.net</code>) that works from any device — phone
+        included — with a valid certificate, never exposed to the public internet.
+      </p>
+      <div x-show="ts.loaded && ts.joined && ts.https_url">
+        <div class="banner banner-ok">
+          <svg class="i"><use href="#i-shield"/></svg>
+          <span class="t-sm">Your wallet is reachable at
+          <code x-text="ts.https_url"></code> — encrypted with a real
+          Let&#39;s Encrypt certificate. Book it on your phone.</span>
+        </div>
+      </div>
+      <div class="field" x-show="ts.loaded && !ts.joined">
+        <label>Auth key</label>
+        <input type="password" x-model="ts.authkey" placeholder="tskey-..."
+               autocomplete="off" :disabled="ts.busy">
+      </div>
+      <p class="danger t-sm" x-show="ts.error" x-text="ts.error"></p>
+      <div class="flex gap-2">
+        <button class="btn btn-primary" x-show="ts.loaded && !ts.joined"
+                @click="tsJoin()" :disabled="ts.busy">Join tailnet</button>
+        <button class="btn" x-show="ts.loaded && ts.joined && !ts.serve_enabled"
+                @click="tsServe(true)" :disabled="ts.busy">Turn on HTTPS</button>
+        <button class="btn btn-ghost" x-show="ts.loaded && ts.joined && ts.serve_enabled"
+                @click="tsServe(false)" :disabled="ts.busy">Turn off HTTPS</button>
+        <button class="btn btn-danger" x-show="ts.loaded && ts.joined"
+                @click="tsLeave()" :disabled="ts.busy">Disconnect</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Node connection (v0.6.5): shows daemon mode + switch, not a one-way street -->
 <div class="card" x-init="loadNodeConn()">
   <div class="card-head">
     <div>

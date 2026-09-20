@@ -34,6 +34,7 @@ import { consoleMixin } from './features/console.js';
 import { wizardMixin } from './features/wizard.js';
 import { installMixin } from './features/wizard.js';
 import { nodeConnMixin } from './features/wizard.js';
+import { tailscaleMixin } from './features/tailscale.js';
 
 /** Formatting helpers exposed to markup by name. */
 const formatMixin = {
@@ -162,7 +163,12 @@ function initialState() {
     mode: null, settings: null, sform: null, sbusy: false,
   },
 
-    /* ------------------------------------------------------------ staking */
+    /* ---------------------------------------------------------- tailscale */
+  ts: { loaded: false, available: true, joined: false, serve_enabled: false,
+    https_url: null, tailnet: null, detail: '', authkey: '', joinOpen: false,
+    busy: false, error: '' },
+
+/* ------------------------------------------------------------ staking */
     staking: {
       active: false, available: true, state: null, info: null, stakes: [],
       weight: null, netWeight: null, busy: false, working: false, validator: null,
@@ -255,6 +261,7 @@ function b3app() {
     wizardMixin,
     installMixin,
     nodeConnMixin,
+ tailscaleMixin,
     {
        async fetchSysMode() {
  try {
