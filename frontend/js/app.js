@@ -102,6 +102,7 @@ function initialState() {
 
     /* ------------------------------------------------------------ session */
     session: { authenticated: false, wallet_unlocked: false, totp_configured: false },
+ sysMode: { checked: false, mode: 'managed', managed: true, node_restart: true, bootstrap: true, daemon_logs: true, daemon_upgrade: true, backup_download: true },
     loginPw: '', loginStep2: false, loginBusy: false, loginErr: '', totpCode: '',
     unlockPrompt: { show: false, pw: '', busy: false, err: '', reveal: false, retry: null },
     unlockLeft: 0,
@@ -202,6 +203,10 @@ function initialState() {
       pw: '', pw2: '',
       confForm: {}, confExpanded: false,
       bootstraps: [], bootstrapsBusy: false, bootstrapsErr: '',
+      // v0.6.0 daemon mode + version picker (Node step)
+      daemonMode: 'managed', daemonVersion: '', daemonReleases: [],
+      daemonReleasesBusy: false, daemonReleasesErr: '',
+      daemonExtHost: '', daemonExtPort: 38647, daemonExtUser: '', daemonExtPassword: '',
       syncChoice: null, bootTarget: null, wipeChain: false, freshChain: null,
       wallet: { mode: null, name: '', pw: '', pw2: '', loadName: '', busy: false },
       progress: { phase: 'idle' }, progressTimer: null,
@@ -232,7 +237,14 @@ function b3app() {
     consoleMixin,
     wizardMixin,
     {
-      init() {
+       async fetchSysMode() {
+ try {
+ const r = await this.api('/api/system/mode');
+ this.sysMode = Object.assign({ checked: true }, r);
+ } catch (e) { this.sysMode.checked = true; }
+ },
+
+ init() {
         this.setTheme(this.theme);
         this.setMode(this.mode);
         this.loadNavCollapsed();
@@ -244,6 +256,7 @@ function b3app() {
         const want = location.hash.slice(1);
         if (VIEWS[want]) this.view = want;
         this.checkSession();
+ this.fetchSysMode();
       },
     },
   );

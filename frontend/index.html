@@ -394,6 +394,51 @@
                 The defaults suit almost everyone. Take them and move on, or open the
                 settings if you have a reason to change them.
               </p>
+
+ <!-- v0.6.0 daemon mode + version -->
+ <div class="card">
+ <div class="card-head"><strong>Where does your node run?</strong></div>
+ <div class="card-pad">
+ <button class="choice" type="button" @click="wizard.daemonMode = 'managed'"
+ :aria-pressed="wizard.daemonMode === 'managed'" style="width:100%; text-align:left">
+ <span class="choice-icon"><svg class="i"><use href="#i-server"/></svg></span>
+ <span class="choice-body">
+ <span class="row gap-2"><strong>On this device (recommended)</strong>
+ <span class="badge badge-success">Recommended</span></span>
+ <span class="help">The wallet downloads and manages the official B3 Hive daemon automatically - including updates.</span>
+ <span class="help" x-show="wizard.daemonMode === 'managed' && wizard.daemonReleases.length">
+ Daemon version: <select class="input" style="width:auto" x-model="wizard.daemonVersion">
+ <template x-for="r in wizard.daemonReleases" :key="r.tag">
+ <option :value="r.tag" x-text="r.tag"></option>
+ </template></select>
+ </span>
+ <span class="help bad" x-show="wizard.daemonReleasesErr" x-text="wizard.daemonReleasesErr"></span>
+ </span>
+ </button>
+ <button class="choice" type="button" @click="wizard.daemonMode = 'external'"
+ :aria-pressed="wizard.daemonMode === 'external'" style="width:100%; text-align:left">
+ <span class="choice-icon"><svg class="i"><use href="#i-globe"/></svg></span>
+ <span class="choice-body">
+ <span class="row gap-2"><strong>Connect to an existing node (expert)</strong></span>
+ <span class="help">Use a daemon you already run elsewhere. You give it RPC credentials; wallet backups, logs, restarts and updates are unavailable in this mode.</span>
+ </span>
+ </button>
+ <template x-if="wizard.daemonMode === 'external'">
+ <div class="stack mt-2">
+ <div class="field"><label for="ext-host">Node host</label>
+ <input class="input" id="ext-host" x-model="wizard.daemonExtHost" placeholder="e.g. 192.168.1.10"></div>
+ <div class="field"><label for="ext-port">RPC port</label>
+ <input class="input" id="ext-port" type="number" x-model="wizard.daemonExtPort"></div>
+ <div class="field"><label for="ext-user">RPC user</label>
+ <input class="input" id="ext-user" x-model="wizard.daemonExtUser"></div>
+ <div class="field"><label for="ext-pass">RPC password</label>
+ <input class="input" id="ext-pass" type="password" x-model="wizard.daemonExtPassword"></div>
+ <p class="help bad" x-show="!daemonChoiceOk()">All fields are required to connect.</p>
+ </div>
+ </template>
+ </div>
+ </div>
+
             </div>
 
             <button class="btn btn-primary btn-block" type="button"
@@ -2156,7 +2201,7 @@
           </div>
           <div class="col gap-1 mt-2" x-show="manage.backupPath">
             <p class="ok-note">Saved to <span class="mono" x-text="manage.backupPath"></span></p>
-            <button class="btn btn-secondary btn-sm" type="button" x-show="manage.backupFile"
+            <button class="btn btn-secondary btn-sm" type="button" x-show="manage.backupFile && sysMode.backup_download"
                     @click="downloadBackup(manage.backupFile)">
               <svg class="i-sm"><use href="#i-download"/></svg><span>Download copy</span>
             </button>
@@ -2382,7 +2427,7 @@
                 <svg class="i-sm" x-show="!node.working && !nodeStarting()"><use href="#i-play"/></svg>
                 <span x-text="nodeStarting() ? 'Node starting…' : 'Start node'">Start node</span>
               </button>
-              <button class="btn btn-secondary" type="button" @click="restartNode()">
+              <button class="btn btn-secondary" type="button" x-show="sysMode.node_restart" @click="restartNode()">
                 <svg class="i-sm"><use href="#i-power"/></svg><span>Restart node</span>
               </button>
               <button class="btn btn-ghost" type="button" @click="loadNodeExtras()"
@@ -2580,7 +2625,7 @@
                   </div>
                 </template>
                 <div class="row gap-2 mt-4">
-                  <button class="btn btn-primary" type="button" @click="applyConf()"
+                  <button class="btn btn-primary" type="button" x-show="sysMode.node_restart" @click="applyConf()"
                           :disabled="node.working">
                     <span class="spinner" x-show="node.working"></span><span>Apply and restart</span>
                   </button>
@@ -2596,7 +2641,7 @@
         </div>
 
         <!-- Logs (advanced) -->
-        <div class="card adv-only" style="grid-column:1/-1">
+        <div class="card adv-only" x-show="sysMode.daemon_logs" style="grid-column:1/-1">
           <div class="card-head">
             <strong>Node log</strong>
             <div class="row gap-2">

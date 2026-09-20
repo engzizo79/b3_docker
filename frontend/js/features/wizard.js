@@ -81,6 +81,7 @@ export const wizardMixin = {
     // keeping what is already downloaded.
     this.wizard.syncChoice = this.setup.fresh_chain === false ? 'keep' : null;
     this.loadBootstraps();
+ this.loadDaemonReleases();
   },
 
   /* ------------------------------------------------------ step 1 security */
@@ -149,7 +150,45 @@ export const wizardMixin = {
     this.wizard.confForm[key] = this.wizard.confForm[key] === '1' ? '0' : '1';
   },
 
-  /* ---------------------------------------------------------- step 3 sync */
+   /* ---------------------------------- v0.6.0 daemon mode picker */
+
+ async loadDaemonReleases() {
+ if (this.wizard.daemonReleasesBusy) return;
+ this.wizard.daemonReleasesBusy = true; this.wizard.daemonReleasesErr = '';
+ try {
+ const r = await this.api('/api/setup/daemon/releases');
+ this.wizard.daemonReleases = (r.releases || []).filter((x) => x.meets_minimum);
+ if (!this.wizard.daemonVersion) {
+ this.wizard.daemonVersion = (r.installed || '') || ((r.releases || [])[0] || {}).tag || '';
+ }
+ } catch (e) {
+ this.wizard.daemonReleasesErr = 'Could not fetch the release list.';
+ }
+ this.wizard.daemonReleasesBusy = false;
+ },
+
+ daemonChoiceOk() {
+ if (this.wizard.daemonMode === 'external') {
+ return Boolean(this.wizard.daemonExtHost) && Boolean(this.wizard.daemonExtUser) && Boolean(this.wizard.daemonExtPassword) && (this.wizard.daemonExtPort > 0);
+ }
+ return true;
+ },
+
+ async saveDaemonChoice() {
+ await this.api('/api/setup/daemon/choose', {
+ method: 'POST',
+ body: JSON.stringify({
+ mode: this.wizard.daemonMode,
+ version: this.wizard.daemonVersion || null,
+ ext_host: this.wizard.daemonExtHost || null,
+ ext_port: Number(this.wizard.daemonExtPort) || null,
+ ext_user: this.wizard.daemonExtUser || null,
+ ext_password: this.wizard.daemonExtPassword || null,
+ }),
+ });
+ },
+
+/* ---------------------------------------------------------- step 3 sync */
 
   async loadBootstraps() {
     this.wizard.bootstrapsBusy = true;
@@ -410,7 +449,13 @@ export const wizardMixin = {
         mark('password', 'done');
       }
 
-      /* 1) Node configuration, BEFORE the first daemon start. */
+      /* 0.5) v0.6.0 daemon mode + version choice (Node step). */
+ if (this.wizard.daemonMode === 'external' || this.wizard.daemonVersion) {
+ mark('conf', 'active');
+ await this.saveDaemonChoice();
+ }
+
+/* 1) Node configuration, BEFORE the first daemon start. */
       if (this.setup.conf?.editable) {
         mark('conf', 'active');
         // The backend rejects empty values with 422, so only send real ones.

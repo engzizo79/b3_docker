@@ -523,3 +523,151 @@ async def apply_conf(body: ApplyConfBody, request: Request):
     db.audit(s.settings.db_path, "setup.conf.apply", s.username,
              detail=f"ip={ip} keys={','.join(sorted(clean))}")
     return {"ok": True, "applied": sorted(clean)}
+
+
+
+# ---------------------------------------------------------------------------
+# v0.6.0 daemon mode + version picker (wizard Node step)
+# ---------------------------------------------------------------------------
+
+from app import daemon_release
+from pydantic import BaseModel
+
+
+class DaemonChooseBody(BaseModel):
+    mode: str  # "managed" | "external"
+    version: str | None = None  # tag like "v1.1.4" (managed only)
+    ext_host: str | None = None
+    ext_port: int | None = None
+    ext_user: str | None = None
+    ext_password: str | None = None
+
+
+@router.get("/daemon/releases")
+async def daemon_releases(request: Request):
+    """List available daemon releases from GitHub (cached, failure-tolerant).
+
+    Returns the releases the wizard can offer in the Node step.
+    """
+    s = _state(request)
+    s.require_2fa(request)
+    minimum = s.settings.min_daemon_version
+    try:
+        rels = daemon_release.list_releases(include_prerelease=False, timeout=15)
+    except Exception as exc:
+        return {"releases": [], "error": str(exc), "min_version": minimum}
+    out = []
+    for r in rels:
+        out.append({
+            "tag": r.tag,
+            "version": r.version,
+            "meets_minimum": daemon_release.meets_minimum(r.version, minimum),
+            "published": getattr(r, "published", ""),
+        })
+    return {"releases": out, "min_version": minimum,
+            "installed": daemon_release.read_installed_version(
+                s.settings.daemon_version_file)}
+
+
+@router.post("/daemon/choose")
+async def daemon_choose(body: DaemonChooseBody, request: Request):
+    """Save the wizard's daemon mode + version / external RPC choice.
+
+    Persisted to <data>/.daemon_choice.json. The entrypoint reads this on
+    backend restart to set the mode; complete_wizard triggers the restart.
+    """
+    s = _state(request)
+    s.require_csrf(request)
+    ip = request.client.host if request.client else "unknown"
+    mode = body.mode.strip().lower()
+    if mode not in ("managed", "external"):
+        raise HTTPException(422, "mode must be 'managed' or 'external'")
+    choice = {"mode": mode}
+    if mode == "managed":
+        version = (body.version or "").strip().lstrip("vV")
+        if not version:
+            # default to latest stable that meets minimum
+            try:
+                rels = daemon_release.list_releases(
+                    include_prerelease=False, timeout=15)
+            except Exception as exc:
+                raise HTTPException(502, f"release list failed: {exc}")
+            picked = None
+            for r in rels:
+                if daemon_release.meets_minimum(r.version,
+                                                s.settings.min_daemon_version):
+                    picked = r.version
+                    break
+            if not picked:
+                raise HTTPException(422, "no release meets minimum version")
+            version = picked
+        if not daemon_release.meets_minimum(version,
+                                             s.settings.min_daemon_version):
+            raise HTTPException(422,
+                f"version {version} is below minimum "
+                f"{s.settings.min_daemon_version}")
+        choice["version"] = version
+    else:
+        # external: validate RPC params
+        host = (body.ext_host or "").strip()
+        port = body.ext_port or 0
+        user = (body.ext_user or "").strip()
+        password = body.ext_password or ""
+        if not host:
+            raise HTTPException(422, "external mode requires ext_host")
+        if not (1 <= port <= 65535):
+            raise HTTPException(422, "ext_port must be 1-65535")
+        if not user:
+            raise HTTPException(422, "external mode requires ext_user")
+        if not password:
+            raise HTTPException(422, "external mode requires ext_password")
+        choice["ext_host"] = host
+        choice["ext_port"] = port
+        choice["ext_user"] = user
+        choice["ext_password"] = password
+    import json as _json
+    choice_file = Path(s.settings.b3_data_dir) / ".daemon_choice.json"
+    choice_file.parent.mkdir(parents=True, exist_ok=True)
+    tmp = choice_file.with_suffix(".json.tmp")
+    tmp.write_text(_json.dumps(choice))
+    tmp.replace(choice_file)
+    # Managed: persist the chosen version where the entrypoint install
+    # worker reads it (daemon/b3coind missing -> download this version).
+    restart_needed = False
+    if mode == "managed":
+        vf = Path(s.settings.daemon_version_file)
+        vf.parent.mkdir(parents=True, exist_ok=True)
+        vf.write_text(version)
+        # Backend restart when switching back from external to loopback RPC.
+        if s.settings.daemon_mode == "external":
+            restart_needed = True
+    else:
+        # External: backend must reload with EXT_RPC_* env.
+        if s.settings.daemon_mode != "external":
+            restart_needed = True
+    if restart_needed:
+        rb = Path(s.settings.b3_data_dir) / "restart-backend.cmd"
+        rb.write_text("restart")
+    db.audit(s.settings.db_path, "setup.daemon_choose", s.username,
+             detail=f"ip={ip} mode={mode}"
+                   + (f" version={version}" if mode == "managed" else ""))
+    return {"ok": True, "choice": {k: v for k, v in choice.items()
+                                    if k != "ext_password"},
+            "backend_restart": restart_needed}
+
+
+@router.get("/daemon/choice")
+async def daemon_choice_get(request: Request):
+    """Return the saved daemon choice (password redacted)."""
+    s = _state(request)
+    s.require_2fa(request)
+    import json as _json
+    choice_file = Path(s.settings.b3_data_dir) / ".daemon_choice.json"
+    if not choice_file.is_file():
+        return {"chosen": False}
+    try:
+        choice = _json.loads(choice_file.read_text())
+    except Exception:
+        return {"chosen": False}
+    choice.pop("ext_password", None)
+    return {"chosen": True, "choice": choice}

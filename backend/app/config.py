@@ -35,6 +35,27 @@ class Settings:
         self.recovery_cmd_file: str = os.environ.get("RECOVERY_CMD_FILE", str(Path(self.b3_data_dir) / "recovery.cmd"))
         # Cookie Secure flag: auto (default, HTTPS-aware via X-Forwarded-Proto), true, false
         self.cookie_secure: str = os.environ.get("COOKIE_SECURE", "auto")
+
+        # --- v0.6.0 deployment modes + daemon management ---
+        # "managed": the container downloads/supervises b3coind from official
+        # GitHub releases (default). "external": UI-only mode, the daemon runs
+        # elsewhere and the user configures the RPC connection.
+        self.daemon_mode: str = os.environ.get("B3_DAEMON_MODE", "managed").strip().lower()
+        # External-node RPC connection (UI-only mode; managed keeps loopback).
+        self.ext_rpc_host: str = os.environ.get("EXT_RPC_HOST", "")
+        self.ext_rpc_port: int = int(os.environ.get("EXT_RPC_PORT", "0"))
+        self.ext_rpc_user: str = os.environ.get("EXT_RPC_USER", "")
+        self.ext_rpc_password: str = os.environ.get("EXT_RPC_PASSWORD", "")
+        # Minimum daemon version the UI supports; the wizard/upgrade flow
+        # refuses anything older. Parsed as a dotted triple.
+        self.min_daemon_version: str = os.environ.get("MIN_DAEMON_VERSION", "1.1.4")
+        # Subfolder layout (v0.6.0): binaries under daemon/, chain+wallet data
+        # under node/. Old flat layouts are migrated by the entrypoint.
+        self.daemon_dir: str = str(Path(self.b3_data_dir) / "daemon")
+        self.node_datadir: str = str(Path(self.b3_data_dir) / "node")
+        self.daemon_version_file: str = str(Path(self.daemon_dir) / ".installed_version")
+        # Release check result cache (monitor writes; UI reads).
+        self.release_check_file: str = str(Path(self.b3_data_dir) / "release_check.json")
         # Transport security policy for remote plain-HTTP sessions:
         # "warn" (default) = persistent banner, guide card, no blocking
         # "block" = refuse all non-HTTPS remote sessions (strictest)

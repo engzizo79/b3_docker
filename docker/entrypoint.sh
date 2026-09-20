@@ -14,8 +14,14 @@ set -euo pipefail
 B3_DATA_DIR="${B3_DATA_DIR:-/data}"
 RUN_UI="${RUN_UI:-true}"
 WEB_PORT="${WEB_PORT:-8080}"
-CONF="${B3_DATA_DIR}/b3coin.conf"
+CONF="${NODE_DATADIR}/b3coin.conf"  # v0.6.0: conf under node/
 BACKEND_MAX_RESTARTS=5
+B3_DAEMON_MODE="${B3_DAEMON_MODE:-managed}"
+DAEMON_DIR="${B3_DATA_DIR}/daemon"
+NODE_DATADIR="${B3_DATA_DIR}/node"
+DAEMON_BIN="${DAEMON_DIR}/b3coind"
+DAEMON_VERSION_FILE="${DAEMON_DIR}/.installed_version"
+UPGRADE_CMD_FILE="${B3_DATA_DIR}/upgrade.cmd"
 
 log() { echo "[entrypoint] $*"; }
 
@@ -104,6 +110,144 @@ if [ -n "${BLOCKED}" ]; then
     RPC_USER="b3coinrpc"
     RPC_PASSWORD=""
     RPC_PORT="${RPC_PORT:-32647}"
+fi
+
+# --- 0.7 Migrate old flat layout to node/ subfolder (one-time) --------------
+# v0.6.0 moved chain data from <data>/ to <data>/node/. If the old flat
+# layout is detected (chain dirs at root), move them before daemon start.
+if [ -z "${BLOCKED}" ]; then
+    mkdir -p "${NODE_DATADIR}"
+    FLAT_MARKER="${B3_DATA_DIR}/.migrated_to_node"
+    if [ ! -f "${FLAT_MARKER}" ]; then
+        MOVED=0
+        for ITEM in blocks chainstate indexes flowmesh wallets wallet.dat b3coin.conf; do
+            SRC="${B3_DATA_DIR}/${ITEM}"
+            DST="${NODE_DATADIR}/${ITEM}"
+            if [ -e "${SRC}" ] && [ ! -e "${DST}" ]; then
+                log "Migrating ${ITEM} -> node/${ITEM} (v0.6.0 layout)"
+                mv "${SRC}" "${DST}"
+                MOVED=1
+            fi
+        done
+        if [ "${MOVED}" = "1" ]; then
+            log "Migration complete: chain data moved to ${NODE_DATADIR}"
+        fi
+        touch "${FLAT_MARKER}"
+    fi
+fi
+
+# --- 0.8 Managed mode: ensure daemon binaries are installed ----------------
+# If the daemon binary is missing, download the configured version from
+# GitHub releases. The wizard Node step writes the chosen version to
+# DAEMON_VERSION_FILE; if absent, use latest stable >= MIN_DAEMON_VERSION.
+if [ -z "${BLOCKED}" ] && [ "${B3_DAEMON_MODE}" = "managed" ]; then
+    if [ ! -x "${DAEMON_BIN}" ]; then
+        log "Daemon binary not found - installing from GitHub releases"
+        CHOSEN_VERSION="${B3_DAEMON_VERSION:-}"
+        if [ -z "${CHOSEN_VERSION}" ] && [ -f "${DAEMON_VERSION_FILE}" ]; then
+            CHOSEN_VERSION="$(cat "${DAEMON_VERSION_FILE}")"
+        fi
+        DAEMON_DIR="${DAEMON_DIR}" DAEMON_VERSION_FILE="${DAEMON_VERSION_FILE}" 
+        CHOSEN_VERSION="${CHOSEN_VERSION}" MIN_DAEMON_VERSION="${MIN_DAEMON_VERSION:-1.1.4}" 
+        python3 - <<'INSTALLPY'
+import os, sys
+sys.path.insert(0, "/app")
+from app import daemon_release
+chosen = os.environ.get("CHOSEN_VERSION", "")
+minimum = os.environ.get("MIN_DAEMON_VERSION", "1.1.4")
+daemon_dir = os.environ["DAEMON_DIR"]
+version_file = os.environ["DAEMON_VERSION_FILE"]
+try:
+    rels = daemon_release.list_releases(include_prerelease=False, timeout=30)
+except Exception as exc:
+    print(f"ERROR: release list failed: {exc}", file=sys.stderr); sys.exit(1)
+if not rels:
+    print("ERROR: no releases found", file=sys.stderr); sys.exit(1)
+release = None
+if chosen:
+    for r in rels:
+        if r.tag == chosen or r.version == chosen.lstrip("vV"):
+            release = r; break
+if release is None:
+    for r in rels:
+        if daemon_release.meets_minimum(r.version, minimum):
+            release = r; break
+if release is None:
+    print(f"ERROR: no release meets minimum {minimum}", file=sys.stderr); sys.exit(1)
+print(f"Installing {release.tag}...")
+try:
+    daemon_release.install_version(release, daemon_dir, version_file, timeout=300)
+    print(f"Installed {release.tag}")
+except Exception as exc:
+    print(f"ERROR: install failed: {exc}", file=sys.stderr); sys.exit(1)
+INSTALLPY
+        if [ $? -ne 0 ]; then
+            log "FATAL: daemon install failed"
+            [ "${RUN_UI}" = "false" ] && exit 1
+            log "Backend will start in degraded mode (daemon unavailable)"
+        else
+            log "Daemon installed: $(cat ${DAEMON_VERSION_FILE} 2>/dev/null || echo unknown)"
+        fi
+    else
+        log "Daemon binary present: $(cat ${DAEMON_VERSION_FILE} 2>/dev/null || echo unknown)"
+    fi
+fi
+
+# --- 0.8 Managed mode: ensure daemon binaries are installed ----------------
+# If the daemon binary is missing, download the configured version from
+# GitHub releases. The wizard Node step writes the chosen version to
+# DAEMON_VERSION_FILE; if absent, use latest stable >= MIN_DAEMON_VERSION.
+if [ -z "${BLOCKED}" ] && [ "${B3_DAEMON_MODE}" = "managed" ]; then
+    if [ ! -x "${DAEMON_BIN}" ]; then
+        log "Daemon binary not found - installing from GitHub releases"
+        CHOSEN_VERSION="${B3_DAEMON_VERSION:-}"
+        if [ -z "${CHOSEN_VERSION}" ] && [ -f "${DAEMON_VERSION_FILE}" ]; then
+            CHOSEN_VERSION="$(cat "${DAEMON_VERSION_FILE}")"
+        fi
+        DAEMON_DIR="${DAEMON_DIR}" DAEMON_VERSION_FILE="${DAEMON_VERSION_FILE}" 
+        CHOSEN_VERSION="${CHOSEN_VERSION}" MIN_DAEMON_VERSION="${MIN_DAEMON_VERSION:-1.1.4}" 
+        python3 - <<'INSTALLPY'
+import os, sys
+sys.path.insert(0, "/app")
+from app import daemon_release
+chosen = os.environ.get("CHOSEN_VERSION", "")
+minimum = os.environ.get("MIN_DAEMON_VERSION", "1.1.4")
+daemon_dir = os.environ["DAEMON_DIR"]
+version_file = os.environ["DAEMON_VERSION_FILE"]
+try:
+    rels = daemon_release.list_releases(include_prerelease=False, timeout=30)
+except Exception as exc:
+    print(f"ERROR: release list failed: {exc}", file=sys.stderr); sys.exit(1)
+if not rels:
+    print("ERROR: no releases found", file=sys.stderr); sys.exit(1)
+release = None
+if chosen:
+    for r in rels:
+        if r.tag == chosen or r.version == chosen.lstrip("vV"):
+            release = r; break
+if release is None:
+    for r in rels:
+        if daemon_release.meets_minimum(r.version, minimum):
+            release = r; break
+if release is None:
+    print(f"ERROR: no release meets minimum {minimum}", file=sys.stderr); sys.exit(1)
+print(f"Installing {release.tag}...")
+try:
+    daemon_release.install_version(release, daemon_dir, version_file, timeout=300)
+    print(f"Installed {release.tag}")
+except Exception as exc:
+    print(f"ERROR: install failed: {exc}", file=sys.stderr); sys.exit(1)
+INSTALLPY
+        if [ $? -ne 0 ]; then
+            log "FATAL: daemon install failed"
+            [ "${RUN_UI}" = "false" ] && exit 1
+            log "Backend will start in degraded mode (daemon unavailable)"
+        else
+            log "Daemon installed: $(cat ${DAEMON_VERSION_FILE} 2>/dev/null || echo unknown)"
+        fi
+    else
+        log "Daemon binary present: $(cat ${DAEMON_VERSION_FILE} 2>/dev/null || echo unknown)"
+    fi
 fi
 
 # --- 1. Generate b3coin.conf on FIRST RUN only ------------------------------
@@ -205,8 +349,8 @@ start_daemon() {
     # mirrored to container stdout so `docker logs` keeps working.
     touch "${DAEMON_LOG}"
     chmod 640 "${DAEMON_LOG}" 2>/dev/null || true
-    run_as b3coind \
-        -datadir="${B3_DATA_DIR}" \
+    run_as "${DAEMON_BIN}" \
+        -datadir="${NODE_DATADIR}" \
         -printtoconsole \
         -daemon=0 "$@" >> "${DAEMON_LOG}" 2>&1 &
     DAEMON_PID=$!
@@ -221,6 +365,8 @@ TAIL_PID=""
 DAEMON_LOG="${B3_DAEMON_LOG:-${B3_DATA_DIR}/daemon.log}"
 if [ -n "${BLOCKED}" ]; then
     log "Daemon NOT started: storage is not persistent (setup refused)"
+elif [ "${B3_DAEMON_MODE}" = "external" ]; then
+    log "External (UI-only) mode - daemon NOT started (runs elsewhere)"
 elif [ "${RUN_UI}" != "false" ] && [ ! -f "${WIZARD_MARKER}" ]; then
     touch "${DEFERRED_FILE}"
     log "First UI run — daemon deferred until the setup wizard is completed (Finish Setup)"
@@ -231,11 +377,28 @@ fi
 # --- 3. Backend (UI) --------------------------------------------------------
 start_backend() {
     log "Starting backend (UI) on :${WEB_PORT}"
-    B3_RPC_HOST=127.0.0.1 \
-    B3_RPC_PORT="${RPC_PORT}" \
-    B3_RPC_USER="${RPC_USER}" \
-    B3_RPC_PASSWORD="${RPC_PASSWORD}" \
-    run_as python -m uvicorn app.main:app --host 0.0.0.0 --port "${WEB_PORT}" &
+    # v0.6.0: wizard daemon choice in .daemon_choice.json overrides boot env
+    EFFECTIVE_MODE="${B3_DAEMON_MODE}"
+    E_EXT_HOST="${EXT_RPC_HOST:-}"; E_EXT_PORT="${EXT_RPC_PORT:-0}"
+    E_EXT_USER="${EXT_RPC_USER:-}"; E_EXT_PASS="${EXT_RPC_PASSWORD:-}"
+    if [ -f "${B3_DATA_DIR}/.daemon_choice.json" ]; then
+        PARSED="$(python3 -c "import json; c=json.load(open('${B3_DATA_DIR}/.daemon_choice.json')); print(c.get('mode',''), c.get('ext_host',''), c.get('ext_port',0), c.get('ext_user',''), c.get('ext_password',''))" 2>/dev/null || true)"
+        if [ -n "${PARSED}" ]; then
+            read -r C_MODE C_HOST C_PORT C_USER C_PASS <<< "${PARSED}"
+            if [ "${C_MODE}" = "external" ] || [ "${C_MODE}" = "managed" ]; then
+                EFFECTIVE_MODE="${C_MODE}"
+                if [ "${C_MODE}" = "external" ]; then
+                    E_EXT_HOST="${C_HOST}"; E_EXT_PORT="${C_PORT}"
+                    E_EXT_USER="${C_USER}"; E_EXT_PASS="${C_PASS}"
+                fi
+            fi
+        fi
+    fi
+    if [ "${EFFECTIVE_MODE}" = "external" ]; then
+        B3_DAEMON_MODE=external         EXT_RPC_HOST="${E_EXT_HOST}"         EXT_RPC_PORT="${E_EXT_PORT}"         EXT_RPC_USER="${E_EXT_USER}"         EXT_RPC_PASSWORD="${E_EXT_PASS}"         run_as python -m uvicorn app.main:app --host 0.0.0.0 --port "${WEB_PORT}" &
+    else
+        B3_RPC_HOST=127.0.0.1         B3_RPC_PORT="${RPC_PORT}"         B3_RPC_USER="${RPC_USER}"         B3_RPC_PASSWORD="${RPC_PASSWORD}"         B3_DAEMON_MODE=managed         run_as python -m uvicorn app.main:app --host 0.0.0.0 --port "${WEB_PORT}" &
+    fi
     BACKEND_PID=$!
 }
 
@@ -321,7 +484,7 @@ PY
     if [ "${B_WIPE}" = "yes" ]; then
         log "bootstrap: wipe requested — removing existing chain data (blocks, chainstate, indexes, flowmesh)"
         for CHAIN_DIR in blocks chainstate indexes flowmesh; do
-            if [ -e "${B3_DATA_DIR}/${CHAIN_DIR}" ]; then
+            if [ -e "${NODE_DATADIR}/${CHAIN_DIR}" ]; then
                 rm -rf "${B3_DATA_DIR}/${CHAIN_DIR}" || {
                     write_progress '{"phase":"failed","error":"chain wipe failed"}'
                     log "bootstrap: failed to remove ${CHAIN_DIR} — aborting"
@@ -331,7 +494,7 @@ PY
             fi
         done
     fi
-    tar --zstd -xf "${B3_TMP_ARCHIVE}" -C "${B3_DATA_DIR}" || {
+    tar --zstd -xf "${B3_TMP_ARCHIVE}" -C "${NODE_DATADIR}" || {
         log "bootstrap: extraction failed"
         write_progress '{"phase":"failed","error":"extraction failed"}'
         rm -f "${B3_TMP_ARCHIVE}"
@@ -349,6 +512,44 @@ PY
     write_progress "{\"phase\":\"done\",\"height\":${B_HEIGHT}}"
     start_daemon
     log "daemon started (bootstrap height ${B_HEIGHT})"
+}
+
+run_upgrade() {
+    CMD_JSON="$1"; log "upgrade command received"
+    TAG="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('tag',''))" "$CMD_JSON")"
+    [ -z "${TAG}" ] && { log "upgrade: no tag"; return 0; }
+    [ -n "${DAEMON_PID}" ] && { kill -TERM "${DAEMON_PID}" 2>/dev/null || true; wait "${DAEMON_PID}" 2>/dev/null || true; DAEMON_PID=""; }
+    CHOSEN_VERSION="${TAG}" DAEMON_DIR="${DAEMON_DIR}" DAEMON_VERSION_FILE="${DAEMON_VERSION_FILE}" 
+    MIN_DAEMON_VERSION="${MIN_DAEMON_VERSION:-1.1.4}" python3 - <<'UPGRADEPY'
+import os, sys
+sys.path.insert(0, "/app")
+from app import daemon_release
+tag = os.environ.get("CHOSEN_VERSION", "")
+daemon_dir = os.environ["DAEMON_DIR"]
+version_file = os.environ["DAEMON_VERSION_FILE"]
+minimum = os.environ.get("MIN_DAEMON_VERSION", "1.1.4")
+version = tag.lstrip("vV")
+if not daemon_release.meets_minimum(version, minimum):
+    print(f"ERROR: {tag} below minimum {minimum}", file=sys.stderr); sys.exit(1)
+try:
+    rels = daemon_release.list_releases(include_prerelease=False, timeout=30)
+except Exception as exc:
+    print(f"ERROR: {exc}", file=sys.stderr); sys.exit(1)
+release = next((r for r in rels if r.tag == tag or r.version == version), None)
+if release is None:
+    print(f"ERROR: {tag} not found", file=sys.stderr); sys.exit(1)
+try:
+    daemon_release.install_version(release, daemon_dir, version_file, timeout=300)
+    print(f"Upgraded to {release.tag}")
+except Exception as exc:
+    print(f"ERROR: {exc}", file=sys.stderr); sys.exit(1)
+UPGRADEPY
+    if [ $? -eq 0 ]; then
+        log "upgrade succeeded - restarting daemon"
+        start_daemon
+    else
+        log "upgrade FAILED - daemon stays stopped"
+    fi
 }
 
 BACKEND_PID=""
@@ -445,10 +646,24 @@ while true; do
     # Start-node command polling: the setup wizard writes start-node.cmd when
     # the user finishes the wizard choosing sync-from-scratch / keep-chain.
     START_NODE_CMD="${START_NODE_CMD_FILE:-${B3_DATA_DIR}/start-node.cmd}"
-    if [ -z "${BLOCKED}" ] && [ -z "${DAEMON_PID}" ] && [ -f "${START_NODE_CMD}" ]; then
+    if [ -z "${BLOCKED}" ] && [ -z "${DAEMON_PID}" ] && [ "${B3_DAEMON_MODE}" = "managed" ] && [ -f "${START_NODE_CMD}" ]; then
         rm -f "${START_NODE_CMD}"
         log "start-node command received — starting daemon (sync from scratch)"
         start_daemon
+    fi
+    RESTART_BACKEND_CMD="${B3_DATA_DIR}/restart-backend.cmd"
+    if [ -z "${BLOCKED}" ] && [ -f "${RESTART_BACKEND_CMD}" ]; then
+        rm -f "${RESTART_BACKEND_CMD}"
+        log "backend restart command received - reloading with new mode env"
+        [ -n "${BACKEND_PID}" ] && kill -TERM "${BACKEND_PID}" 2>/dev/null || true
+        sleep 2
+        start_backend
+    fi
+    UPGRADE_CMD="${UPGRADE_CMD_FILE}"
+    if [ -z "${BLOCKED}" ] && [ "${B3_DAEMON_MODE}" = "managed" ] && [ -f "${UPGRADE_CMD}" ]; then
+        CMD_JSON="$(cat "${UPGRADE_CMD}")"
+        rm -f "${UPGRADE_CMD}"
+        run_upgrade "${CMD_JSON}"
     fi
     sleep 5
 done

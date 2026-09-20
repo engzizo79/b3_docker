@@ -163,6 +163,17 @@ def settings(tmp_path: Path) -> Settings:
     s.bootstrap_progress_file = str(tmp_path / "bootstrap.progress.json")
     s.wizard_marker_file = str(tmp_path / ".wizard_complete")
     s.daemon_deferred_file = str(tmp_path / ".daemon_deferred")
+    # v0.6.0 dual-mode settings must mirror Settings.__init__ defaults
+    s.daemon_mode = "managed"
+    s.ext_rpc_host = ""
+    s.ext_rpc_port = 0
+    s.ext_rpc_user = ""
+    s.ext_rpc_password = ""
+    s.min_daemon_version = "1.1.4"
+    s.daemon_dir = str(tmp_path / "daemon")
+    s.node_datadir = str(tmp_path / "node")
+    s.daemon_version_file = str(tmp_path / "daemon" / ".installed_version")
+    s.release_check_file = str(tmp_path / "release_check.json")
     s.start_node_cmd_file = str(tmp_path / "start-node.cmd")
     s.bootstrap_manifest_url = ""
     # Model the real fresh-install state: the daemon is DEFERRED until the

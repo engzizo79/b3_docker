@@ -173,8 +173,14 @@ def create_app_state(settings: Settings | None = None,
     settings = settings or Settings()
     if not settings.session_secret:
         raise RuntimeError("SESSION_SECRET must be set")
-    rpc = rpc or B3RPCClient(settings.rpc_host, settings.rpc_port,
-                              settings.rpc_user, settings.rpc_password)
+    # v0.6.0: external (UI-only) mode connects to the operator-configured
+    # node; managed mode stays on loopback (entrypoint wires B3_RPC_*).
+    if settings.daemon_mode == "external":
+        rpc = rpc or B3RPCClient(settings.ext_rpc_host, settings.ext_rpc_port,
+                                 settings.ext_rpc_user, settings.ext_rpc_password)
+    else:
+        rpc = rpc or B3RPCClient(settings.rpc_host, settings.rpc_port,
+                                 settings.rpc_user, settings.rpc_password)
     sessions = SessionStore(settings.session_secret)
     state = AppState(settings, rpc, sessions, username="admin")
     db.init_db(settings.db_path)
