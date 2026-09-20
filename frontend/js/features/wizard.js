@@ -451,8 +451,11 @@ export const wizardMixin = {
 
       /* 0.5) v0.6.0 daemon mode + version choice (Node step). */
  if (this.wizard.daemonMode === 'external' || this.wizard.daemonVersion) {
- mark('conf', 'active');
+ mark('conf', 'active', this.wizard.daemonMode === 'managed'
+ ? 'Downloading the daemon from GitHub (can take a few minutes)…'
+ : undefined);
  await this.saveDaemonChoice();
+ mark('conf', 'done');
  }
 
 /* 1) Node configuration, BEFORE the first daemon start. */

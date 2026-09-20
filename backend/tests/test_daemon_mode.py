@@ -3,6 +3,7 @@ managed-only gating, restart trigger, and choice redaction."""
 
 import json
 from collections import namedtuple
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -83,6 +84,12 @@ def test_setup_daemon_releases_filters_minimum(client, monkeypatch):
 def test_setup_daemon_choose_managed_writes_version_and_choice(
         client, monkeypatch, settings):
     _patch_releases(monkeypatch)
+    installed = {}
+    monkeypatch.setattr(
+        daemon_release, "install_version",
+        lambda release, ddir, vfile, timeout=300: (
+            installed.update({"version": release.version}),
+            Path(vfile).write_text(release.version)))
     h = login(client)
     r = client.post("/api/setup/daemon/choose",
             json={"mode": "managed", "version": "1.1.4"},
@@ -90,8 +97,9 @@ def test_setup_daemon_choose_managed_writes_version_and_choice(
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["choice"]["version"] == "1.1.4"
+    assert body["downloaded"] is True
+    assert installed["version"] == "1.1.4"
     assert body["backend_restart"] is False
-    from pathlib import Path
     vf = Path(settings.daemon_version_file)
     assert vf.is_file() and vf.read_text().strip() == "1.1.4"
     cf = Path(settings.b3_data_dir) / ".daemon_choice.json"
@@ -99,9 +107,37 @@ def test_setup_daemon_choose_managed_writes_version_and_choice(
     assert json.loads(cf.read_text())["mode"] == "managed"
 
 
+def test_setup_daemon_choose_no_download_when_installed(
+        client, monkeypatch, settings):
+    """Binary already present at the requested version: no download."""
+    _patch_releases(monkeypatch)
+    dbin = Path(settings.daemon_dir) / "b3coind"
+    dbin.parent.mkdir(parents=True, exist_ok=True)
+    dbin.write_text("#!/bin/sh\n")
+    dbin.chmod(0o755)
+    vf = Path(settings.daemon_version_file)
+    vf.parent.mkdir(parents=True, exist_ok=True)
+    vf.write_text("1.1.4")
+    called = {"n": 0}
+    monkeypatch.setattr(
+        daemon_release, "install_version",
+        lambda *a, **k: called.update({"n": called["n"] + 1}))
+    h = login(client)
+    r = client.post("/api/setup/daemon/choose",
+            json={"mode": "managed", "version": "1.1.4"},
+            headers=h["headers"])
+    assert r.status_code == 200, r.text
+    assert r.json()["downloaded"] is False
+    assert called["n"] == 0
+
+
 def test_setup_daemon_choose_defaults_to_latest_stable(
         client, monkeypatch):
     _patch_releases(monkeypatch)
+    monkeypatch.setattr(
+        daemon_release, "install_version",
+        lambda release, ddir, vfile, timeout=300:
+            Path(vfile).write_text(release.version))
     h = login(client)
     r = client.post("/api/setup/daemon/choose",
             json={"mode": "managed"}, headers=h["headers"])

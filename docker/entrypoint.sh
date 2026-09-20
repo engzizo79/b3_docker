@@ -136,117 +136,17 @@ if [ -z "${BLOCKED}" ]; then
     fi
 fi
 
-# --- 0.8 Managed mode: ensure daemon binaries are installed ----------------
-# If the daemon binary is missing, download the configured version from
-# GitHub releases. The wizard Node step writes the chosen version to
-# DAEMON_VERSION_FILE; if absent, use latest stable >= MIN_DAEMON_VERSION.
+# --- 0.8 Managed mode: daemon binary status --------------------------------
+# The daemon binary is downloaded by the wizard's Node step
+# (POST /api/setup/daemon/choose), NOT automatically at startup.
+# On first run, the backend starts with the daemon deferred; the user
+# completes the wizard, which downloads the binary and writes
+# start-node.cmd; the supervisor loop then launches it.
 if [ -z "${BLOCKED}" ] && [ "${B3_DAEMON_MODE}" = "managed" ]; then
-    if [ ! -x "${DAEMON_BIN}" ]; then
-        log "Daemon binary not found - installing from GitHub releases"
-        CHOSEN_VERSION="${B3_DAEMON_VERSION:-}"
-        if [ -z "${CHOSEN_VERSION}" ] && [ -f "${DAEMON_VERSION_FILE}" ]; then
-            CHOSEN_VERSION="$(cat "${DAEMON_VERSION_FILE}")"
-        fi
-        DAEMON_DIR="${DAEMON_DIR}" DAEMON_VERSION_FILE="${DAEMON_VERSION_FILE}" 
-        CHOSEN_VERSION="${CHOSEN_VERSION}" MIN_DAEMON_VERSION="${MIN_DAEMON_VERSION:-1.1.4}" 
-        python3 - <<'INSTALLPY'
-import os, sys
-sys.path.insert(0, "/app")
-from app import daemon_release
-chosen = os.environ.get("CHOSEN_VERSION", "")
-minimum = os.environ.get("MIN_DAEMON_VERSION", "1.1.4")
-daemon_dir = os.environ["DAEMON_DIR"]
-version_file = os.environ["DAEMON_VERSION_FILE"]
-try:
-    rels = daemon_release.list_releases(include_prerelease=False, timeout=30)
-except Exception as exc:
-    print(f"ERROR: release list failed: {exc}", file=sys.stderr); sys.exit(1)
-if not rels:
-    print("ERROR: no releases found", file=sys.stderr); sys.exit(1)
-release = None
-if chosen:
-    for r in rels:
-        if r.tag == chosen or r.version == chosen.lstrip("vV"):
-            release = r; break
-if release is None:
-    for r in rels:
-        if daemon_release.meets_minimum(r.version, minimum):
-            release = r; break
-if release is None:
-    print(f"ERROR: no release meets minimum {minimum}", file=sys.stderr); sys.exit(1)
-print(f"Installing {release.tag}...")
-try:
-    daemon_release.install_version(release, daemon_dir, version_file, timeout=300)
-    print(f"Installed {release.tag}")
-except Exception as exc:
-    print(f"ERROR: install failed: {exc}", file=sys.stderr); sys.exit(1)
-INSTALLPY
-        if [ $? -ne 0 ]; then
-            log "FATAL: daemon install failed"
-            [ "${RUN_UI}" = "false" ] && exit 1
-            log "Backend will start in degraded mode (daemon unavailable)"
-        else
-            log "Daemon installed: $(cat ${DAEMON_VERSION_FILE} 2>/dev/null || echo unknown)"
-        fi
-    else
+    if [ -x "${DAEMON_BIN}" ]; then
         log "Daemon binary present: $(cat ${DAEMON_VERSION_FILE} 2>/dev/null || echo unknown)"
-    fi
-fi
-
-# --- 0.8 Managed mode: ensure daemon binaries are installed ----------------
-# If the daemon binary is missing, download the configured version from
-# GitHub releases. The wizard Node step writes the chosen version to
-# DAEMON_VERSION_FILE; if absent, use latest stable >= MIN_DAEMON_VERSION.
-if [ -z "${BLOCKED}" ] && [ "${B3_DAEMON_MODE}" = "managed" ]; then
-    if [ ! -x "${DAEMON_BIN}" ]; then
-        log "Daemon binary not found - installing from GitHub releases"
-        CHOSEN_VERSION="${B3_DAEMON_VERSION:-}"
-        if [ -z "${CHOSEN_VERSION}" ] && [ -f "${DAEMON_VERSION_FILE}" ]; then
-            CHOSEN_VERSION="$(cat "${DAEMON_VERSION_FILE}")"
-        fi
-        DAEMON_DIR="${DAEMON_DIR}" DAEMON_VERSION_FILE="${DAEMON_VERSION_FILE}" 
-        CHOSEN_VERSION="${CHOSEN_VERSION}" MIN_DAEMON_VERSION="${MIN_DAEMON_VERSION:-1.1.4}" 
-        python3 - <<'INSTALLPY'
-import os, sys
-sys.path.insert(0, "/app")
-from app import daemon_release
-chosen = os.environ.get("CHOSEN_VERSION", "")
-minimum = os.environ.get("MIN_DAEMON_VERSION", "1.1.4")
-daemon_dir = os.environ["DAEMON_DIR"]
-version_file = os.environ["DAEMON_VERSION_FILE"]
-try:
-    rels = daemon_release.list_releases(include_prerelease=False, timeout=30)
-except Exception as exc:
-    print(f"ERROR: release list failed: {exc}", file=sys.stderr); sys.exit(1)
-if not rels:
-    print("ERROR: no releases found", file=sys.stderr); sys.exit(1)
-release = None
-if chosen:
-    for r in rels:
-        if r.tag == chosen or r.version == chosen.lstrip("vV"):
-            release = r; break
-if release is None:
-    for r in rels:
-        if daemon_release.meets_minimum(r.version, minimum):
-            release = r; break
-if release is None:
-    print(f"ERROR: no release meets minimum {minimum}", file=sys.stderr); sys.exit(1)
-print(f"Installing {release.tag}...")
-try:
-    daemon_release.install_version(release, daemon_dir, version_file, timeout=300)
-    print(f"Installed {release.tag}")
-except Exception as exc:
-    print(f"ERROR: install failed: {exc}", file=sys.stderr); sys.exit(1)
-INSTALLPY
-        if [ $? -ne 0 ]; then
-            log "FATAL: daemon install failed"
-            [ "${RUN_UI}" = "false" ] && exit 1
-            log "Backend will start in degraded mode (daemon unavailable)"
-        else
-            log "Daemon installed: $(cat ${DAEMON_VERSION_FILE} 2>/dev/null || echo unknown)"
-        fi
     else
-        log "Daemon binary present: $(cat ${DAEMON_VERSION_FILE} 2>/dev/null || echo unknown)"
+        log "Daemon binary not found — will be downloaded via the setup wizard"
     fi
 fi
 
@@ -648,8 +548,12 @@ while true; do
     START_NODE_CMD="${START_NODE_CMD_FILE:-${B3_DATA_DIR}/start-node.cmd}"
     if [ -z "${BLOCKED}" ] && [ -z "${DAEMON_PID}" ] && [ "${B3_DAEMON_MODE}" = "managed" ] && [ -f "${START_NODE_CMD}" ]; then
         rm -f "${START_NODE_CMD}"
-        log "start-node command received — starting daemon (sync from scratch)"
-        start_daemon
+        if [ ! -x "${DAEMON_BIN}" ]; then
+            log "start-node: daemon binary missing — download it in Settings / setup wizard first"
+        else
+            log "start-node command received — starting daemon (sync from scratch)"
+            start_daemon
+        fi
     fi
     RESTART_BACKEND_CMD="${B3_DATA_DIR}/restart-backend.cmd"
     if [ -z "${BLOCKED}" ] && [ -f "${RESTART_BACKEND_CMD}" ]; then

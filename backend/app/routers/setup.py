@@ -14,6 +14,7 @@ Flow (guarded by session + CSRF, all audited):
 """
 
 import json
+import os
 import re
 import secrets
 from pathlib import Path
@@ -631,12 +632,45 @@ async def daemon_choose(body: DaemonChooseBody, request: Request):
     tmp = choice_file.with_suffix(".json.tmp")
     tmp.write_text(_json.dumps(choice))
     tmp.replace(choice_file)
-    # Managed: persist the chosen version where the entrypoint install
-    # worker reads it (daemon/b3coind missing -> download this version).
+    # Managed mode: download the daemon binary if not already installed.
     restart_needed = False
+    downloaded = False
     if mode == "managed":
         vf = Path(s.settings.daemon_version_file)
         vf.parent.mkdir(parents=True, exist_ok=True)
+        daemon_bin = Path(s.settings.daemon_dir) / "b3coind"
+        installed_ver = daemon_release.read_installed_version(
+            str(vf)) if vf.exists() else ""
+        need_download = (
+            not daemon_bin.exists() or not daemon_bin.is_file()
+            or not os.access(str(daemon_bin), os.X_OK)
+            or installed_ver.lstrip("vV") != version
+        )
+        if need_download:
+            # Find the matching release and download + install it.
+            try:
+                rels = daemon_release.list_releases(
+                    include_prerelease=False, timeout=30)
+            except Exception as exc:
+                raise HTTPException(502, f"release list failed: {exc}")
+            release = None
+            for r in rels:
+                if r.version == version or r.tag.lstrip("vV") == version:
+                    release = r
+                    break
+            if release is None:
+                raise HTTPException(
+                    422, f"version {version} not found in releases")
+            try:
+                daemon_release.install_version(
+                    release, s.settings.daemon_dir,
+                    str(vf), timeout=300)
+                downloaded = True
+            except Exception as exc:
+                raise HTTPException(500, f"daemon download failed: {exc}")
+        else:
+            # Already installed at the requested version.
+            downloaded = False
         vf.write_text(version)
         # Backend restart when switching back from external to loopback RPC.
         if s.settings.daemon_mode == "external":
@@ -650,10 +684,12 @@ async def daemon_choose(body: DaemonChooseBody, request: Request):
         rb.write_text("restart")
     db.audit(s.settings.db_path, "setup.daemon_choose", s.username,
              detail=f"ip={ip} mode={mode}"
-                   + (f" version={version}" if mode == "managed" else ""))
+                   + (f" version={version} downloaded={downloaded}"
+                      if mode == "managed" else ""))
     return {"ok": True, "choice": {k: v for k, v in choice.items()
                                     if k != "ext_password"},
-            "backend_restart": restart_needed}
+            "backend_restart": restart_needed,
+            "downloaded": downloaded}
 
 
 @router.get("/daemon/choice")
