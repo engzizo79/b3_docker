@@ -14,14 +14,14 @@ set -euo pipefail
 B3_DATA_DIR="${B3_DATA_DIR:-/data}"
 RUN_UI="${RUN_UI:-true}"
 WEB_PORT="${WEB_PORT:-8080}"
-CONF="${NODE_DATADIR}/b3coin.conf"  # v0.6.0: conf under node/
-BACKEND_MAX_RESTARTS=5
 B3_DAEMON_MODE="${B3_DAEMON_MODE:-managed}"
 DAEMON_DIR="${B3_DATA_DIR}/daemon"
 NODE_DATADIR="${B3_DATA_DIR}/node"
 DAEMON_BIN="${DAEMON_DIR}/b3coind"
 DAEMON_VERSION_FILE="${DAEMON_DIR}/.installed_version"
 UPGRADE_CMD_FILE="${B3_DATA_DIR}/upgrade.cmd"
+CONF="${NODE_DATADIR}/b3coin.conf"  # v0.6.0: conf under node/ (defined after NODE_DATADIR)
+BACKEND_MAX_RESTARTS=5
 
 log() { echo "[entrypoint] $*"; }
 
