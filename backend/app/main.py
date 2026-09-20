@@ -70,7 +70,20 @@ def create_app(state: AppState | None = None) -> FastAPI:
     @app.middleware("http")
     async def _security_headers(request: Request, call_next):
         from app.session import client_is_localhost
+        from app.transport import insecure_remote
         state0 = request.app.state.app_state
+        # Strict transport policy: block mode refuses every mutating API
+        # call from a remote client over plain HTTP. /api/health and
+        # /api/auth/status stay open so the UI can explain the situation.
+        if (state0 is not None
+                and getattr(state0.settings, "require_secure_transport", "warn") == "block"
+                and insecure_remote(request)
+                and request.url.path.startswith("/api/")
+                and request.url.path not in ("/api/health", "/api/auth/status")):
+            return JSONResponse(status_code=426, content={
+                "detail": "secure transport required: enable HTTPS (see Settings - Encrypt your access) "
+                          "or access this wallet from localhost",
+                "transport_blocked": True})
         # Storage not persistent: refuse ALL setup/wallet work and serve a
         # full-screen remediation page explaining the problem + the fix.
         # /api/health stays public so healthchecks and the SPA can detect it.

@@ -175,6 +175,13 @@ def settings(tmp_path: Path) -> Settings:
     (tmp_path / ".daemon_deferred").touch()
     s.wallet_vault_key = ""
     s.allow_ephemeral_data = True  # tests use tmp_path (not a mount)
+    # Transport security (v0.5.0): mirror Settings.__init__ defaults
+    if not hasattr(s, "require_secure_transport"):
+        s.require_secure_transport = "warn"
+    if not hasattr(s, "envelope_encryption"):
+        s.envelope_encryption = True
+    if not hasattr(s, "cookie_secure"):
+        s.cookie_secure = "auto"
     return s
 
 

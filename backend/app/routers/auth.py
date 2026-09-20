@@ -1,4 +1,9 @@
-"""Auth endpoints: login, TOTP 2FA, wallet unlock, logout, session status."""
+"""Auth endpoints: login, TOTP 2FA, wallet unlock, logout, session status.
+
+Transport security: remote plain-HTTP sessions are flagged (warn) or refused
+(block) per REQUIRE_SECURE_TRANSPORT. The login password and wallet
+passphrase may be envelope-encrypted (ECDH P-256 + AES-GCM) so the cleartext
+never crosses the wire even on plain HTTP."""
 
 import time
 
@@ -9,12 +14,22 @@ from app import db, totp
 from app.deps import AppState
 from app.ratelimit import limiter
 from app.session import CSRF_COOKIE, SESSION_COOKIE
+from app.transport import insecure_remote, transport_is_secure
+from app.crypto_envelope import decrypt_envelope
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-class LoginBody(BaseModel):
-    password: str
+@router.get("/pubkey")
+async def auth_pubkey(request: Request):
+    """Server ECDH public key (P-256, raw uncompressed point, base64) for
+    client-side envelope encryption of the login password and wallet
+    passphrase. Returns 404 when envelope encryption is disabled so the
+    frontend falls back to plain (with the transport banner if remote-HTTP)."""
+    state: AppState = request.app.state.app_state
+    if not state.settings.envelope_encryption or not state.ecdh_pub_b64:
+        raise HTTPException(status_code=404, detail="envelope encryption disabled")
+    return {"pubkey": state.ecdh_pub_b64}
 
 
 class TOTPBody(BaseModel):
@@ -49,7 +64,7 @@ def _cookie_secure(request: Request, state: AppState) -> bool:
 
 
 def _set_session_cookie(response: Response, state: AppState, sid: str,
-                        request: Request) -> None:
+                         request: Request) -> None:
     response.set_cookie(
         SESSION_COOKIE, state.sessions.sign(sid),
         httponly=True, samesite="strict", path="/",
@@ -58,13 +73,28 @@ def _set_session_cookie(response: Response, state: AppState, sid: str,
 
 
 @router.post("/login")
-async def login(body: LoginBody, request: Request, response: Response):
+async def login(request: Request, response: Response):
+    """Login with optional ECDH envelope encryption. The request body is read
+    as raw JSON so an `env` envelope can be extracted alongside the legacy
+    `password` field. Transport policy: block mode refuses remote plain-HTTP."""
     state: AppState = request.app.state.app_state
+    if state.settings.require_secure_transport == "block" and insecure_remote(request):
+        raise HTTPException(status_code=426,
+                            detail="secure transport required: use HTTPS or access from localhost")
     ip = _client_ip(request)
     if not limiter.allow("login", ip, limit=5, window_s=60):
         raise HTTPException(status_code=429, detail="too many attempts, wait a minute")
 
-    user = db.verify_password(state.settings.db_path, state.username, body.password)
+    body = await request.json()
+    password = body.get("password", "")
+    env = body.get("env")
+    if isinstance(env, dict) and state.settings.envelope_encryption and state.ecdh_priv:
+        try:
+            password = decrypt_envelope(state.ecdh_priv, env)
+        except Exception:
+            raise HTTPException(status_code=400, detail="could not decrypt password envelope")
+
+    user = db.verify_password(state.settings.db_path, state.username, password)
     if user is None:
         db.audit(state.settings.db_path, "login", state.username, ip, success=False)
         raise HTTPException(status_code=401, detail="invalid credentials")
@@ -73,6 +103,8 @@ async def login(body: LoginBody, request: Request, response: Response):
     needs_totp = state.needs_totp_now(request) and bool(user["totp_enabled"])
     if not needs_totp:
         sess.two_fa_verified = True
+    # Session + CSRF cookies are ALWAYS set: a TOTP-pending session must
+    # exist so the 2FA step can verify against it.
     _set_session_cookie(response, state, sid, request)
     # CSRF double-submit cookie: readable by JS (not httponly) by design.
     response.set_cookie(CSRF_COOKIE, sess.csrf_token, samesite="strict", path="/",
@@ -112,6 +144,7 @@ async def verify_2fa(body: TOTPBody, request: Request, response: Response):
 @router.get("/status")
 async def auth_status(request: Request):
     state: AppState = request.app.state.app_state
+    secure_transport = transport_is_secure(request)
     if state.setup_mode():
         # Local client in setup mode: full access, no login step.
         return {
@@ -121,10 +154,16 @@ async def auth_status(request: Request):
             "totp_required": False,
             "totp_configured": False,
             "wallet_unlocked": False,
+            "transport_secure": secure_transport,
+            "transport_policy": state.settings.require_secure_transport,
+            "envelope_encryption": bool(state.settings.envelope_encryption and state.ecdh_pub_b64),
         }
     pair = state.session_from_request(request)
     if pair is None:
-        return {"authenticated": False, "setup_required": False}
+        return {"authenticated": False, "setup_required": False,
+                "transport_secure": secure_transport,
+                "transport_policy": state.settings.require_secure_transport,
+                "envelope_encryption": bool(state.settings.envelope_encryption and state.ecdh_pub_b64)}
     sid, sess = pair
     return {
         "authenticated": True,
@@ -135,6 +174,9 @@ async def auth_status(request: Request):
         ),
         "wallet_unlocked": sess.wallet_unlocked(),
         "setup_required": False,
+        "transport_secure": secure_transport,
+        "transport_policy": state.settings.require_secure_transport,
+        "envelope_encryption": bool(state.settings.envelope_encryption and state.ecdh_pub_b64),
     }
 
 
@@ -175,7 +217,6 @@ class SetPasswordBody(BaseModel):
 @router.post("/setup-password")
 async def setup_password(body: SetPasswordBody, request: Request):
     """First-run security step: set the login password. Local client only,
-
     exits setup mode. Length is enforced; the audit log records the event."""
     state: AppState = request.app.state.app_state
     if not state.setup_mode():
@@ -185,5 +226,5 @@ async def setup_password(body: SetPasswordBody, request: Request):
         raise HTTPException(status_code=400, detail="password must be at least 8 characters")
     db.set_password(state.settings.db_path, state.username, body.password)
     db.audit(state.settings.db_path, "security.password_set", state.username,
-        _client_ip(request), success=True)
+             _client_ip(request), success=True)
     return {"ok": True, "setup_required": False}

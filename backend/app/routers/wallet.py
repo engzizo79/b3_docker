@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from app import db
 from app.deps import AppState
 from app.ratelimit import limiter
+from app.crypto_envelope import decrypt_envelope
 from app.rpc import (B3_DECIMALS, RPCError, RPCNotAllowed, RPCUnavailable,
                      parse_amount)
 
@@ -78,6 +79,15 @@ async def unlock_wallet(body: dict, request: Request):
     if not limiter.allow("unlock", ip, limit=5, window_s=60):
         raise HTTPException(status_code=429, detail="too many attempts, wait a minute")
     passphrase = (body or {}).get("passphrase", "")
+    # ECDH envelope: the passphrase arrives encrypted, so the cleartext
+    # never crosses the wire (defense even on plain HTTP transports).
+    env = (body or {}).get("env")
+    if isinstance(env, dict) and state.settings.envelope_encryption and state.ecdh_priv:
+        try:
+            passphrase = decrypt_envelope(state.ecdh_priv, env)
+        except Exception:
+            raise HTTPException(status_code=400,
+                                detail="could not decrypt passphrase envelope")
     if not passphrase:
         raise HTTPException(status_code=400, detail="passphrase required")
     timeout = (body or {}).get("timeout") or state.settings.wallet_unlock_timeout

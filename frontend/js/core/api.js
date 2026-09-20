@@ -13,6 +13,8 @@
 
    The browser never talks to the node; every call here is to /api/*. */
 
+import { seal } from './envelope.js';
+
 export const apiMixin = {
 
   async api(path, opts) {
@@ -85,9 +87,12 @@ export const apiMixin = {
 
     let unlocked = false;
     try {
+// ECDH-seal the passphrase when envelope encryption is available
+// (v0.5.0 transport security): the cleartext never crosses the wire.
+const env = await seal(u.pw, 'b3hive-unlock');
       const r = await this.api('/api/wallet/unlock', {
         method: 'POST',
-        body: JSON.stringify({ passphrase: u.pw }),
+        body: JSON.stringify(env ? { env } : { passphrase: u.pw }),
         _retried: true, // an unlock call must never recurse into this modal
       });
       unlocked = true;

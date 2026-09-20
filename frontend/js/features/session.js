@@ -10,19 +10,24 @@
    core/state.js walletState(). */
 
 import { fmtClock } from '../core/format.js';
+import { seal } from '../core/envelope.js';
 
 export const sessionMixin = {
 
   fmtClock,
+
 
   /* --------------------------------------------------------------- login -- */
 
   async login() {
     this.loginErr = ''; this.loginBusy = true;
     try {
+// ECDH-seal the password when envelope encryption is available
+// (v0.5.0 transport security): the cleartext never crosses the wire.
+const env = await seal(this.loginPw, 'b3hive-login');
       const r = await this.api('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ password: this.loginPw }),
+        body: JSON.stringify(env ? { env } : { password: this.loginPw }),
       });
       if (r.totp_required) {
         this.loginStep2 = true;

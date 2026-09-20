@@ -35,6 +35,16 @@ class Settings:
         self.recovery_cmd_file: str = os.environ.get("RECOVERY_CMD_FILE", str(Path(self.b3_data_dir) / "recovery.cmd"))
         # Cookie Secure flag: auto (default, HTTPS-aware via X-Forwarded-Proto), true, false
         self.cookie_secure: str = os.environ.get("COOKIE_SECURE", "auto")
+        # Transport security policy for remote plain-HTTP sessions:
+        # "warn" (default) = persistent banner, guide card, no blocking
+        # "block" = refuse all non-HTTPS remote sessions (strictest)
+        self.require_secure_transport: str = os.environ.get(
+	"REQUIRE_SECURE_TRANSPORT", "warn").strip().lower()
+        # Enable ECDH envelope encryption for login password + wallet
+        # passphrase (WebCrypto-compatible). Even over plain HTTP the
+        # cleartext secret never crosses the wire. Default on.
+        self.envelope_encryption: bool = os.environ.get(
+	"ENVELOPE_ENCRYPTION", "true").strip().lower() != "false"
         # Setup wizard / bootstrap
         # (b3_data_dir is read at the top of __init__ — every state path
         # derives from it; see the comment there.)

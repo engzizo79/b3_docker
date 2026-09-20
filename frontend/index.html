@@ -240,6 +240,14 @@
         <svg class="i"><use :href="'#i-' + walletStateIcon()"/></svg>
       </button>
     </header>
+<!-- Transport security banner (v0.5.0): remote plain-HTTP session. -->
+<div class="banner banner-warning" role="alert"
+ x-show="session.authenticated && session.transport_secure === false && !chromeHidden()">
+ <svg class="i"><use href="#i-alert"/></svg>
+ <span class="t-sm">This connection is not encrypted — your password and everything you
+ do can be read on the network.
+ <a href="#settings" @click.prevent="go('settings')">How to encrypt your access</a></span>
+</div>
 
     <!-- ------------------------------------------------------ page head -- -->
     <header class="page-head" x-show="!chromeHidden()">
@@ -3172,6 +3180,46 @@
 
 <!-- =================================================== SETTINGS ===== -->
       <section x-show="view === 'settings'" class="stack">
+
+<!-- Transport security guide (v0.5.0): shown when the connection is not encrypted. -->
+<div class="card" x-show="session.transport_secure === false">
+ <div class="card-head">
+ <div>
+ <strong>Encrypt your access</strong>
+ <span class="sub">This connection is currently plain HTTP</span>
+ </div>
+ <span class="badge badge-warning">Not encrypted</span>
+ </div>
+ <div class="card-pad">
+ <p class="muted t-sm">On this kind of connection, everything — including your
+ password — travels unencrypted. (Localhost and HTTPS connections are safe: the
+ former never leaves the machine, the latter is encrypted, and both additionally
+ seal your password and passphrase with built-in envelope encryption.) To fix
+ this connection, pick one of these — easiest first:</p>
+
+ <div class="banner banner-info mt-3">
+ <svg class="i"><use href="#i-shield"/></svg>
+ <span class="t-sm"><strong>Option 1 — Tailscale (recommended, 10 minutes, no
+ domain):</strong> Install the free Tailscale app on this device and on the
+ machine running B3 Hive, sign in with the same account, then open the
+ <code>https://</code> address the app gives you. Your connection gets real
+ encryption with a real certificate, and the wallet stops being reachable
+ from the public internet.</span>
+ </div>
+ <div class="banner banner-info mt-3">
+ <svg class="i"><use href="#i-shield"/></svg>
+ <span class="t-sm"><strong>Option 2 — Reverse proxy with your own domain:</strong>
+ If you own a domain, point it at this machine and run the bundled Caddy
+ profile (see docs/ARCHITECTURE.md). Caddy obtains and renews a Let's
+ Encrypt certificate automatically.</span>
+ </div>
+
+ <p class="muted t-sm mt-3">Already have HTTPS in front? Your operator can set
+ <code>REQUIRE_SECURE_TRANSPORT=block</code> to refuse all plain-HTTP remote
+ logins outright.</p>
+ </div>
+</div>
+
 
         <!-- Appearance + mode -->
         <div class="card">

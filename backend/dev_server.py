@@ -45,6 +45,8 @@ def main() -> None:
     # Expert console gate: dev browser reaches the backend via loopback.
     s.console_networks = "127.0.0.1/8,::1/128,172.16.0.0/12"
     s.extra_console_methods = ""
+    s.require_secure_transport = "warn"
+    s.envelope_encryption = True
     s.recovery_cmd_file = str(tmp / "recovery.cmd")
     s.b3_data_dir = str(tmp)
     s.daemon_deferred_file = str(tmp / ".daemon_deferred")
@@ -170,6 +172,11 @@ def main() -> None:
     mock.call = _stateful_call
 
     state = AppState(s, mock, SessionStore(s.session_secret), username="admin")
+    # v0.5.0 transport security: load the ECDH server keypair so the dev
+    # server exposes /api/auth/pubkey like production does.
+    if getattr(s, "envelope_encryption", True):
+        from app.crypto_envelope import server_keypair
+        state.ecdh_priv, state.ecdh_pub_b64 = server_keypair(s.b3_data_dir)
     app = create_app(state)
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8899
     print(f"dev server on http://127.0.0.1:{port} (admin / correct horse battery staple)")

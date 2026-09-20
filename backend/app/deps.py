@@ -20,6 +20,9 @@ class AppState:
         self.rpc = rpc
         self.sessions = sessions
         self.username = username
+        # ECDH server key for envelope decryption (loaded by create_app_state).
+        self.ecdh_priv = None
+        self.ecdh_pub_b64 = ""
 
     # -- session helpers -------------------------------------------------
 
@@ -175,6 +178,10 @@ def create_app_state(settings: Settings | None = None,
     sessions = SessionStore(settings.session_secret)
     state = AppState(settings, rpc, sessions, username="admin")
     db.init_db(settings.db_path)
+    if settings.envelope_encryption:
+        priv, pub_b64 = server_keypair(settings.b3_data_dir)
+        state.ecdh_priv = priv
+        state.ecdh_pub_b64 = pub_b64
     # Passwordless first run: when no UI_PASSWORD is provided the operator
     # account is not created and the app boots in SETUP MODE (local clients
     # only) until the wizard Security step sets a login password. An explicit
