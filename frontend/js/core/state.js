@@ -273,8 +273,21 @@ export const stateMixin = {
       };
     }
 
-    /* 6. Idle coins. "Earn rewards" is the verb; "Staking" is the noun. */
-    if (ws !== 'no-wallet' && !this.staking.active && isPositiveAmount(this.wallet.balance)) {
+    /* 6. Staking loop off — distinguish "already locked" from "never staked". */
+    if (ws !== 'no-wallet' && !this.staking.active
+        && (isPositiveAmount(this.wallet.balance) || this.stakeTotals().count > 0)) {
+      if (this.stakeTotals().count > 0) {
+        /* Coins locked, loop off — informational, not onboarding. */
+        return {
+          level: 'info', icon: 'spark', title: 'Your locked coins aren\'t earning',
+          text: 'You have ' + this.stakeTotals().count + ' stake'
+              + (this.stakeTotals().count > 1 ? 's' : '') + ' ('
+              + this.fmtAmount(this.stakeTotals().active, { maxDecimals: 2, unit: true })
+              + ') but the staking loop is off. Turn it on to start producing blocks.',
+          actions: [{ label: 'Turn on staking', icon: 'spark', act: 'startStaking', primary: true }],
+        };
+      }
+      /* Never staked — onboarding. */
       return {
         level: 'accent', icon: 'spark', title: 'Earn rewards on your B3',
         text: 'Staking puts your balance to work producing blocks. Your coins stay in '
@@ -333,6 +346,7 @@ export const stateMixin = {
       ackAllAlerts: () => this.ackAllAlerts(),
       backupWallet: () => this.backupWallet(),
       snoozeBackup: () => this.snoozeBackup(),
+      startStaking: () => this.startStaking(),
     };
     handlers[action.act]?.();
   },

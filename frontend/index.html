@@ -900,7 +900,7 @@
           <div class="card-head">
             <div class="row gap-2">
               <svg class="i" style="color:var(--accent-text)"><use href="#i-spark"/></svg>
-              <strong x-text="staking.active ? 'Earning' : 'Staking'"></strong>
+              <strong x-text="staking.active ? 'Earning' : (stakeTotals().count > 0 ? 'Your stakes' : 'Staking')"></strong>
             </div>
             <button class="btn btn-ghost btn-sm" type="button" @click="go('staking')">
               Open <svg class="i-sm"><use href="#i-chevron-right"/></svg>
@@ -931,11 +931,11 @@
             <!-- Never a disabled control with no explanation. -->
             <p class="help mt-3" x-show="stakingBlocker()" x-text="stakingBlocker()"></p>
             <button class="btn btn-primary btn-block mt-3" type="button"
-                    x-show="!staking.active && !stakingBlocker()"
+                    x-show="!staking.active && !stakingBlocker() && stakeTotals().count === 0"
                     @click="startStaking()" :disabled="staking.working">
               <span class="spinner" x-show="staking.working"></span>
               <svg class="i" x-show="!staking.working"><use href="#i-spark"/></svg>
-              <span>Start earning</span>
+              <span x-text="stakeTotals().count > 0 ? 'Turn on staking' : 'Start earning'"></span>
             </button>
           </div>
         </div>
@@ -1506,7 +1506,7 @@
                       @click="startStaking()" :disabled="staking.working">
                 <span class="spinner" x-show="staking.working"></span>
                 <svg class="i" x-show="!staking.working"><use href="#i-spark"/></svg>
-                <span>Start earning</span>
+                <span x-text="stakeTotals().count > 0 ? 'Turn on staking' : 'Start earning'"></span>
               </button>
               <button class="btn btn-danger-quiet" type="button" x-show="staking.active"
                       @click="stopStaking()" :disabled="staking.working">
