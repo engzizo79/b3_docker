@@ -39,7 +39,7 @@ docker run -d --name b3hive --restart unless-stopped \
   -p 8080:8080 \
   -v ~/.B3-CoinV2:/data \
   --stop-timeout 600 \
-  ghcr.io/engzizo79/b3hive:v0.8.3-beta
+  ghcr.io/engzizo79/b3hive:v0.8.4-beta
 ```
 
 - The volume **must** map to `/data`. Without a persistent volume the app refuses to start (the chain and wallet would be lost with the container).
