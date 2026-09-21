@@ -143,7 +143,7 @@ def settings(tmp_path: Path) -> Settings:
     # Expert console settings must mirror Settings.__init__ defaults so
     # tests model the real app (the fixture builds Settings via __new__).
     if not hasattr(s, "console_networks"):
-        s.console_networks = "127.0.0.1/8,::1/128,172.16.0.0/12"
+        s.console_networks = "127.0.0.1/32,::1/128"
     if not hasattr(s, "extra_console_methods"):
         s.extra_console_methods = ""
     s.ui_password = "correct horse battery staple"

@@ -73,6 +73,24 @@ else
     run_as() { "$@"; }
 fi
 
+# Everything below runs as the non-root b3coin user. Anything this root shell
+# creates AFTER the step-0 chown (dirs, markers, logs) would otherwise be
+# root-owned and unusable by the daemon, backend and tailscaled on a FIRST run.
+own() {
+    if [ "$(id -u)" = "0" ]; then chown b3coin:b3coin "$@" 2>/dev/null || true; fi
+}
+
+# Treat unedited .env.example placeholders as UNSET. Otherwise a copied .env
+# would make "GENERATE_AT_DEPLOY" the real TOTP key / session secret and
+# "SET_ME" a real login password (skipping first-run setup mode entirely).
+for _v in SESSION_SECRET TOTP_ENCRYPTION_KEY UI_PASSWORD; do
+    case "$(printf '%s' "${!_v:-}" | tr '[:upper:]' '[:lower:]')" in
+        ""|set_me|generate_at_deploy|set_by_entrypoint|changeme|change_me)
+            unset "${_v}" ;;
+    esac
+done
+unset _v
+
 # --- 0.5 Storage persistence check -----------------------------------------
 # /data may not even exist when no volume is mapped at all: create it so
 # the checks and the backend can run, then decide if this storage is safe.
@@ -120,6 +138,7 @@ fi
 # layout is detected (chain dirs at root), move them before daemon start.
 if [ -z "${BLOCKED}" ]; then
     mkdir -p "${NODE_DATADIR}"
+    own "${NODE_DATADIR}"
     FLAT_MARKER="${B3_DATA_DIR}/.migrated_to_node"
     if [ ! -f "${FLAT_MARKER}" ]; then
         MOVED=0
@@ -136,6 +155,7 @@ if [ -z "${BLOCKED}" ]; then
             log "Migration complete: chain data moved to ${NODE_DATADIR}"
         fi
         touch "${FLAT_MARKER}"
+        own "${FLAT_MARKER}"
     fi
 fi
 
@@ -251,6 +271,7 @@ start_daemon() {
     # Daemon output goes to a file the backend can tail (/data persists),
     # mirrored to container stdout so `docker logs` keeps working.
     touch "${DAEMON_LOG}"
+    own "${DAEMON_LOG}"
     chmod 640 "${DAEMON_LOG}" 2>/dev/null || true
     run_as "${DAEMON_BIN}" \
         -datadir="${NODE_DATADIR}" \
@@ -271,13 +292,13 @@ if [ -n "${BLOCKED}" ]; then
 elif [ "${B3_DAEMON_MODE}" = "external" ]; then
     log "External (UI-only) mode - daemon NOT started (runs elsewhere)"
 elif [ "${RUN_UI}" != "false" ] && [ ! -f "${WIZARD_MARKER}" ]; then
-    touch "${DEFERRED_FILE}"
+    touch "${DEFERRED_FILE}"; own "${DEFERRED_FILE}"
     log "First UI run — daemon deferred until the setup wizard is completed (Finish Setup)"
 elif [ ! -x "${DAEMON_BIN}" ]; then
     # v0.6.0+: the daemon is no longer baked into the image. On upgrade from
     # an older version the wizard marker exists but the binary doesn't. Defer
     # and let the UI guide the user through downloading it.
-    touch "${DEFERRED_FILE}"
+    touch "${DEFERRED_FILE}"; own "${DEFERRED_FILE}"
     log "Daemon binary missing on completed setup — deferred (use the UI to install)"
 else
     start_daemon
@@ -394,7 +415,7 @@ PY
         log "bootstrap: wipe requested — removing existing chain data (blocks, chainstate, indexes, flowmesh)"
         for CHAIN_DIR in blocks chainstate indexes flowmesh; do
             if [ -e "${NODE_DATADIR}/${CHAIN_DIR}" ]; then
-                rm -rf "${B3_DATA_DIR}/${CHAIN_DIR}" || {
+                rm -rf "${NODE_DATADIR:?}/${CHAIN_DIR}" || {
                     write_progress '{"phase":"failed","error":"chain wipe failed"}'
                     log "bootstrap: failed to remove ${CHAIN_DIR} — aborting"
                     if [ -n "${DAEMON_PID}" ]; then start_daemon; fi
@@ -416,6 +437,8 @@ PY
         return 0
     }
     rm -f "${B3_TMP_ARCHIVE}"
+    # Extracted as root: hand the chain to the daemon user before it starts.
+    if [ "$(id -u)" = "0" ]; then chown -R b3coin:b3coin "${NODE_DATADIR}" 2>/dev/null || true; fi
 
     log "bootstrap: complete at height ${B_HEIGHT} — starting daemon"
     write_progress "{\"phase\":\"done\",\"height\":${B_HEIGHT}}"
@@ -428,8 +451,11 @@ run_upgrade() {
     TAG="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('tag',''))" "$CMD_JSON")"
     [ -z "${TAG}" ] && { log "upgrade: no tag"; return 0; }
     [ -n "${DAEMON_PID}" ] && { kill -TERM "${DAEMON_PID}" 2>/dev/null || true; wait "${DAEMON_PID}" 2>/dev/null || true; DAEMON_PID=""; }
-    CHOSEN_VERSION="${TAG}" DAEMON_DIR="${DAEMON_DIR}" DAEMON_VERSION_FILE="${DAEMON_VERSION_FILE}" 
-    MIN_DAEMON_VERSION="${MIN_DAEMON_VERSION:-1.1.4}" python3 - <<'UPGRADEPY'
+    # The env assignments must prefix the python3 command (continuation), and
+    # a failure must not trip `set -e` — it would kill the whole container.
+    UPGRADE_RC=0
+    CHOSEN_VERSION="${TAG}" DAEMON_DIR="${DAEMON_DIR}" DAEMON_VERSION_FILE="${DAEMON_VERSION_FILE}" \
+    MIN_DAEMON_VERSION="${MIN_DAEMON_VERSION:-1.1.4}" python3 - <<'UPGRADEPY' || UPGRADE_RC=$?
 import os, sys
 sys.path.insert(0, "/app")
 from app import daemon_release
@@ -453,7 +479,7 @@ try:
 except Exception as exc:
     print(f"ERROR: {exc}", file=sys.stderr); sys.exit(1)
 UPGRADEPY
-    if [ $? -eq 0 ]; then
+    if [ "${UPGRADE_RC}" -eq 0 ]; then
         log "upgrade succeeded - restarting daemon"
         start_daemon
     else
@@ -468,6 +494,8 @@ start_tailscale() {
     # re-authentication. Runs as the same non-root user as the backend so
     # the backend can query/control it via the local socket.
     mkdir -p "${TS_STATE_DIR}"
+    touch "${TS_LOG}"
+    own "${TS_STATE_DIR}" "${TS_LOG}"
     run_as /usr/local/bin/tailscaled \
         --tun=userspace-networking \
         --state="${TS_STATE_DIR}/tailscaled.state" \

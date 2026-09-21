@@ -4,21 +4,30 @@ One Docker container with the B3Hive daemon (b3coind) **and a full b3coin-qt rep
 
 ## Status
 
-**Alpha (v0.1.0-alpha)** — all six phases implemented and verified: container, security core, SPA, batch actions, recovery/alerts, production hardening. See [PLAN.md](PLAN.md) for the roadmap and [AGENTS.md](AGENTS.md) for the binding project contract.
+**Beta** — feature-complete for the core wallet workflow (send, receive, stake, consolidate, wallet management, setup wizard, remote access via Tailscale or Caddy). Expect rough edges; report them to the B3 team and **do not put more into a beta wallet than you can afford to lose**. See [PLAN.md](PLAN.md) for the roadmap and [AGENTS.md](AGENTS.md) for the binding project contract.
 
 ## Architecture (single all-in-one container)
 
-One image contains b3coind + FastAPI backend proxy + static SPA. The browser never talks to the node RPC directly: the backend is the sole RPC client, over loopback inside the container, behind an allowlist. The only published port is the UI. `RUN_UI=false` runs the same image as a headless daemon. Remote access requires TOTP 2FA; localhost bypasses it (configurable).
+One image contains b3coind + FastAPI backend proxy + static SPA. The browser never talks to the node RPC directly: the backend is the sole RPC client, over loopback inside the container, behind an allowlist. The only published port is the UI. `RUN_UI=false` runs the same image as a headless daemon. Remote access requires TOTP 2FA; localhost bypasses it (configurable; only loopback and addresses you list in `B3_LOCAL_ADDRS` count as local).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/SECURITY.md](docs/SECURITY.md).
 
-## Quick start (once implemented)
+## Quick start
 
 ```bash
-cp .env.example .env   # set RPC credentials, UI password, etc.
+cp .env.example .env   # required by compose; all settings have safe defaults
 docker compose up -d
 # UI at http://localhost:8080
 ```
+
+**First run in Docker:** the setup wizard is restricted to *local* clients, and only loopback counts as local. A browser on the Docker host arrives from the Docker bridge gateway, so the first page you see is "setup required", which shows the address the server saw (e.g. `172.17.0.1`). Add it to `.env`, then restart:
+
+```bash
+echo 'B3_LOCAL_ADDRS=172.17.0.1' >> .env   # use the address shown on the page
+docker compose up -d
+```
+
+Finish the wizard (choose a password, enable 2FA). Anything not listed — every other machine on your LAN or the internet — always needs the password **and** TOTP 2FA. Details: [docs/SECURITY.md](docs/SECURITY.md#what-counts-as-local).
 
 Your data persists in the mapped host directory (default `~/.B3-CoinV2`) — chain state, wallet, and `b3coin.conf` survive upgrades.
 
@@ -27,6 +36,8 @@ Your data persists in the mapped host directory (default `~/.B3-CoinV2`) — cha
 Set `RUN_UI=false` in `.env` — same image, no UI, no published UI port.
 
 ### Upgrades
+
+> **Behaviour change in the beta:** the Docker bridge gateway is no longer auto-treated as local. If you previously browsed from the Docker host and skipped 2FA, you will now be asked for TOTP (or, before a password is set, blocked from setup) until you set `B3_LOCAL_ADDRS` — see Quick start. Also, the developer console's default trusted networks are now loopback only; add ranges under Settings → Console if you relied on the old default.
 
 ```bash
 docker compose pull

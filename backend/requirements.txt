@@ -1,8 +1,9 @@
-fastapi==0.115.12
-uvicorn[standard]==0.34.2
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn[standard]==0.53.0
 httpx==0.28.1
-pydantic==2.11.4
+pydantic==2.13.5
 pyotp==2.9.0
 argon2-cffi==23.1.0
-cryptography==44.0.2
+cryptography==50.0.1
 itsdangerous==2.2.0

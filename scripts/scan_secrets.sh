@@ -40,6 +40,9 @@ scan_file() {
     # `file`-based check silently failed when `file` is not installed,
     # so the scanner line-scanned PNGs and other binaries and hung.
     if ! grep -Iq . "$f" 2>/dev/null; then return 0; fi
+    # Test fixtures use obviously fake credentials (realuser, realpass, ...).
+    # The forbidden-filename rule above still applies to them.
+    case "$f" in backend/tests/*) return 0 ;; esac
     # Secret-value scan
     while IFS= read -r line; do
         if echo "$line" | grep -Eq "$SECRET_VALUE_RE"; then

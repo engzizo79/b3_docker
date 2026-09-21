@@ -1,6 +1,7 @@
 """FastAPI application factory. The backend is the ONLY RPC client; the
 browser never talks to the node directly."""
 
+import html
 import os
 import pathlib
 
@@ -8,12 +9,31 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.deps import AppState, create_app_state
+from app.session import effective_client_ip
 from app.rpc import RPCNotAllowed
 
 _STORAGE_BLOCKED_PAGE = (pathlib.Path(__file__).parent / "storage_blocked.html").read_text(
     encoding="utf-8")
+
+
+_SETUP_LOCKED_PAGE = """<!doctype html><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B3 Hive - setup required</title>
+<body style="font-family:system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem;line-height:1.5">
+<h1>B3 Hive - setup required</h1>
+<p>First-run setup can only be finished from the local machine. Until a login
+password is set, this service is locked to local access.</p>
+<p>The server sees your connection as coming from <code>{{CLIENT_IP}}</code>.</p>
+<p><b>Running in Docker and browsing from the Docker host itself?</b> Docker
+makes host connections arrive from the bridge gateway, which is not treated as
+local unless you say so. If the address above is your own host's gateway
+(e.g. <code>172.17.0.1</code>), set <code>B3_LOCAL_ADDRS=&lt;that address&gt;</code>
+in your <code>.env</code> and run <code>docker compose up -d</code>. Do not add
+an address you do not control.</p>
+</body>"""
 
 
 class SpaStaticApp(StaticFiles):
@@ -26,7 +46,9 @@ class SpaStaticApp(StaticFiles):
             response = None
         if response is None or response.status_code == 404:
             if scope.get("path", "").startswith("/api/"):
-                return response
+                # Unknown API path: a real 404 (returning None here surfaced
+                # as a 500 "NoneType is not callable" from StaticFiles).
+                raise StarletteHTTPException(status_code=404)
             response = await super().get_response("index.html", scope)
         return response
 
@@ -93,9 +115,13 @@ def create_app(state: AppState | None = None) -> FastAPI:
             page = _STORAGE_BLOCKED_PAGE.replace("{{DATA_DIR}}", state0.settings.b3_data_dir)
             return HTMLResponse(status_code=503, content=page)
         if state0 is not None and state0.setup_mode() and not client_is_localhost(request):
+            seen = effective_client_ip(request) or "unknown"
             if request.url.path.startswith("/api/"):
-                return JSONResponse(status_code=403, content={"detail": "setup required: finish first-run setup from the local machine"})
-            return HTMLResponse(status_code=403, content="<h1>B3 Hive — setup required</h1><p>Finish the first-run setup from the local machine (localhost). This service is locked to local access until a password is set.</p>")
+                return JSONResponse(status_code=403, content={
+                    "detail": "setup required: finish first-run setup from the local machine",
+                    "client_ip": seen})
+            return HTMLResponse(status_code=403, content=_SETUP_LOCKED_PAGE.replace(
+                "{{CLIENT_IP}}", html.escape(seen)))
         response = await call_next(request)
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-Content-Type-Options"] = "nosniff"

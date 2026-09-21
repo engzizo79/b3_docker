@@ -4,6 +4,19 @@ import os
 from pathlib import Path
 
 
+# Values shipped in .env.example. A copied-but-unedited .env must never turn
+# these public strings into real secrets (a known TOTP key / session secret,
+# or a login account with the password "SET_ME").
+PLACEHOLDER_SECRETS = {"", "set_me", "generate_at_deploy", "set_by_entrypoint",
+                       "changeme", "change_me"}
+
+
+def _secret_env(name: str) -> str:
+    """Env secret, or "" when unset or still an example placeholder."""
+    val = os.environ.get(name, "")
+    return "" if val.strip().lower() in PLACEHOLDER_SECRETS else val
+
+
 class Settings:
     """Runtime settings. The node RPC is loopback-only inside the container."""
 
@@ -25,9 +38,9 @@ class Settings:
         self.b3_data_dir: str = os.environ.get("B3_DATA_DIR", "/data")
         # SQLite DB (user, TOTP, audit log) — lives on the persistent data volume.
         self.db_path: str = os.environ.get("B3_DB_PATH", str(Path(self.b3_data_dir) / "b3hive.db"))
-        self.ui_password: str = os.environ.get("UI_PASSWORD", "")
-        self.session_secret: str = os.environ.get("SESSION_SECRET", "")
-        self.totp_key: str = os.environ.get("TOTP_ENCRYPTION_KEY", "")
+        self.ui_password: str = _secret_env("UI_PASSWORD")
+        self.session_secret: str = _secret_env("SESSION_SECRET")
+        self.totp_key: str = _secret_env("TOTP_ENCRYPTION_KEY")
         # TOTP 2FA: required for remote access, bypassed on localhost when true.
         self.localhost_skip_2fa: bool = os.environ.get(
             "LOCALHOST_SKIP_2FA", "true").strip().lower() != "false"
@@ -97,8 +110,8 @@ class Settings:
         self.extra_console_methods: str = os.environ.get("EXTRA_CONSOLE_METHODS", "")
         # Console IP gate: full console access only from these networks
         # (comma-separated CIDRs or single IPs). Default: local machine
-        # only (loopback + Docker bridge nets). "*" disables the gate.
-        self.console_networks: str = os.environ.get("CONSOLE_NETWORKS", "127.0.0.1/8,::1/128,172.16.0.0/12")
+        # only (loopback). Add more explicitly. "*" disables the gate.
+        self.console_networks: str = os.environ.get("CONSOLE_NETWORKS", "127.0.0.1/32,::1/128")
         # Daemon stdout log (entrypoint redirects -printtoconsole here; a tail
         # mirror keeps `docker logs` working). Backend tails this for the UI.
         self.daemon_log_file: str = os.environ.get(

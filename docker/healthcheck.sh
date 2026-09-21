@@ -49,6 +49,24 @@ if [ -f "${PROGRESS}" ]; then
     esac
 fi
 
+# External (UI-only) mode: no local daemon exists, so only the backend can be
+# checked. Mode comes from the wizard choice file, else the boot env.
+EFFECTIVE_MODE="${B3_DAEMON_MODE:-managed}"
+CHOICE="${B3_DATA_DIR}/.daemon_choice.json"
+if [ -f "${CHOICE}" ]; then
+    CHOSEN=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('mode',''))" "${CHOICE}" 2>/dev/null || true)
+    case "${CHOSEN}" in external|managed) EFFECTIVE_MODE="${CHOSEN}" ;; esac
+fi
+if [ "${EFFECTIVE_MODE}" = "external" ] && [ "${RUN_UI}" != "false" ]; then
+    WEB_PORT="${WEB_PORT:-8080}"
+    if curl -sf --max-time 10 "http://127.0.0.1:${WEB_PORT}/api/health" > /dev/null; then
+        echo "external daemon mode — backend healthy"
+        exit 0
+    fi
+    echo "backend not responding (external mode)" >&2
+    exit 1
+fi
+
 # Effective RPC settings come from the conf (source of truth).
 RPC_USER="$(grep -E '^rpcuser=' "${CONF}" | tail -1 | cut -d= -f2-)"
 RPC_PASSWORD="$(grep -E '^rpcpassword=' "${CONF}" | tail -1 | cut -d= -f2-)"

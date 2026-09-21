@@ -14,7 +14,7 @@ The primary assets at risk are: wallet funds (via unauthorized spends), wallet k
 |---|---|---|---|
 | 1 | TLS at the edge | nginx/Caddy terminates HTTPS with HSTS; no plaintext | Internet-facing |
 | 2 | App login | Username + strong password; session cookie (HTTP-only, Secure, SameSite=Strict); rate-limited | Always |
-| 3 | 2FA for remote access | TOTP (e.g. Google Authenticator) required when accessing from a non-localhost address | Remote only (bypassed on localhost) |
+| 3 | 2FA for remote access | TOTP (e.g. Google Authenticator) required unless the client is local (see below) | Remote only (bypassed for local clients) |
 | 4 | Wallet passphrase for signing | Every wallet-affecting action (unlock, send, consolidate, stake) requires the wallet passphrase — stored only in the session, never persisted on disk | Always |
 | 5 | CSRF protection | Double-submit cookie or synchronizer-token for all mutating POST/PUT/DELETE | Always |
 | 6 | Rate limiting | Login, unlock, and 2FA endpoints are rate-limited (e.g. 5 attempts / minute) | Always |
@@ -28,9 +28,23 @@ The primary assets at risk are: wallet funds (via unauthorized spends), wallet k
 
 The UI is designed for both local administration (same machine) and remote access (internet / LAN). The 2FA layer adapts:
 
-- **Localhost** (connections from 127.0.0.1 / ::1 / Unix socket): 2FA is **skipped**. The user already has machine access — requiring TOTP on every login is unnecessary friction. App login + wallet passphrase are still required.
-- **Remote** (any other source IP): TOTP 2FA is **required** after login. Without a valid TOTP code, the user cannot access the dashboard or any wallet features. This protects against compromised passwords from phishing or credential stuffing.
+- **Local** clients: 2FA is **skipped** and first-run setup is allowed. App login + wallet passphrase are still required once a password is set.
+- **Remote** (every other source IP): TOTP 2FA is **required** after login. Without a valid TOTP code, the user cannot access the dashboard or any wallet features. This protects against compromised passwords from phishing or credential stuffing.
 - The bypass is opt-in and configurable: set `LOCALHOST_SKIP_2FA=true` (default) to enable, `false` to always require 2FA.
+
+### What counts as "local"
+
+**Only `127.0.0.1` / `::1` as seen by the backend, plus addresses you list explicitly in `B3_LOCAL_ADDRS`.** Nothing is auto-detected.
+
+This matters in Docker. A browser on the Docker host reaches a published port through the bridge gateway (`172.17.0.1`, `172.18.0.1`, …), and on Docker Desktop, rootless Docker, or any setup that masquerades traffic, *LAN clients can look identical*. Treating the gateway as local would let anyone who can reach the port skip 2FA and take over first-run setup. So the gateway is **remote by default**:
+
+- First run from the Docker host: the UI shows "setup required" and names the address the server saw. Set `B3_LOCAL_ADDRS=<that address>` in `.env`, run `docker compose up -d`, finish the wizard (set password + 2FA), and optionally remove the variable again.
+- `B3_LOCAL_ADDRS` takes comma-separated IPs or CIDRs. Entries broader than `/16` (IPv4) or `/64` (IPv6), and invalid entries, are ignored with a log warning (fail closed).
+- Listing an address makes **every client behind it** local. Never list a reverse proxy's address (Caddy, nginx) — that would put the whole internet behind the 2FA bypass.
+- `X-Forwarded-For` is honored only from a loopback peer or an entry of `B3_TRUSTED_PROXIES`; `B3_LOCAL_ADDRS` does not grant that trust.
+- The developer console's trusted networks default to loopback only (`CONSOLE_NETWORKS`).
+- Production behind Caddy: `docker-compose.prod.yml` forces `B3_LOCAL_ADDRS` empty. Do the first-run setup once with `docker-compose.yml` on the host, then switch to the prod file (same data volume).
+- Recommended for host-only use: publish the port as `127.0.0.1:8080:8080` so the LAN cannot reach it at all.
 
 ## Auth flow
 

@@ -5,6 +5,7 @@ Session store is in-memory: sessions die with the process (acceptable — the
 user simply logs in again; it also invalidates stolen cookies on restart)."""
 
 import ipaddress
+import logging
 import os
 import secrets
 import time
@@ -18,50 +19,64 @@ SESSION_TTL_S = 8 * 3600 # 8 hours idle timeout
 
 _LOCALHOST = {"127.0.0.1", "::1", "localhost"}
 
+# Narrowest network an operator may declare "local" via B3_LOCAL_ADDRS.
+# Anything broader (0.0.0.0/0, a whole /8) would silently make strangers
+# "local" — which skips 2FA and opens first-run setup — so it is refused.
+_MIN_PREFIX_V4 = 16
+_MIN_PREFIX_V6 = 64
 
-def _default_gateway_addrs() -> set:
-    """Default-route gateways from /proc/net/route. In Docker, connections
-    from the HOST to a published port arrive with the bridge gateway as
-    the source IP — that is the local machine, so it counts as local.
-    Real LAN/remote clients keep their own source IP (DNAT) and stay
-    remote. """
-    addrs = set()
+log = logging.getLogger(__name__)
+
+
+def _extra_local_networks() -> list:
+    """Networks the operator explicitly declared local via B3_LOCAL_ADDRS
+    (comma-separated IPs or CIDRs). Invalid or overly broad entries are
+    ignored with a warning — fail closed."""
+    nets = []
+    for tok in os.environ.get("B3_LOCAL_ADDRS", "").split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        try:
+            net = ipaddress.ip_network(tok, strict=False)
+        except ValueError:
+            log.warning("B3_LOCAL_ADDRS: ignoring invalid entry %r", tok)
+            continue
+        floor = _MIN_PREFIX_V4 if net.version == 4 else _MIN_PREFIX_V6
+        if net.prefixlen < floor:
+            log.warning("B3_LOCAL_ADDRS: ignoring %r — broader than /%d would "
+                        "make remote clients count as local", tok, floor)
+            continue
+        nets.append(net)
+    return nets
+
+
+def is_local_address(host: str) -> bool:
+    """Is this source address 'the local machine'? Only loopback
+    (127.0.0.1 / ::1) plus addresses explicitly listed in B3_LOCAL_ADDRS.
+    Nothing is auto-detected: in Docker, host browsers arrive from the
+    bridge gateway IP, which the operator must opt in to (see README)."""
+    if not host:
+        return False
+    if host in _LOCALHOST:
+        return True
     try:
-        with open("/proc/net/route") as f:
-            for line in f.readlines()[1:]:
-                parts = line.split()
-                if len(parts) >= 3 and parts[1] == "00000000":
-                    hexgw = parts[2]
-                    try:
-                        ip = ".".join(str(int(hexgw[i:i + 2], 16)) for i in (6, 4, 2, 0))
-                        addrs.add(ip)
-                    except ValueError:
-                        continue
-    except OSError:
-        pass
-    return addrs
-
-
-def local_addresses() -> set:
-    """Addresses treated as 'the local machine': loopback, container default
-    gateways (Docker host), and B3_LOCAL_ADDRS overrides (comma-separated)."""
-    addrs = set(_LOCALHOST)
-    addrs |= _default_gateway_addrs()
-    extra = os.environ.get("B3_LOCAL_ADDRS", "")
-    addrs |= {a.strip() for a in extra.split(",") if a.strip()}
-    return addrs
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return any(ip in net for net in _extra_local_networks())
 
 
 def peer_is_trusted_proxy(request) -> bool:
     """Is the DIRECT connection peer a proxy whose X-Forwarded-For we
-    may believe? Only the local machine and entries of B3_TRUSTED_PROXIES
+    may believe? Only loopback and entries of B3_TRUSTED_PROXIES
     (CIDRs or exact names) qualify. Without this, any remote client could
     spoof X-Forwarded-For: 127.0.0.1 and become "localhost" — bypassing
     2FA and gaining full console trust. Fails closed."""
     host = (request.client.host if request.client else "") or ""
     if not host:
         return False
-    if host in local_addresses():  # the local machine itself
+    if host in _LOCALHOST:  # the local machine itself
         return True
     names, nets = [], []
     for tok in os.environ.get("B3_TRUSTED_PROXIES", "").split(","):
@@ -95,12 +110,11 @@ def effective_client_ip(request) -> str:
 
 
 def client_is_localhost(request) -> bool:
-    """True when the request originates from the local machine: the
-    container itself, the host loopback, or the Docker bridge gateway
-    (host connections to a published port arrive from the gateway IP).
-    A reverse proxy only counts when it forwards a loopback client —
-    and only when the proxy itself is trusted (XFF is not spoofable)."""
-    return effective_client_ip(request) in local_addresses()
+    """True when the request originates from the local machine: loopback,
+    or an address the operator listed in B3_LOCAL_ADDRS. A reverse proxy
+    only counts when it forwards a local client — and only when the proxy
+    itself is trusted (XFF is not spoofable)."""
+    return is_local_address(effective_client_ip(request))
 
 @dataclass
 class Session:
