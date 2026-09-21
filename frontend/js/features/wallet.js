@@ -127,9 +127,11 @@ export const walletMixin = {
     try {
       const d = await this.api('/api/wallet/book');
       this.book.addresses = d.addresses || [];
+      this.book.error = false;
       this.book.loaded = true;
     } catch {
-      this.book.addresses = [];
+      // Keep what we had (e.g. node restarting) and let the UI offer a retry.
+      this.book.error = true;
       this.book.loaded = true;
     }
     this.book.busy = false;

@@ -122,7 +122,7 @@ function initialState() {
     history: { txs: [], count: 100, filter: 'all', busy: false, loaded: false },
     txDetail: null,
     receive: { label: '', busy: false, generated: null },
-    book: { addresses: [], labels: [], loaded: false, busy: false, query: '', editing: null, draftLabel: '', hideEmpty: false, sort: { key: null, dir: 'asc' } },
+    book: { addresses: [], labels: [], loaded: false, busy: false, error: false, query: '', editing: null, draftLabel: '', hideEmpty: false, sort: { key: null, dir: 'asc' } },
     manage: {
       loaded: [], onDisk: [], persistent: true, busy: false, working: false, err: '',
       pane: null, loadName: '', backupBusy: false, backupPath: '', backupFile: '',

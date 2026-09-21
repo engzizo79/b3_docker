@@ -1163,7 +1163,7 @@
                     <svg class="i-sm"><use href="#i-copy"/></svg><span>Paste</span>
                   </button>
                   <button class="btn btn-secondary btn-sm" type="button"
-                          @click="send.pickerOpen = true" x-show="book.addresses.length">
+                          @click="send.pickerOpen = true; if (!book.addresses.length) loadAddressBook()">
                     <svg class="i-sm"><use href="#i-book"/></svg><span>From address book</span>
                   </button>
                 </div>
@@ -1370,12 +1370,22 @@
             </div>
 
             <!-- Previously used addresses -->
-            <div class="card" x-show="book.addresses.length">
+            <div class="card">
               <div class="card-head">
                 <strong>Your other addresses</strong>
                 <button class="btn btn-ghost btn-sm" type="button" @click="go('addresses')">
                   Manage <svg class="i-sm"><use href="#i-chevron-right"/></svg>
                 </button>
+              </div>
+              <div class="empty empty--tight" x-show="!book.addresses.length">
+                <p class="t-sm" x-show="book.busy">Loading your addresses…</p>
+                <template x-if="!book.busy && book.error">
+                  <div>
+                    <p class="t-sm">Couldn't load your addresses — the node may still be starting.</p>
+                    <button class="btn btn-secondary btn-sm mt-2" type="button" @click="loadAddressBook()">Try again</button>
+                  </div>
+                </template>
+                <p class="t-sm" x-show="!book.busy && !book.error">Addresses you create will appear here.</p>
               </div>
               <div>
                 <template x-for="a in book.addresses.slice(0, 5)" :key="a.address">
@@ -4313,7 +4323,16 @@
         </div>
         <div class="mt-3">
           <div class="empty empty--tight" x-show="!pickerResults().length">
-            <p class="t-sm">No addresses match that.</p>
+            <p class="t-sm" x-show="book.busy">Loading your addresses…</p>
+            <template x-if="!book.busy && book.error && !book.addresses.length">
+              <div>
+                <p class="t-sm">Couldn't load your addresses — the node may still be starting.</p>
+                <button class="btn btn-secondary btn-sm mt-2" type="button" @click="loadAddressBook()">Try again</button>
+              </div>
+            </template>
+            <p class="t-sm" x-show="!book.busy && !book.error && !book.addresses.length">
+              Your address book is empty. Create an address on the Receive page.</p>
+            <p class="t-sm" x-show="!book.busy && book.addresses.length">No addresses match that.</p>
           </div>
           <template x-for="a in pickerResults()" :key="a.address">
             <button class="list-row clickable px-0" type="button" @click="pickAddress(a)">
