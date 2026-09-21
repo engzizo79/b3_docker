@@ -32,7 +32,7 @@ export const sendMixin = {
       step: 1, to: '', amount: '', label: '',
       busy: false, err: '',
       preview: null, result: null,
-      pickerOpen: false, pickerQuery: '',
+      pickerOpen: false, pickerQuery: '', pickerTab: 'contacts',
     };
   },
 
@@ -53,7 +53,7 @@ export const sendMixin = {
     const v = this.send.to.trim();
     if (!v) return null;
     if (isValidAddress(v)) {
-      const label = this.labelFor(v);
+      const label = this.contactFor(v)?.label || this.labelFor(v);
       return { ok: true, text: label ? 'Valid address — ' + label : 'Valid B3 address' };
     }
     return { ok: false, text: addressProblem(v) };

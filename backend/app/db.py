@@ -82,6 +82,13 @@ CREATE TABLE IF NOT EXISTS alerts (
  message TEXT NOT NULL,
  acknowledged INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS contacts (
+ id INTEGER PRIMARY KEY,
+ label TEXT NOT NULL,
+ address TEXT NOT NULL UNIQUE,
+ created_ts REAL NOT NULL,
+ updated_ts REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS console_settings (
  id INTEGER PRIMARY KEY CHECK (id = 1), -- single row
  networks TEXT NOT NULL DEFAULT '', -- trusted CIDRs, comma-separated; '' = env seed
@@ -294,6 +301,49 @@ def update_recipe(db_path: str, recipe_id: int, name: str, recipe_json: str) -> 
 def delete_recipe(db_path: str, recipe_id: int) -> bool:
     with _lock, _connect(db_path) as conn:
         cur = conn.execute("DELETE FROM batch_recipes WHERE id=?", (recipe_id,))
+        return cur.rowcount > 0
+
+
+# Contacts: saved recipients (other people's addresses) for the Send picker.
+# Purely a convenience list; sends still go through the full review flow.
+# ---------------------------------------------------------------------------
+
+MAX_CONTACTS = 500
+
+
+def list_contacts(db_path: str) -> list[dict]:
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT id, label, address, created_ts FROM contacts "
+            "ORDER BY label COLLATE NOCASE, id").fetchall()
+        return [dict(r) for r in rows]
+
+
+def add_contact(db_path: str, label: str, address: str) -> int:
+    """Insert a contact. Raises ValueError('duplicate') / ValueError('full')."""
+    with _lock, _connect(db_path) as conn:
+        if conn.execute("SELECT COUNT(*) FROM contacts").fetchone()[0] >= MAX_CONTACTS:
+            raise ValueError("full")
+        try:
+            cur = conn.execute(
+                "INSERT INTO contacts (label, address, created_ts, updated_ts) "
+                "VALUES (?,?,?,?)", (label, address, time.time(), time.time()))
+        except sqlite3.IntegrityError as exc:
+            raise ValueError("duplicate") from exc
+        return int(cur.lastrowid)
+
+
+def rename_contact(db_path: str, contact_id: int, label: str) -> bool:
+    with _lock, _connect(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE contacts SET label=?, updated_ts=? WHERE id=?",
+            (label, time.time(), contact_id))
+        return cur.rowcount > 0
+
+
+def delete_contact(db_path: str, contact_id: int) -> bool:
+    with _lock, _connect(db_path) as conn:
+        cur = conn.execute("DELETE FROM contacts WHERE id=?", (contact_id,))
         return cur.rowcount > 0
 
 

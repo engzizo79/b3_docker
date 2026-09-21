@@ -25,6 +25,7 @@ import { initTooltips } from './ui/tooltip.js';
 import { sessionMixin } from './features/session.js';
 import { walletMixin } from './features/wallet.js';
 import { sendMixin } from './features/send.js';
+import { contactsMixin } from './features/contacts.js';
 import { stakingMixin } from './features/staking.js';
 import { assetsMixin } from './features/assets.js';
 import { batchMixin } from './features/batch.js';
@@ -123,6 +124,7 @@ function initialState() {
     txDetail: null,
     receive: { label: '', busy: false, generated: null },
     book: { addresses: [], labels: [], loaded: false, busy: false, error: false, query: '', editing: null, draftLabel: '', hideEmpty: false, sort: { key: null, dir: 'asc' } },
+    contacts: { list: [], loaded: false, error: false, busy: false, form: { label: '', address: '' }, saveName: '', editing: null, draft: '' },
     manage: {
       loaded: [], onDisk: [], persistent: true, busy: false, working: false, err: '',
       pane: null, loadName: '', backupBusy: false, backupPath: '', backupFile: '',
@@ -260,6 +262,7 @@ function b3app() {
     sessionMixin,
     walletMixin,
     sendMixin,
+    contactsMixin,
     stakingMixin,
     assetsMixin,
     batchMixin,

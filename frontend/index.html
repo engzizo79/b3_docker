@@ -1164,8 +1164,17 @@
                   </button>
                   <button class="btn btn-secondary btn-sm" type="button"
                           @click="send.pickerOpen = true; if (!book.addresses.length) loadAddressBook()">
-                    <svg class="i-sm"><use href="#i-book"/></svg><span>From address book</span>
+                    <svg class="i-sm"><use href="#i-book"/></svg><span>Contacts &amp; addresses</span>
                   </button>
+                </div>
+                <div class="field mt-3" x-show="canSaveRecipient()">
+                  <label for="save-name" class="t-sm">Save this address to contacts <span class="muted">(optional)</span></label>
+                  <div class="row gap-2">
+                    <input id="save-name" class="input" x-model="contacts.saveName" maxlength="64"
+                           placeholder="Name, e.g. Alice" @keydown.enter.prevent="saveRecipient()">
+                    <button class="btn btn-secondary btn-sm" type="button" @click="saveRecipient()"
+                            :disabled="contacts.busy || !contacts.saveName.trim()">Save</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1272,6 +1281,15 @@
                             aria-label="Copy transaction id">
                       <svg class="i-sm"><use href="#i-copy"/></svg>
                     </button>
+                  </div>
+                </div>
+                <div class="field mt-4" x-show="canSaveRecipient()">
+                  <label for="save-name-after" class="t-sm">Paying them again? Save this address to contacts.</label>
+                  <div class="row gap-2">
+                    <input id="save-name-after" class="input" x-model="contacts.saveName" maxlength="64"
+                           placeholder="Name, e.g. Alice" @keydown.enter.prevent="saveRecipient()">
+                    <button class="btn btn-secondary btn-sm" type="button" @click="saveRecipient()"
+                            :disabled="contacts.busy || !contacts.saveName.trim()">Save</button>
                   </div>
                 </div>
                 <div class="btn-row mt-4">
@@ -1648,6 +1666,72 @@
               </div>
             </template>
           </div>
+        </div>
+        <!-- Contacts: other people's addresses, for the Send picker. -->
+        <div class="card mt-4">
+          <div class="card-head">
+            <div>
+              <strong>Contacts</strong>
+              <span class="sub">People you pay. Saved on this server, so they follow you between devices.</span>
+            </div>
+          </div>
+          <form class="card-pad contact-form" @submit.prevent="submitContactForm()">
+            <div class="field">
+              <label class="sr-only" for="contact-name">Name</label>
+              <input id="contact-name" class="input" x-model="contacts.form.label" maxlength="64"
+                     placeholder="Name, e.g. Alice">
+            </div>
+            <div class="field">
+              <label class="sr-only" for="contact-addr">Address</label>
+              <input id="contact-addr" class="input input-mono" x-model="contacts.form.address"
+                     spellcheck="false" autocomplete="off" placeholder="S…">
+            </div>
+            <button class="btn btn-primary btn-sm" type="submit"
+                    :disabled="contacts.busy || !contacts.form.label.trim() || !contacts.form.address.trim()">
+              <svg class="i-sm"><use href="#i-plus"/></svg><span>Add contact</span>
+            </button>
+          </form>
+          <div class="empty empty--tight" x-show="contacts.loaded && !contacts.list.length && !contacts.error">
+            <p class="t-sm">No contacts yet.</p>
+          </div>
+          <div class="empty empty--tight" x-show="contacts.error && !contacts.list.length">
+            <p class="t-sm">Couldn't load your contacts.</p>
+            <button class="btn btn-secondary btn-sm mt-2" type="button" @click="loadContacts()">Try again</button>
+          </div>
+          <template x-for="c in contacts.list" :key="c.id">
+            <div class="list-row">
+              <span class="lead"><svg class="i-sm"><use href="#i-users"/></svg></span>
+              <span class="body">
+                <template x-if="contacts.editing !== c.id">
+                  <span class="col" style="gap:1px">
+                    <strong class="t-sm" x-text="c.label"></strong>
+                    <span class="meta mono break-all" x-text="c.address"></span>
+                  </span>
+                </template>
+                <template x-if="contacts.editing === c.id">
+                  <span class="row gap-2">
+                    <input class="input select-sm" x-model="contacts.draft" maxlength="64"
+                           :aria-label="'Name for ' + c.address"
+                           @keydown.enter="saveContactRename(c)" @keydown.escape="cancelContactRename()"
+                           x-init="$nextTick(() => $el.focus())">
+                    <button class="btn btn-primary btn-sm" type="button" @click="saveContactRename(c)">Save</button>
+                    <button class="btn btn-ghost btn-sm" type="button" @click="cancelContactRename()">Cancel</button>
+                  </span>
+                </template>
+              </span>
+              <span class="trail trail-row" x-show="contacts.editing !== c.id">
+                <button class="btn btn-ghost btn-sm btn-icon" type="button" @click="startContactRename(c)"
+                        aria-label="Rename" data-tip="Rename"><svg class="i-sm"><use href="#i-pen"/></svg></button>
+                <button class="btn btn-ghost btn-sm btn-icon" type="button"
+                        @click="copyText(c.address, 'Address copied')" aria-label="Copy address"
+                        data-tip="Copy address"><svg class="i-sm"><use href="#i-copy"/></svg></button>
+                <button class="btn btn-ghost btn-sm btn-icon" type="button" @click="sendTo(c.address, c.label)"
+                        aria-label="Send to this contact" data-tip="Send"><svg class="i-sm"><use href="#i-arrow-up"/></svg></button>
+                <button class="btn btn-ghost btn-sm btn-icon" type="button" @click="deleteContact(c)"
+                        aria-label="Remove contact" data-tip="Remove"><svg class="i-sm"><use href="#i-trash"/></svg></button>
+              </span>
+            </div>
+          </template>
         </div>
       </section>
 
@@ -4316,12 +4400,36 @@
         </button>
       </div>
       <div class="modal-body">
+        <div class="tabs mb-3" role="tablist" aria-label="Address source">
+          <button class="tab" role="tab" type="button" @click="send.pickerTab = 'contacts'"
+                  :aria-selected="send.pickerTab === 'contacts'">Contacts</button>
+          <button class="tab" role="tab" type="button" @click="send.pickerTab = 'mine'"
+                  :aria-selected="send.pickerTab === 'mine'">My addresses</button>
+        </div>
         <div class="field">
           <label class="sr-only" for="picker-q">Search</label>
           <input id="picker-q" class="input" x-model="send.pickerQuery"
                  placeholder="Search by label or address" autofocus>
         </div>
-        <div class="mt-3">
+        <div class="mt-3" x-show="send.pickerTab === 'contacts'">
+          <div class="empty empty--tight" x-show="!contactResults().length">
+            <p class="t-sm" x-show="contacts.error && !contacts.list.length">Couldn't load your contacts.
+              <button class="btn btn-secondary btn-sm mt-2" type="button" @click="loadContacts()">Try again</button></p>
+            <p class="t-sm" x-show="!contacts.error && !contacts.list.length">No contacts yet. Paste an
+              address and choose “Save to contacts”, or add one under Addresses.</p>
+            <p class="t-sm" x-show="contacts.list.length">No contacts match that.</p>
+          </div>
+          <template x-for="c in contactResults()" :key="c.id">
+            <button class="list-row clickable px-0" type="button" @click="pickContact(c)">
+              <span class="lead"><svg class="i-sm"><use href="#i-users"/></svg></span>
+              <span class="body">
+                <strong class="t-sm" x-text="c.label"></strong>
+                <span class="meta mono" x-text="truncAddr(c.address, 10, 8)"></span>
+              </span>
+            </button>
+          </template>
+        </div>
+        <div class="mt-3" x-show="send.pickerTab === 'mine'">
           <div class="empty empty--tight" x-show="!pickerResults().length">
             <p class="t-sm" x-show="book.busy">Loading your addresses…</p>
             <template x-if="!book.busy && book.error && !book.addresses.length">

@@ -144,6 +144,7 @@ def create_app(state: AppState | None = None) -> FastAPI:
     from app.routers import tailscale
     from app.routers import console
     from app.routers import logs
+    from app.routers import contacts
     app.include_router(auth.router)
     app.include_router(chain.router)
     app.include_router(wallet.router)
@@ -156,6 +157,7 @@ def create_app(state: AppState | None = None) -> FastAPI:
     app.include_router(tailscale.router)
     app.include_router(console.router)
     app.include_router(logs.router)
+    app.include_router(contacts.router)
     app.include_router(setup.router)
 
     @app.get("/api/health")

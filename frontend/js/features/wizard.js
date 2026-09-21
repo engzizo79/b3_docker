@@ -510,7 +510,7 @@ export const wizardMixin = {
  ? 'Downloading the daemon from GitHub (can take a few minutes)…'
  : undefined);
  await this.saveDaemonChoice();
- mark('conf', 'done');
+ mark('conf', 'done', this.wizard.daemonMode === 'managed' ? 'Daemon downloaded.' : '');
  }
 
 /* 1) Node configuration, BEFORE the first daemon start. */
@@ -527,7 +527,7 @@ export const wizardMixin = {
             method: 'POST', body: JSON.stringify({ conf }),
           });
         }
-        mark('conf', 'done');
+        mark('conf', 'done', '');
       }
 
       /* 2a) Bootstrap: the entrypoint supervisor downloads, verifies and
@@ -589,6 +589,7 @@ export const wizardMixin = {
   watchSetupOutcome() {
     clearInterval(this._setupWatch);
     let ticks = 0;
+    const queueWalletsLabel = 'Wallets set up';
     const watch = async () => {
       ticks += 1;
       try {
@@ -610,6 +611,25 @@ export const wizardMixin = {
       if (tb && tb.state === 'active' && phase === 'done') {
         tb.state = 'done';
         tb.label = 'Chain snapshot applied';
+        tb.pct = null;
+      }
+      // Queued wallets are created once the node answers; flip their row
+      // as soon as the queue drains so it never spins after the fact.
+      const tw = this.applying.tasks.find((x) => x.key === 'wallets');
+      if (tw && tw.state === 'active') {
+        const failedN = (this.walletQueue || []).filter((q) => q.status === 'failed').length;
+        if (nodeUp && queueLeft === 0 && failedN) {
+          tw.state = 'failed';
+          tw.detail = failedN === 1
+            ? 'One wallet could not be created. Check Wallet for details.'
+            : failedN + ' wallets could not be created. Check Wallet for details.';
+        } else if (nodeUp && queueLeft === 0) {
+          tw.state = 'done';
+          tw.label = queueWalletsLabel;
+          tw.detail = 'Your wallets are created and ready.';
+        } else if (nodeUp) {
+          tw.detail = 'Creating them now…';
+        }
       }
       const t = this.applying.tasks.find((x) => x.key === 'done');
       if (t && t.state === 'active') {
@@ -662,6 +682,7 @@ export const wizardMixin = {
             t.state = 'done';
             t.label = 'Chain snapshot applied';
             t.detail = 'Starting from block ' + (p.height ?? '?');
+            t.pct = null;
           } else if (p.phase === 'failed') {
             t.state = 'failed';
             t.detail = p.error || 'The download did not complete.';

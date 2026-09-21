@@ -132,7 +132,7 @@ export const routerMixin = {
   onEnterView(view, opts = {}) {
     switch (view) {
       case 'receive':    this.loadAddressBook(); break;
-      case 'addresses':  this.loadAddressBook(); this.loadLabels(); break;
+      case 'addresses':  this.loadAddressBook(); this.loadLabels(); this.loadContacts(); break;
       case 'activity':   this.loadHistory(); break;
       case 'assets':     this.loadAssets(); break;
       case 'wallet':     this.loadWalletManage(); break;
@@ -142,7 +142,7 @@ export const routerMixin = {
       case 'console': this.consoleLoad(); break;
       case 'node':       this.loadSystemInfo(); this.loadNodeExtras(); break;
       case 'settings': this.loadSystemInfo(); this.loadTailscale(); break;
-      case 'send':       this.resetSend(opts.keep); this.loadAddressBook(); break;
+      case 'send':       this.resetSend(opts.keep); this.loadAddressBook(); this.loadContacts(); break;
     }
   },
 

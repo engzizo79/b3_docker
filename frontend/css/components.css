@@ -988,3 +988,7 @@ input.select-sm, .input.select-sm { min-height: var(--min-target-sm); }
 
 /* Coins held in stakes/assets: part of the balance, not spendable. */
 .addr-locked { display: block; font-size: var(--text-xs); color: var(--text-muted); font-weight: 400; }
+
+/* Contacts add form: name + address + button; stacks on phones. */
+.contact-form { display: grid; gap: var(--space-2); grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 900px) { .contact-form { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; } }
