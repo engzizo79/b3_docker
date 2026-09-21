@@ -13,6 +13,7 @@ itself and raises an alert - never a plaintext prompt.
 
 import asyncio
 import logging
+import time
 from decimal import Decimal, InvalidOperation
 
 from app import db
@@ -32,15 +33,49 @@ def _dec(value):
         return Decimal(0)
 
 
-async def reconcile(settings, rpc, vault, reason="startup"):
-    """One reconcile pass. Never raises; failures are audited and returned."""
+# Last outcome of each pass, exposed by GET /api/logs/status so the UI can
+# show "last ran / what happened" without parsing the audit log.
+status: dict = {"last_run_ts": None, "last_reason": None, "last_result": None}
+
+
+def _record(dbp, result, reason, dry_run):
+    """Every pass leaves one audit line (skips included) plus a status entry."""
+    if not dry_run:
+        status.update(last_run_ts=time.time(), last_reason=reason,
+                      last_result={k: v for k, v in result.items() if k != "steps"})
+    bits = []
+    if result.get("ran"):
+        bits.append("started" if result.get("started") else "start-failed")
+        if result.get("topped_up"):
+            bits.append("topped_up=" + str(result["topped_up"]))
+        if result.get("skipped"):
+            bits.append("skipped=" + str(result["skipped"]))
+        if result.get("error"):
+            bits.append("error=" + str(result["error"]))
+    else:
+        bits.append("not run: " + str(result.get("reason")))
+    ok = not result.get("error") and (result.get("ran") or result.get("reason") in (
+        "unattended staking disabled",))
+    db.audit(dbp, "autostake_dry_run" if dry_run else "autostake_run",
+             detail=f"reason={reason} " + " ".join(bits), success=bool(ok))
+    logger.info("autostake %s (%s): %s", "dry-run" if dry_run else "run", reason,
+                " ".join(bits))
+    return result
+
+
+async def reconcile(settings, rpc, vault, reason="startup", dry_run=False):
+    """One reconcile pass. Never raises; failures are audited and returned.
+
+    dry_run=True performs NO wallet unlock and NO writes: it reads node state
+    and reports, step by step, what a real pass would do."""
     dbp = settings.db_path
     cfg = db.get_staking_settings(dbp)
     if not cfg["autostake_enabled"] or not cfg["passphrase_enc"]:
-        return {"ran": False, "reason": "unattended staking disabled"}
+        return _record(dbp, {"ran": False, "reason": "unattended staking disabled"},
+                       reason, dry_run)
     if vault is None:
         db.audit(dbp, "autostake", success=False, detail="vault unavailable")
-        return {"ran": False, "reason": "vault unavailable"}
+        return _record(dbp, {"ran": False, "reason": "vault unavailable"}, reason, dry_run)
 
     passphrase = vault.decrypt(cfg["passphrase_enc"])
     if passphrase is None:
@@ -51,26 +86,42 @@ async def reconcile(settings, rpc, vault, reason="startup"):
                      "passphrase could not be decrypted (vault key changed "
                      "or data corrupted). Re-enter it in Staking settings.")
         db.set_staking_settings(dbp, autostake_enabled=0)
-        return {"ran": False, "reason": "vault decrypt failed"}
+        return _record(dbp, {"ran": False, "reason": "vault decrypt failed"},
+                       reason, dry_run)
 
+    steps: list[dict] = []
+
+    def step(name, ok, detail=""):
+        steps.append({"step": name, "ok": bool(ok), "detail": str(detail)})
+
+    step("Stored passphrase decrypts", True)
     try:
         wallets = await rpc.call("listwallets")
     except (RPCError, RPCNotAllowed, RPCUnavailable):
-        return {"ran": False, "reason": "node unreachable"}
+        return _record(dbp, {"ran": False, "reason": "node unreachable"}, reason, dry_run)
     if not wallets:
-        return {"ran": False, "reason": "no wallet loaded"}
+        return _record(dbp, {"ran": False, "reason": "no wallet loaded"}, reason, dry_run)
+    step("Wallet loaded", True, ", ".join(w or "(default)" for w in wallets))
 
-    result = {"ran": True, "started": False, "topped_up": None}
+    result = {"ran": True, "started": False, "topped_up": None, "steps": steps}
+    if dry_run:
+        result["dry_run"] = True
     try:
-        await rpc.call("walletpassphrase", passphrase, MAX_UNLOCK_SECONDS)
-        db.audit(dbp, "autostake_unlock", detail="reason=" + reason)
-        try:
-            await rpc.call("startstaking")
-            result["started"] = True
-            db.audit(dbp, "autostake_startstaking", detail="reason=" + reason)
-        except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
-            db.audit(dbp, "autostake_startstaking", success=False,
-                     detail=str(exc))
+        if not dry_run:
+            await rpc.call("walletpassphrase", passphrase, MAX_UNLOCK_SECONDS)
+            db.audit(dbp, "autostake_unlock", detail="reason=" + reason)
+            step("Wallet unlocked for up to %ds" % MAX_UNLOCK_SECONDS, True)
+            try:
+                await rpc.call("startstaking")
+                result["started"] = True
+                step("Staking loop started", True)
+                db.audit(dbp, "autostake_startstaking", detail="reason=" + reason)
+            except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
+                step("Staking loop started", False, exc)
+                db.audit(dbp, "autostake_startstaking", success=False,
+                         detail=str(exc))
+        else:
+            step("Would unlock wallet and start staking", True, "skipped in dry run")
 
         # Block eligibility needs an on-chain FINALITY_KEY binding
         # (revokefinalitykey removes it; revocation is NEVER automatic).
@@ -78,11 +129,18 @@ async def reconcile(settings, rpc, vault, reason="startup"):
         try:
             fin = await rpc.call("getfinalityinfo")
             binding = (fin or {}).get("binding") or {}
-            if not binding.get("bound") or binding.get("revoked"):
+            needs_bind = not binding.get("bound") or binding.get("revoked")
+            if needs_bind and dry_run:
+                step("Finality key binding", True, "not bound - a real run would bind it")
+            elif needs_bind:
                 await rpc.call("bindfinalitykey")
                 result["bound"] = True
+                step("Finality key binding", True, "was missing - bound now")
                 db.audit(dbp, "autostake_bind_finality", detail="reason=" + reason)
+            else:
+                step("Finality key binding", True, "already bound")
         except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
+            step("Finality key binding", False, exc)
             db.audit(dbp, "autostake_bind_finality", success=False,
                      detail=str(exc))
 
@@ -93,29 +151,48 @@ async def reconcile(settings, rpc, vault, reason="startup"):
                       + _dec(info.get("pending", 0))
                       + _dec(info.get("unconfirmed", 0)))
             deficit = target - staked
+            step("Stake vs target", True,
+                 f"staked {format(staked, '.9f')} / target {format(target, '.9f')}")
             if deficit > 0:
                 balances = await rpc.call("getbalances")
                 avail = _dec((balances.get("mine") or {}).get("trusted", 0))
                 reserve = _dec(cfg["autostake_reserve"])
                 if avail - reserve >= deficit:
                     amount = format(deficit, ".9f")
-                    await rpc.call("createstake", amount)
-                    result["topped_up"] = amount
-                    db.audit(dbp, "autostake_createstake",
-                             detail="amount=" + amount + " reason=" + reason)
+                    if dry_run:
+                        result["would_top_up"] = amount
+                        step("Top-up", True, "a real run would stake " + amount)
+                    else:
+                        await rpc.call("createstake", amount)
+                        result["topped_up"] = amount
+                        step("Top-up", True, "staked " + amount)
+                        db.audit(dbp, "autostake_createstake",
+                                 detail="amount=" + amount + " reason=" + reason)
                 else:
-                    db.audit(dbp, "autostake_topup_skipped",
-                             detail="deficit above liquid balance minus reserve")
+                    step("Top-up", False, "deficit %s above liquid %s minus reserve %s"
+                         % (format(deficit, ".9f"), format(avail, ".9f"),
+                            format(reserve, ".9f")))
+                    if not dry_run:
+                        db.audit(dbp, "autostake_topup_skipped",
+                                 detail="deficit above liquid balance minus reserve")
                     result["skipped"] = "insufficient liquid balance above reserve"
+            else:
+                step("Top-up", True, "already at or above target")
+        else:
+            step("Top-up", True, "no stake target set")
     except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
         db.audit(dbp, "autostake", success=False, detail=str(exc))
+        step("Node call", False, exc)
         result["error"] = str(exc)
     finally:
-        try:
-            await rpc.call("walletlock")
-        except (RPCError, RPCNotAllowed, RPCUnavailable):
-            logger.warning("autostake: walletlock failed after reconcile")
-    return result
+        if not dry_run:
+            try:
+                await rpc.call("walletlock")
+                step("Wallet re-locked", True)
+            except (RPCError, RPCNotAllowed, RPCUnavailable):
+                step("Wallet re-locked", False)
+                logger.warning("autostake: walletlock failed after reconcile")
+    return _record(dbp, result, reason, dry_run)
 
 
 async def _startup_loop(settings, rpc, vault):

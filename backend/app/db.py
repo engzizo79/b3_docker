@@ -217,6 +217,40 @@ def audit_list(db_path: str, limit: int = 100) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def audit_query(db_path: str, limit: int = 200, prefixes: list[str] | None = None,
+                failed_only: bool = False, q: str = "", since: float = 0.0,
+                before_id: int = 0) -> list[dict]:
+    """Filtered audit read. `prefixes` matches action LIKE 'p%'; `q` is a
+    case-insensitive substring over action/username/detail. All values are
+    bound parameters (LIKE wildcards in user input are escaped)."""
+    def esc(v: str) -> str:
+        return v.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    where, args = [], []
+    if prefixes:
+        where.append("(" + " OR ".join("action LIKE ? ESCAPE '\\'" for _ in prefixes) + ")")
+        args += [esc(p) + "%" for p in prefixes]
+    if failed_only:
+        where.append("success = 0")
+    if q:
+        where.append("(action LIKE ? ESCAPE '\\' OR IFNULL(username,'') LIKE ? ESCAPE '\\' "
+                     "OR IFNULL(detail,'') LIKE ? ESCAPE '\\')")
+        args += ["%" + esc(q) + "%"] * 3
+    if since:
+        where.append("ts >= ?")
+        args.append(since)
+    if before_id:
+        where.append("id < ?")
+        args.append(before_id)
+    sql = "SELECT * FROM audit_log"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY id DESC LIMIT ?"
+    args.append(max(1, min(int(limit), 500)))
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(sql, args).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ---------------------------------------------------------------------------
 # Batch recipes (user-definable batch actions). Recipe JSON is validated by
 # batch_engine.validate_recipe BEFORE storage and re-validated on every

@@ -494,3 +494,54 @@ def test_unstake_invalid_destination_400(client, mock_rpc, settings):
  assert r.status_code == 400
  assert "invalid" in r.json()["detail"].lower()
  assert not mock_rpc.called("sendall")
+
+
+# ---------------------------------------------------------------------------
+# Observability: dry run, per-pass audit trail, activity log endpoint
+# ---------------------------------------------------------------------------
+
+def test_reconcile_dry_run_touches_no_wallet_state(client, mock_rpc, settings):
+    vault = _enable(settings)
+    mock_rpc.responses["listwallets"] = ["wallet"]
+    mock_rpc.responses["getbalances"] = {"mine": {"trusted": 5000}}
+    result = asyncio.run(reconcile(settings, mock_rpc, vault, reason="manual-dry-run",
+                                   dry_run=True))
+    assert result["ran"] and result["dry_run"]
+    assert result["would_top_up"] == "1000.000000000"
+    assert any(s["step"] == "Top-up" for s in result["steps"])
+    for m in ("walletpassphrase", "startstaking", "createstake", "bindfinalitykey",
+              "walletlock"):
+        assert not mock_rpc.called(m), m
+    actions = [a["action"] for a in db.audit_list(settings.db_path)]
+    assert "autostake_dry_run" in actions
+
+
+def test_every_reconcile_pass_is_audited_even_when_skipped(client, mock_rpc, settings):
+    vault = _enable(settings)
+    mock_rpc.responses["listwallets"] = []
+    asyncio.run(reconcile(settings, mock_rpc, vault))
+    row = next(a for a in db.audit_list(settings.db_path) if a["action"] == "autostake_run")
+    assert "no wallet loaded" in row["detail"] and row["success"] == 0
+
+
+def test_logs_endpoint_filters(client, settings):
+    out = login(client)
+    dbp = settings.db_path
+    db.audit(dbp, "autostake_run", detail="reason=startup started", success=True)
+    db.audit(dbp, "consolidation_run", detail="not run: node unreachable", success=False)
+    db.audit(dbp, "send_broadcast", detail="txid=abc")
+    def get(**p):
+        r = client.get("/api/logs", params=p, headers=out["headers"])
+        assert r.status_code == 200, r.text
+        return [e["action"] for e in r.json()["entries"]]
+    assert set(get(group="automation")) >= {"autostake_run", "consolidation_run"}
+    assert "send_broadcast" not in get(group="automation")
+    assert get(group="automation", status="failed") == ["consolidation_run"]
+    assert get(q="txid=abc") == ["send_broadcast"]
+    assert get(q="%") == []  # LIKE wildcards are escaped, not matched
+    r = client.get("/api/logs/status", headers=out["headers"])
+    assert r.status_code == 200 and "autostake" in r.json()
+
+
+def test_logs_require_auth(client):
+    assert client.get("/api/logs").status_code in (401, 403)

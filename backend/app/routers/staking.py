@@ -155,16 +155,18 @@ async def revoke_vault(request: Request):
 
 
 @router.post("/reconcile")
-async def manual_reconcile(request: Request):
+async def manual_reconcile(request: Request, dry_run: bool = False):
     # Run one autostake reconcile pass now (uses the vault under the same
     # scoped rules as the startup loop: unlock 30s, act, relock).
     state = _state(request)
     sess = state.require_2fa(request)
     vault = _vault(state)
     result = await reconcile_pass(state.settings, state.rpc, vault,
-                                  reason="manual")
+                                  reason="manual-dry-run" if dry_run else "manual",
+                                  dry_run=dry_run)
     db.audit(state.settings.db_path, "autostake_manual", sess.username,
-             detail=str(result.get("reason") or result.get("topped_up") or "ran"))
+             detail=("dry-run " if dry_run else "")
+             + str(result.get("reason") or result.get("topped_up") or "ran"))
     return result
 
 
@@ -361,6 +363,20 @@ async def update_consolidation_settings(body: dict, request: Request):
              detail=f"enabled={bool(body.get('enabled'))} dest={destination} "
                     f"interval={interval} restake={bool(body.get('restake_after'))}")
     return db.get_consolidation_settings(dbp)
+
+
+@router.post("/consolidation/run")
+async def consolidation_run(request: Request, dry_run: bool = False):
+    """Run the scheduled sweep once, now, exactly as the scheduler would
+    (vault unlock -> act -> relock). dry_run plans but never signs."""
+    state = _state(request)
+    sess = state.require_2fa(request)
+    result = await cons_mod._run_once(
+        state.settings, state.rpc, _vault(state),
+        reason="manual-dry-run" if dry_run else "manual", dry_run=dry_run)
+    db.audit(state.settings.db_path, "consolidation_manual", sess.username,
+             detail=("dry-run " if dry_run else "") + str(result.get("detail")))
+    return result
 
 
 @router.post("/consolidation/preview")

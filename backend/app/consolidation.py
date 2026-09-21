@@ -18,6 +18,7 @@ import asyncio
 import hashlib
 import hmac
 import logging
+import time
 from decimal import ROUND_DOWN, Decimal
 
 from app import db
@@ -205,16 +206,46 @@ async def execute(settings, rpc, secret, token, username="scheduled"):
             except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
                 db.audit(dbp, "consolidation_restake_failed", username, success=False,
                          detail=str(exc))
-    summary = f"batches={len([r for r in results if not r.get('skipped')])} "
-    f"utxos={plan_obj['eligible_utxos']} fee={plan_obj['total_fee']}"
+    summary = (f"batches={len([r for r in results if not r.get('skipped')])} "
+               f"utxos={plan_obj['eligible_utxos']} fee={plan_obj['total_fee']}")
     db.audit(dbp, "consolidation_execute", username, detail=summary)
     db.record_consolidation_run(dbp, summary)
     return {"ok": True, "results": results}
 
 
-async def _run_once(settings, rpc, vault, reason="scheduled"):
+status: dict = {"last_run_ts": None, "last_reason": None, "last_result": None}
+
+
+async def _run_once(settings, rpc, vault, reason="scheduled", dry_run=False):
+    """One sweep pass with an audit line + status entry for EVERY outcome
+    (skips included), so "did it run?" is always answerable from the log."""
+    result = await _pass(settings, rpc, vault, reason, dry_run)
+    inner = result.get("result") or {}
+    if result.get("ran"):
+        ok = bool(inner.get("ok", True))
+        detail = ("dry-run: would merge %s outputs in %s batch(es)" % (
+                  inner.get("eligible_utxos"), len(inner.get("batches") or []))
+                  if dry_run else
+                  "ok" if ok else "failed: " + str(inner.get("error")))
+    else:
+        ok = result.get("reason") == "disabled or no destination"
+        detail = "not run: " + str(result.get("reason"))
+    if not dry_run:
+        status.update(last_run_ts=time.time(), last_reason=reason,
+                      last_result={"ran": result.get("ran"), "detail": detail})
+    db.audit(settings.db_path,
+             "consolidation_dry_run" if dry_run else "consolidation_run",
+             detail=f"reason={reason} {detail}", success=ok)
+    logger.info("consolidation %s (%s): %s", "dry-run" if dry_run else "run",
+                reason, detail)
+    result["detail"] = detail
+    return result
+
+
+async def _pass(settings, rpc, vault, reason, dry_run):
     """One scheduled sweep pass. Unlocks via the vault for a short window,
-    runs execute with a freshly derived plan, then relocks."""
+    runs execute with a freshly derived plan, then relocks. dry_run stops
+    after planning (no signing, no broadcast)."""
     dbp = settings.db_path
     cfg = db.get_consolidation_settings(dbp)
     if not cfg["enabled"] or not cfg["destination"]:
@@ -248,6 +279,12 @@ async def _run_once(settings, rpc, vault, reason="scheduled"):
         token = hmac.new(settings.session_secret.encode(),
                         f"{CONS_RECIPE_ID}:{plan_obj['_plan_key']}".encode(),
                         hashlib.sha256).hexdigest()
+        if dry_run:
+            summary = {k: plan_obj[k] for k in (
+                "eligible_utxos", "batches", "total_fee", "total_output",
+                "skipped", "restake_after")}
+            summary["ok"] = True
+            return {"ran": True, "dry_run": True, "result": summary}
         result = await execute(settings, rpc, settings.session_secret, token,
                                username="scheduled")
         if not result.get("ok"):
