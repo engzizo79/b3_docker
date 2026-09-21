@@ -14,6 +14,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/SECURITY.md](docs/SEC
 
 ## Install from the registry
 
+New here? Start with the **[quick guide](docs/GUIDE.md)** (Docker Compose, `docker run`, all settings, troubleshooting).
+
 The image is published to GitHub Container Registry: `ghcr.io/engzizo79/b3hive` (linux/amd64).
 
 ```bash
