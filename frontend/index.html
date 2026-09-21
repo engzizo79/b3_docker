@@ -446,7 +446,7 @@
  <span class="badge badge-success">Recommended</span></span>
  <span class="help">The wallet downloads and manages the official B3 Hive daemon automatically - including updates.</span>
  <span class="help" x-show="wizard.daemonMode === 'managed' && wizard.daemonReleases.length">
- Daemon version: <select class="input" style="width:auto" x-model="wizard.daemonVersion">
+ Daemon version: <select class="input select-auto" x-model="wizard.daemonVersion">
  <template x-for="r in wizard.daemonReleases" :key="r.tag">
  <option :value="r.tag" x-text="r.tag"></option>
  </template></select>
@@ -1821,7 +1821,11 @@
             </button>
             <button class="btn btn-secondary" type="button" @click="runReconcile()"
                     :disabled="autostake.busy" data-tip="Run one top-up check right now">
-              <svg class="i-sm"><use href="#i-refresh"/></svg><span>Check now</span>
+              <svg class="i-sm"><use href="#i-refresh"/></svg><span>Run now</span>
+            </button>
+            <button class="btn btn-ghost" type="button" @click="runAutomation('autostake', true)"
+                    :disabled="autoLog.runBusy" data-tip="Check every step without unlocking or changing anything">
+              <svg class="i-sm"><use href="#i-eye"/></svg><span>Test run</span>
             </button>
           </div>
         </div>
@@ -1926,6 +1930,16 @@
                     :disabled="cons.busy || !cons.form.destination">
               <svg class="i-sm"><use href="#i-eye"/></svg><span>Preview a merge</span>
             </button>
+            <button class="btn btn-ghost" type="button" @click="runAutomation('consolidation', true)"
+                    :disabled="autoLog.runBusy || !cons.form.destination"
+                    data-tip="Plan the scheduled sweep exactly as the scheduler would, without signing">
+              <svg class="i-sm"><use href="#i-eye"/></svg><span>Test run</span>
+            </button>
+            <button class="btn btn-secondary" type="button" @click="runAutomation('consolidation', false)"
+                    :disabled="autoLog.runBusy || !cons.form.destination"
+                    data-tip="Run the scheduled sweep once, now">
+              <svg class="i-sm"><use href="#i-play"/></svg><span>Run now</span>
+            </button>
           </div>
         </div>
 
@@ -1982,6 +1996,90 @@
             </div>
           </div>
         </template>
+
+        <!-- Last run report (Run now / Test run) -->
+        <template x-if="autoLog.run">
+          <div class="card card--accent">
+            <div class="card-head">
+              <strong x-text="(autoLog.run.dry ? 'Test run' : 'Run') + ' — ' + (autoLog.run.which === 'autostake' ? 'staking top-up' : 'consolidation')"></strong>
+              <button class="btn btn-ghost btn-sm btn-icon" type="button"
+                      @click="autoLog.run = null" aria-label="Close report">
+                <svg class="i"><use href="#i-close"/></svg>
+              </button>
+            </div>
+            <div class="card-pad">
+              <p class="help mb-3" x-show="autoLog.run.dry">Nothing was unlocked, signed or sent.</p>
+              <ul class="stack" style="gap:6px;list-style:none;padding:0;margin:0">
+                <template x-for="(st, i) in autoLog.run.steps" :key="i">
+                  <li class="row gap-2 t-sm" style="align-items:flex-start">
+                    <span class="badge" :class="st.ok ? 'badge-success' : 'badge-danger'"
+                          x-text="st.ok ? 'OK' : 'Problem'"></span>
+                    <span><strong x-text="st.step"></strong>
+                      <span class="muted" x-show="st.detail" x-text="' — ' + st.detail"></span></span>
+                  </li>
+                </template>
+              </ul>
+            </div>
+          </div>
+        </template>
+
+        <!-- Activity log: what THIS app did (not the daemon log) -->
+        <div class="card">
+          <div class="card-head">
+            <strong>Activity log</strong>
+            <button class="btn btn-secondary btn-sm" type="button" @click="loadAutoLog()"
+                    :disabled="autoLog.busy">
+              <span class="spinner" x-show="autoLog.busy"></span>
+              <svg class="i-sm" x-show="!autoLog.busy"><use href="#i-refresh"/></svg><span>Refresh</span>
+            </button>
+          </div>
+          <div class="card-pad">
+            <p class="help t-sm" x-show="autoLog.status" x-text="'Staking top-up: ' + autoStatusLine('autostake')"></p>
+            <p class="help t-sm" x-show="autoLog.status" x-text="'Consolidation: ' + autoStatusLine('consolidation')"></p>
+            <div class="row gap-2 wrap mt-3 filter-row">
+              <select class="select select-sm" x-model="autoLog.group"
+                      @change="loadAutoLog()" aria-label="Category">
+                <option value="automation">Automation</option>
+                <option value="staking">All staking</option>
+                <option value="wallet">Wallet actions</option>
+                <option value="auth">Sign-ins</option>
+                <option value="all">Everything</option>
+              </select>
+              <select class="select select-sm" x-model="autoLog.state"
+                      @change="loadAutoLog()" aria-label="Outcome">
+                <option value="all">Any outcome</option>
+                <option value="failed">Failures only</option>
+                <option value="ok">Successes only</option>
+              </select>
+              <select class="select select-sm" x-model.number="autoLog.hours"
+                      @change="loadAutoLog()" aria-label="Time range">
+                <option value="0">All time</option>
+                <option value="1">Last hour</option>
+                <option value="24">Last 24 h</option>
+                <option value="168">Last 7 days</option>
+              </select>
+              <input class="input select-sm" style="flex:1;min-width:140px"
+                     type="search" placeholder="Search…" x-model="autoLog.q"
+                     @input.debounce.400ms="loadAutoLog()" aria-label="Search log">
+            </div>
+            <div class="stack mt-3" style="gap:0" x-show="autoLog.entries.length">
+              <template x-for="e in autoLog.entries" :key="e.id">
+                <div class="row gap-2 t-sm" style="align-items:flex-start;padding:8px 0;border-top:1px solid var(--border, rgba(128,128,128,.25));flex-wrap:wrap">
+                  <span class="muted mono" style="min-width:8.5em" x-text="fmtLogTime(e.ts)"></span>
+                  <span class="badge" :class="e.success ? 'badge-success' : 'badge-danger'"
+                        x-text="e.success ? 'OK' : 'Failed'"></span>
+                  <strong class="mono" x-text="e.action"></strong>
+                  <span class="muted" x-show="e.username" x-text="'by ' + e.username"></span>
+                  <span class="mono" style="flex-basis:100%;word-break:break-word" x-show="e.detail" x-text="e.detail"></span>
+                </div>
+              </template>
+            </div>
+            <div class="empty empty--tight" x-show="!autoLog.entries.length">
+              <h3 x-text="autoLog.loaded ? 'No matching entries' : 'Loading…'"></h3>
+              <p>Every automation pass — including ones that were skipped — is recorded here.</p>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- ===================================================== ASSETS ===== -->
@@ -2687,14 +2785,14 @@
         <div class="card adv-only" x-show="sysMode.daemon_logs" style="grid-column:1/-1">
           <div class="card-head">
             <strong>Node log</strong>
-            <div class="row gap-2">
-              <select class="select" style="width:auto;min-height:36px" x-model="node.logFilter"
+            <div class="row gap-2 wrap filter-row">
+              <select class="select select-sm" x-model="node.logFilter"
                       aria-label="Log level">
                 <option value="all">All lines</option>
                 <option value="warn">Warnings</option>
                 <option value="error">Errors</option>
               </select>
-              <select class="select" style="width:auto;min-height:36px"
+              <select class="select select-sm"
                       x-model.number="node.logCount" @change="loadLogs()" aria-label="Line count">
                 <option value="100">100</option>
                 <option value="200">200</option>
@@ -3132,7 +3230,7 @@
       </div>
     </div>
     <div class="card-pad">
-      <div class="callout callout-warn">
+      <div class="callout callout-warning">
         <div class="callout-title">
           <svg class="i-sm"><use href="#i-shield"/></svg>
           <span>Trusted networks only</span>
@@ -3149,7 +3247,7 @@
 
   <!-- The console itself -->
   <div class="card" x-show="console.gate === false">
-    <div class="card-head">
+    <div class="card-head card-head-wrap">
       <div>
         <strong>Expert console</strong>
         <span class="sub">Run node commands directly — QT parity on trusted connections</span>
@@ -3159,6 +3257,10 @@
           <svg class="i-sm"><use href="#i-copy"/></svg><span>Copy</span>
         </button>
         <button class="btn btn-sm" type="button" @click="consoleClear()">Clear</button>
+        <button class="btn btn-sm" type="button" @click="console.max = !console.max"
+                :aria-pressed="console.max" :aria-label="console.max ? 'Restore console size' : 'Maximize console'">
+          <span x-text="console.max ? 'Restore' : 'Maximize'"></span>
+        </button>
       </div>
     </div>
 
@@ -3174,7 +3276,7 @@
           passphrase prompt right here. Everything is audit-logged; key exports are redacted
           from the log. You are the operator — it's your call.</p>
       </div>
-      <div class="callout callout-warn" x-show="console.mode === 'restricted'">
+      <div class="callout callout-warning" x-show="console.mode === 'restricted'">
         <div class="callout-title">
           <svg class="i-sm"><use href="#i-shield"/></svg>
           <span>Read-only mode from this network</span>
@@ -3186,7 +3288,7 @@
       </div>
 
       <!-- output -->
-      <div id="console-scroll" class="console-out" aria-live="polite">
+      <div id="console-scroll" class="console-out" :class="{ 'is-max': console.max }" aria-live="polite">
         <template x-for="(l, i) in console.lines" :key="i">
           <div class="console-line" :class="'console-' + l.kind">
             <span class="console-prompt" x-show="l.kind === 'in'">&gt;</span>
@@ -3339,14 +3441,14 @@
         included — with a valid certificate, never exposed to the public internet.
       </p>
       <div x-show="ts.loaded && ts.joined && ts.https_url && ts.serve_enabled">
-        <div class="banner banner-ok">
+        <div class="banner banner-success">
           <svg class="i"><use href="#i-shield"/></svg>
           <span class="t-sm">Your wallet is reachable at
           <a :href="ts.https_url" target="_blank" rel="noopener noreferrer"><code x-text="ts.https_url"></code></a>
           — encrypted with a real Let&#39;s Encrypt certificate. Bookmark it on your
           phone (the Tailscale app must be connected).</span>
         </div>
-        <div class="flex gap-2 mt-2" style="flex-wrap:wrap">
+        <div class="btn-row mt-2">
           <a class="btn btn-secondary btn-sm" :href="ts.https_url" target="_blank" rel="noopener noreferrer">
             <svg class="i-sm"><use href="#i-external"/></svg><span>Open</span>
           </a>
@@ -3365,7 +3467,7 @@
                autocomplete="off" :disabled="ts.busy">
       </div>
       <p class="danger t-sm" x-show="ts.error" x-text="ts.error"></p>
-      <div class="flex gap-2" style="flex-wrap:wrap">
+      <div class="btn-row">
         <button class="btn btn-primary" x-show="ts.loaded && ts.available && (!ts.joined || ts.rekey)"
                 @click="tsJoin()" :disabled="ts.busy">
           <span x-text="ts.joined ? 'Sign in with new key' : (ts.needs_login ? 'Sign in again' : 'Join tailnet')"></span>
@@ -3397,7 +3499,7 @@
   </div>
   <div class="card-pad">
     <div class="stack gap-2">
-      <div class="flex items-center gap-2">
+      <div class="row gap-2">
         <svg class="i"><use href="#i-server"/></svg>
         <span class="t-sm" x-show="nodeConn.loaded && nodeConnMode() === 'managed'">
           The node daemon runs inside this container, supervised and kept up to date here. RPC stays on loopback.
@@ -3687,7 +3789,7 @@
           <div class="drow">
             <span class="dkey">
               <svg class="i-sm" x-show="startFlowStepDone('stake')" style="color:var(--success)"><use href="#i-check"/></svg>
-              <svg class="i-sm" x-show="!startFlowStepDone('stake')" style="color:var(--muted)"><use href="#i-circle"/></svg>
+              <svg class="i-sm" x-show="!startFlowStepDone('stake')" style="color:var(--text-muted)"><use href="#i-circle"/></svg>
               &nbsp;Lock coins as stake weight
             </span>
             <span class="dval t-sm muted" x-text="startFlowStepLabel('stake')"></span>
@@ -3695,7 +3797,7 @@
           <div class="drow">
             <span class="dkey">
               <svg class="i-sm" x-show="startFlowStepDone('bind')" style="color:var(--success)"><use href="#i-check"/></svg>
-              <svg class="i-sm" x-show="!startFlowStepDone('bind')" style="color:var(--muted)"><use href="#i-circle"/></svg>
+              <svg class="i-sm" x-show="!startFlowStepDone('bind')" style="color:var(--text-muted)"><use href="#i-circle"/></svg>
               &nbsp;Register your finality key
             </span>
             <span class="dval t-sm muted" x-text="startFlowStepLabel('bind')"></span>
@@ -3703,7 +3805,7 @@
           <div class="drow">
             <span class="dkey">
               <svg class="i-sm" x-show="startFlowStepDone('start')" style="color:var(--success)"><use href="#i-check"/></svg>
-              <svg class="i-sm" x-show="!startFlowStepDone('start')" style="color:var(--muted)"><use href="#i-circle"/></svg>
+              <svg class="i-sm" x-show="!startFlowStepDone('start')" style="color:var(--text-muted)"><use href="#i-circle"/></svg>
               &nbsp;Turn on the staking loop
             </span>
             <span class="dval t-sm muted" x-text="startFlowStepLabel('start')"></span>
@@ -4116,7 +4218,7 @@
       <template x-if="!install.done">
         <div>
           <label class="label" for="install-version">Daemon version</label>
-          <select id="install-version" class="input" style="width:auto" x-model="install.version"
+          <select id="install-version" class="input select-auto" x-model="install.version"
                   :disabled="install.busy || install.releasesBusy">
             <option value="" disabled>Select a version</option>
             <template x-for="r in install.releases" :key="r.tag">
@@ -4124,22 +4226,22 @@
             </template>
           </select>
           <p class="t-sm muted mt-2" x-show="install.releasesBusy">Loading available versions...</p>
-          <p class="t-sm danger mt-2" x-show="install.releasesErr" x-text="install.releasesErr"></p>
+          <p class="t-sm bad mt-2" x-show="install.releasesErr" x-text="install.releasesErr"></p>
           <button class="btn btn-primary mt-4" type="button"
                   @click="doInstall()"
                   :disabled="install.busy || !install.version || install.releasesBusy">
             <svg class="i-sm"><use href="#i-download"/></svg>
             <span x-text="install.busy ? 'Downloading...' : 'Download and install'"></span>
           </button>
-          <p class="t-sm danger mt-2" x-show="install.error" x-text="install.error"></p>
+          <p class="t-sm bad mt-2" x-show="install.error" x-text="install.error"></p>
         </div>
       </template>
       <!-- Step 2: Download complete -> start -->
       <template x-if="install.done">
         <div>
-          <div class="flex items-center gap-2 mb-4" style="color:var(--success)">
+          <div class="row gap-2 mb-4" style="color:var(--success)">
             <svg class="i"><use href="#i-check"/></svg>
-            <span class="font-semibold">Installed successfully</span>
+            <span class="bold">Installed successfully</span>
           </div>
           <p class="mb-4">The daemon is ready. Start the node now — it takes a few minutes to scan the block index before it responds.</p>
           <button class="btn btn-primary" type="button"
@@ -4182,7 +4284,7 @@
             <template x-if="nodeConn.form.mode === 'managed'">
               <div class="mt-4">
                 <label class="label" for="nodeconn-version">Daemon version</label>
-                <select id="nodeconn-version" class="input" style="width:auto" x-model="nodeConn.form.version"
+                <select id="nodeconn-version" class="input select-auto" x-model="nodeConn.form.version"
                         :disabled="nodeConn.busy || install.releasesBusy">
                   <option value="" disabled>Select a version</option>
                   <template x-for="r in install.releases" :key="r.tag">
@@ -4190,7 +4292,7 @@
                   </template>
                 </select>
                 <p class="t-sm muted mt-2" x-show="install.releasesBusy">Loading available versions…</p>
-                <p class="t-sm danger mt-2" x-show="install.releasesErr" x-text="install.releasesErr"></p>
+                <p class="t-sm bad mt-2" x-show="install.releasesErr" x-text="install.releasesErr"></p>
               </div>
             </template>
 
@@ -4207,9 +4309,9 @@
               </div>
             </template>
 
-            <p class="t-sm danger mt-2" x-show="nodeConn.error" x-text="nodeConn.error"></p>
+            <p class="t-sm bad mt-2" x-show="nodeConn.error" x-text="nodeConn.error"></p>
 
-            <div class="mt-4 flex gap-2">
+            <div class="mt-4 btn-row">
               <button class="btn btn-primary" type="button" @click="applyNodeConnSwitch()"
                       :disabled="nodeConn.busy || !nodeConnFormOk()">
                 <svg class="i-sm"><use href="#i-repeat"/></svg>
@@ -4221,9 +4323,9 @@
         </template>
         <template x-if="nodeConn.done">
           <div>
-            <div class="flex items-center gap-2 mb-4" style="color:var(--success)">
+            <div class="row gap-2 mb-4" style="color:var(--success)">
               <svg class="i"><use href="#i-check"/></svg>
-              <span class="font-semibold">Applied</span>
+              <span class="bold">Applied</span>
             </div>
             <p class="mb-4">The backend is reloading with the new node connection. This page will automatically reconnect in a few seconds. If it doesn't, reload manually.</p>
           </div>

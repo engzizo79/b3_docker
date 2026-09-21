@@ -160,7 +160,7 @@ function initialState() {
   console: {
     input: '', lines: [], history: [], histPos: -1,
     catalog: null, loaded: false, gate: null, gateMsg: '', busy: false,
-    mode: null, settings: null, sform: null, sbusy: false,
+    mode: null, settings: null, sform: null, sbusy: false, max: false,
   },
 
     /* ---------------------------------------------------------- tailscale */
@@ -180,6 +180,8 @@ function initialState() {
       settings: null, form: { enabled: false, target: '', reserve: '' },
       passphrase: '', ack: false, busy: false,
     },
+    autoLog: { entries: [], status: null, group: 'automation', state: 'all', q: '',
+               hours: 0, busy: false, loaded: false, run: null, runBusy: false },
     cons: { settings: null, form: {}, preview: null, results: null, busy: false, working: false },
 
     /* ------------------------------------------------------------- assets */

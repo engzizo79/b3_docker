@@ -19,6 +19,9 @@
   border-bottom: 1px solid var(--border);
   min-height: 52px;
 }
+.card-head > :first-child { min-width: 0; }
+.card-head > .badge { flex: none; }
+.card-head-wrap { flex-wrap: wrap; }
 .card-head h2, .card-head h3 { font-size: var(--text-md); }
 .card-head .sub { font-size: var(--text-sm); color: var(--text-muted); font-weight: 400; }
 .card-foot {
@@ -100,6 +103,9 @@
 /* =========================================================== Fields ======= */
 
 .field { display: flex; flex-direction: column; gap: var(--space-1-5); }
+.form-grid { display: grid; gap: var(--space-4); }
+.form-grid > .field + .field { margin-top: 0; }
+.danger-card { border-color: var(--danger-border); }
 .field + .field { margin-top: var(--space-4); }
 .field > label, .field-label {
   font-size: var(--text-sm); font-weight: 600; color: var(--text);
@@ -841,8 +847,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: var(--text-base);
   background: var(--bg-inset, #0d0f14);
   border: 1px solid var(--border, #2a2d36);
   border-radius: var(--radius-md, 10px);
-  height: 60vh; min-height: 320px; max-height: 85vh;
-  resize: vertical;
+  /* Grows with output; scrolls past max-height. Maximize = fixed tall view. */
+  min-height: 72px; max-height: 45vh;
   overflow-y: auto;
   padding: var(--space-3);
   display: flex;
@@ -850,6 +856,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: var(--text-base);
   gap: var(--space-1);
   margin-block: var(--space-3);
 }
+.console-out.is-max { height: 75vh; max-height: none; }
 .console-line { display: flex; gap: var(--space-2); align-items: flex-start; }
 .console-prompt { color: var(--accent, #f59e0b); font-family: var(--font-mono); user-select: none; }
 .console-text {
@@ -872,3 +879,17 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: var(--text-base);
 .console-inrow { display: flex; gap: var(--space-2); align-items: center; }
 .console-inprompt { font-size: 1rem; }
 .console-input { flex: 1; font-family: var(--font-mono); }
+
+/* ---- Button row: wraps neatly; on phones buttons share the row evenly ---- */
+.btn-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+@media (max-width: 639.98px) {
+  .btn-row > .btn { flex: 1 1 calc(50% - var(--space-2)); min-width: 0; padding-inline: var(--space-3); }
+}
+
+/* ---- Compact selects/inputs for filter rows ---- */
+.select-auto { width: auto; }
+.select-sm { width: auto; min-height: var(--min-target-sm); }
+input.select-sm, .input.select-sm { min-height: var(--min-target-sm); }
+@media (max-width: 639.98px) {
+  .filter-row > .select-sm { flex: 1 1 calc(50% - var(--space-2)); min-width: 0; }
+}

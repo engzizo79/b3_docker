@@ -137,7 +137,7 @@ export const routerMixin = {
       case 'assets':     this.loadAssets(); break;
       case 'wallet':     this.loadWalletManage(); break;
       case 'staking':    this.loadStaking(); this.loadValidator(); break;
-      case 'automation': this.loadStakingSettings(); this.loadConsolidation(); break;
+      case 'automation': this.loadStakingSettings(); this.loadConsolidation(); this.loadAutoLog(); break;
       case 'tools':      this.loadRecipes(); break;
       case 'console': this.consoleLoad(); break;
       case 'node':       this.loadSystemInfo(); this.loadNodeExtras(); break;

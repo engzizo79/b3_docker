@@ -625,4 +625,60 @@ confirmUnstake() {
       },
     });
   },
+
+  /* ------------------------------ automation activity log + run checks --- */
+
+  async loadAutoLog() {
+    const L = this.autoLog;
+    L.busy = true;
+    try {
+      const p = new URLSearchParams({
+        group: L.group, status: L.state, q: L.q || '', hours: String(L.hours || 0), limit: '200',
+      });
+      const [d, st] = await Promise.all([
+        this.api('/api/logs?' + p.toString()),
+        this.api('/api/logs/status'),
+      ]);
+      L.entries = d.entries || [];
+      L.status = st;
+      L.loaded = true;
+    } catch (e) { this.reportError(e); }
+    L.busy = false;
+  },
+
+  /** Run one automation pass by hand. dry=true reads node state and reports
+   *  what a real pass WOULD do, without unlocking or changing anything. */
+  async runAutomation(which, dry) {
+    const L = this.autoLog;
+    L.runBusy = true;
+    L.run = null;
+    const path = which === 'autostake' ? '/api/staking/reconcile' : '/api/staking/consolidation/run';
+    try {
+      const r = await this.api(path + (dry ? '?dry_run=true' : ''), { method: 'POST' });
+      L.run = { which, dry, result: r, steps: this.runSteps(which, r) };
+      this.showToast(dry ? 'Test run finished — nothing was changed' : 'Run finished');
+      if (!dry) await Promise.allSettled([this.loadStakingSnapshot(), this.loadBalances()]);
+    } catch (e) { this.reportError(e); }
+    L.runBusy = false;
+    await this.loadAutoLog();
+  },
+
+  runSteps(which, r) {
+    if (r.steps && r.steps.length) return r.steps;
+    if (!r.ran) return [{ step: 'Did not run', ok: false, detail: r.detail || this.reconcileReason(r.reason) }];
+    const inner = r.result || {};
+    return [{ step: which === 'consolidation' ? 'Consolidation' : 'Run', ok: inner.ok !== false,
+              detail: r.detail || inner.error || '' }];
+  },
+
+  fmtLogTime(ts) { return this.fmtDateTime(ts); },
+
+  autoStatusLine(k) {
+    const s = this.autoLog.status?.[k];
+    if (!s) return '';
+    if (!s.last_run_ts) return s.enabled ? 'Enabled — has not run since this backend started.' : 'Off.';
+    const d = s.last_result?.detail || s.last_result?.reason
+      || (s.last_result?.error ? 'error: ' + s.last_result.error : (s.last_result?.ran ? 'ran' : ''));
+    return 'Last run ' + this.fmtDateTime(s.last_run_ts) + ' (' + s.last_reason + ') — ' + d;
+  },
 };

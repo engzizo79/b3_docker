@@ -73,6 +73,7 @@ a:hover { text-decoration: underline; }
 .ok     { color: var(--success); }
 .warn   { color: var(--warning); }
 .bad    { color: var(--danger); }
+.ml-2 { margin-left: var(--space-2); }
 .bold   { font-weight: 650; }
 .strong { font-weight: 700; }
 
