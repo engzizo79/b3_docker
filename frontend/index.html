@@ -1573,7 +1573,7 @@
                         </span>
                       </template>
                     </td>
-                    <td><code class="addr-full" x-text="a.address"></code></td>
+                    <td><code class="addr-full" x-text="a.address" :title="a.address"></code></td>
                     <td class="num t-sm" :class="bookBalNum(a) > 0 ? '' : 'muted'"
                         x-text="bookBalText(a)"></td>
                     <td class="num addr-actions">

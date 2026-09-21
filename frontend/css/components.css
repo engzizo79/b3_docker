@@ -913,7 +913,7 @@ input.select-sm, .input.select-sm { min-height: var(--min-target-sm); }
 .addr-full { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text-muted); word-break: break-all; }
 .addr-tbl td.num { white-space: nowrap; }
 .addr-actions { width: 1%; white-space: nowrap; }
-.addr-actions .btn { opacity: 0.55; }
+.addr-actions .btn { opacity: 0.75; }
 .addr-tbl tr:hover .addr-actions .btn, .addr-actions .btn:focus-visible { opacity: 1; }
 .th-sort { background: none; border: 0; padding: 0; font: inherit; color: inherit;
   text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
@@ -968,4 +968,18 @@ input.select-sm, .input.select-sm { min-height: var(--min-target-sm); }
   .sheet .modal.modal--lg { max-width: 640px; }
   .sheet .modal.modal--xl { max-width: 860px; }
   .sheet-grab { display: none; }
+}
+
+/* Tablet / narrow desktop: keep table rows single-line (full value on hover/copy). */
+@media (min-width: 768px) and (max-width: 1279.98px) {
+  .addr-full { display: block; max-width: 15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: normal; }
+  .act-tbl td:first-child { width: auto; }
+  .act-tbl .mono { white-space: nowrap; }
+  .act-tbl .act-addr { margin-left: var(--space-1); }
+}
+.act-tbl td:first-child strong { white-space: nowrap; }
+
+/* Equal-width phone buttons: a long label wraps inside the button, never clips. */
+@media (max-width: 639.98px) {
+  .btn-row > .btn, .card-foot > .btn { white-space: normal; text-align: center; line-height: 1.2; padding-block: var(--space-2); }
 }

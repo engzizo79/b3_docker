@@ -18,6 +18,10 @@ const FOCUSABLE = [
 ].join(',');
 
 let openCount = 0;
+// Open dialogs, oldest first. Only the LAST one may pull focus back: with two
+// (e.g. the unlock prompt raised over an action dialog) each trap would drag
+// focus into its own dialog and they would ping-pong until the stack overflowed.
+const traps = [];
 
 export function trapFocus(el, onEscape) {
   if (!el || el.__b3trapped) return;
@@ -25,6 +29,7 @@ export function trapFocus(el, onEscape) {
 
   const previous = document.activeElement;
   openCount += 1;
+  traps.push(el);
   // Stop the page behind the dialog from scrolling under it.
   document.documentElement.style.overflow = 'hidden';
 
@@ -63,7 +68,7 @@ export function trapFocus(el, onEscape) {
   // Focus could still escape via programmatic focus or browser chrome; pull
   // it back when it lands outside an open dialog.
   const onFocusIn = (e) => {
-    if (!el.isConnected) return;
+    if (!el.isConnected || traps[traps.length - 1] !== el) return;
     if (!el.contains(e.target)) {
       const items = focusables();
       if (items.length) items[0].focus();
@@ -76,6 +81,8 @@ export function trapFocus(el, onEscape) {
     document.removeEventListener('focusin', onFocusIn);
     observer.disconnect();
     el.__b3trapped = false;
+    const at = traps.indexOf(el);
+    if (at !== -1) traps.splice(at, 1);
     openCount = Math.max(0, openCount - 1);
     if (openCount === 0) document.documentElement.style.overflow = '';
     if (previous && previous.isConnected) {
