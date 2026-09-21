@@ -68,7 +68,8 @@ const confirmMixin = {
       show: true,
       title: opts.title || 'Are you sure?',
       body: opts.body || '',
-      detail: opts.detail || [],
+      // Callers pass {key, value, mono?} rows or plain strings (a note).
+      detail: (opts.detail || []).map((d) => (typeof d === 'string' ? { key: '', value: d } : d)),
       confirmLabel: opts.confirmLabel || 'Confirm',
       danger: !!opts.danger,
       run: opts.run || (() => {}),

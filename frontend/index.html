@@ -442,7 +442,7 @@
  :aria-pressed="wizard.daemonMode === 'managed'" style="width:100%; text-align:left">
  <span class="choice-icon"><svg class="i"><use href="#i-server"/></svg></span>
  <span class="choice-body">
- <span class="row gap-2"><strong>On this device (recommended)</strong>
+ <span class="row gap-2 wrap"><strong>On this device</strong>
  <span class="badge badge-success">Recommended</span></span>
  <span class="help">The wallet downloads and manages the official B3 Hive daemon automatically - including updates.</span>
  <span class="help" x-show="wizard.daemonMode === 'managed' && wizard.daemonReleases.length">
@@ -4029,9 +4029,9 @@
       <div class="modal-body">
         <p x-text="confirmModal.body"></p>
         <div class="details mt-4" x-show="confirmModal.detail.length">
-          <template x-for="d in confirmModal.detail" :key="d.key">
+          <template x-for="(d, di) in confirmModal.detail" :key="di">
             <div class="drow">
-              <span class="dkey" x-text="d.key"></span>
+              <span class="dkey" x-show="d.key" x-text="d.key"></span>
               <span class="dval break-all" :class="d.mono ? 'is-mono' : ''" x-text="d.value"></span>
             </div>
           </template>

@@ -944,3 +944,28 @@ input.select-sm, .input.select-sm { min-height: var(--min-target-sm); }
   .card-head > .tabs .tab { flex: 1 1 auto; justify-content: center; padding: 0 var(--space-2); }
 }
 .list-row .body .meta .mono { white-space: nowrap; }
+
+/* Wizard: breathing room between a step intro and the card that follows. */
+.flow-sub + .card { margin-top: var(--space-4); }
+
+/* Choice-card title rows: badges wrap below the title instead of squeezing it. */
+.choice-body > .row { flex-wrap: wrap; row-gap: var(--space-1); }
+.choice-body > .row > strong { min-width: 0; }
+
+/* Bottom sheets are a phone pattern: from 640px they become centred dialogs
+   that honour their size class (modal--lg etc.), not a full-width slab. */
+@media (min-width: 640px) {
+  .sheet { align-items: center; padding: var(--space-4); }
+  .sheet .modal {
+    max-width: 440px;
+    max-height: calc(100dvh - var(--space-6));
+    border-radius: var(--radius-lg);
+    border-bottom: 1px solid var(--border-strong);
+    padding-bottom: 0;
+    animation: none;
+  }
+  .sheet .modal.modal--sm { max-width: 380px; }
+  .sheet .modal.modal--lg { max-width: 640px; }
+  .sheet .modal.modal--xl { max-width: 860px; }
+  .sheet-grab { display: none; }
+}
