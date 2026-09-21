@@ -62,6 +62,36 @@ def test_send_preview_flow(client: TestClient, mock_rpc: MockRPC):
     assert mock_rpc.called("testmempoolaccept")
 
 
+def test_send_preview_reports_fee_and_exact_total(client: TestClient, mock_rpc: MockRPC):
+    """The fee the node chose is shown before the user commits; the total is
+    computed server-side in Decimal (0.1 + 0.2-style float drift must not
+    appear)."""
+    mock_rpc.responses["fundrawtransaction"] = {"hex": "fundedhex", "fee": 0.00001234}
+    out = login(client, headers=LOCAL)
+    unlock(client, out["headers"])
+    r = client.post("/api/wallet/send",
+                    json={"recipients": [{"address": GOOD_ADDR, "amount": "0.1"},
+                                         {"address": GOOD_ADDR, "amount": "0.2"}],
+                          "confirm": False},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["fee"] == "0.000012340"
+    assert data["total"] == "0.300012340"
+
+
+def test_send_preview_fee_unknown_is_null_not_zero(client: TestClient, mock_rpc: MockRPC):
+    mock_rpc.responses["fundrawtransaction"] = {"hex": "fundedhex"}  # no fee field
+    out = login(client, headers=LOCAL)
+    unlock(client, out["headers"])
+    r = client.post("/api/wallet/send",
+                    json={"recipients": [{"address": GOOD_ADDR, "amount": "1"}],
+                          "confirm": False},
+                    headers=out["headers"])
+    assert r.status_code == 200
+    assert r.json()["fee"] is None and r.json()["total"] is None
+
+
 def test_send_confirm_broadcasts(client: TestClient, mock_rpc: MockRPC):
     out = login(client, headers=LOCAL)
     unlock(client, out["headers"])

@@ -1223,6 +1223,10 @@
                         <span class="dval is-mono break-all" x-text="send.to"></span></div>
                       <div class="drow" x-show="send.label"><span class="dkey">Known as</span>
                         <span class="dval" x-text="send.label"></span></div>
+                      <div class="drow" x-show="send.preview.fee != null"><span class="dkey">Network fee</span>
+                        <span class="dval" x-text="fmtAmount(send.preview.fee, { unit: true, maxDecimals: 9 })"></span></div>
+                      <div class="drow" x-show="send.preview.total != null"><span class="dkey">Total leaving your wallet</span>
+                        <span class="dval bold" x-text="fmtAmount(send.preview.total, { unit: true, maxDecimals: 9 })"></span></div>
                       <div class="drow"><span class="dkey">Transaction id</span>
                         <span class="dval is-mono" x-text="truncHash(send.preview.txid)"></span></div>
                       <div class="drow"><span class="dkey">Network will accept it</span>

@@ -228,12 +228,19 @@ async def send(body: SendBody, request: Request):
         ok = bool(accepted and accepted[0].get("allowed"))
 
         if not body.confirm:
+            # The fee the node chose while funding. Shown BEFORE the user
+            # commits; the confirm phase rebuilds the identical transaction
+            # (txid is verified below), so this is the fee that gets paid.
+            fee = _fee_from_funded(funded)
+            sent = sum((amt for _, amt in parsed), Decimal(0))
             db.audit(state.settings.db_path, "send_preview", sess.username,
                      detail=f"txid={txid} recipients={len(parsed)}")
             return {
                 "preview": True,
                 "txid": txid,
                 "mempool_ok": ok,
+                "fee": None if fee is None else f"{fee:.9f}",
+                "total": None if fee is None else f"{sent + fee:.9f}",
                 "rejection": None if ok else (accepted[0].get("reject-reason") or "rejected"),
                 "recipients": [
                     {"address": a, "amount": f"{amt:.9f}", "amount_b3": str(amt)}
@@ -254,6 +261,19 @@ async def send(body: SendBody, request: Request):
     db.audit(state.settings.db_path, "send_broadcast", sess.username,
              detail=f"txid={sent_txid} recipients={len(parsed)}")
     return {"preview": False, "txid": sent_txid, "mempool_ok": True}
+
+
+def _fee_from_funded(funded: dict) -> Decimal | None:
+    """Fee reported by fundrawtransaction, as an exact Decimal, or None if the
+    node did not say (the UI then shows no fee line rather than a guess)."""
+    raw = funded.get("fee") if isinstance(funded, dict) else None
+    if raw is None:
+        return None
+    try:
+        fee = Decimal(str(raw))
+    except ArithmeticError:
+        return None
+    return fee if fee.is_finite() and fee >= 0 else None
 
 
 async def _txid_from_hex(state: AppState, tx_hex: str) -> str:

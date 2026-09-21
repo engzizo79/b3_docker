@@ -43,6 +43,9 @@ export const apiMixin = {
     if (!proxyStatus) this._setBackendDown(false);
 
     if (res.status === 401) {
+      // Tell someone who was signed in why they are back at the login screen
+      // (their session ends whenever the service restarts).
+      if (this.session.authenticated) this.loginErr = 'Your session ended. Please sign in again.';
       this.session.authenticated = false;
       throw new ApiError('Your session expired — sign in again.', 401);
     }

@@ -33,7 +33,7 @@ export const nodeMixin = {
     } catch {
       // The backend itself is unreachable: say nothing about the node and keep
       // the last known chain data instead of pretending the node is starting.
-      if (this.backend.down) return;
+      if (this.backend.down || !this.session.authenticated) return; // not a node problem
       this.chain.blocks = null;
       this.chain.sync = null;
       this.chain.summary = null;
