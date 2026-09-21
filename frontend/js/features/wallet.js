@@ -175,20 +175,32 @@ export const walletMixin = {
       list = list.filter((a) =>
         (a.label || '').toLowerCase().includes(q) || a.address.toLowerCase().includes(q));
     }
-    if (this.book.hideEmpty) list = list.filter((a) => Number(a.amount) > 0);
+    if (this.book.hideEmpty) list = list.filter((a) => this.bookBalNum(a) !== 0);
     const { key, dir } = this.book.sort;
     if (key) {
       const sign = dir === 'desc' ? -1 : 1;
-      list = [...list].sort((x, y) => sign * (key === 'amount'
-        ? Number(x.amount) - Number(y.amount)
-        : (x.label || '\uffff').localeCompare(y.label || '\uffff')));
+      list = [...list].sort((x, y) => {
+        if (key !== 'amount') {
+          return sign * (x.label || '\uffff').localeCompare(y.label || '\uffff');
+        }
+        // Unknown balances always sort last, whichever direction.
+        const bx = this.bookBalNum(x), by = this.bookBalNum(y);
+        if (bx === null || by === null) return (bx === null) - (by === null);
+        return sign * (bx - by);
+      });
     }
     return list;
   },
 
   /** Display-only total of the visible rows (never used for spending math). */
   bookTotal() {
-    return this.bookFiltered().reduce((t, a) => t + Number(a.amount || 0), 0).toFixed(9);
+    return this.bookFiltered().reduce((t, a) => t + (this.bookBalNum(a) || 0), 0).toFixed(9);
+  },
+
+  /** Current balance (unspent outputs) as a number, or null if unknown. */
+  bookBalNum(a) { return a.balance == null ? null : Number(a.balance); },
+  bookBalText(a) {
+    return a.balance == null ? '—' : this.fmtAmount(a.balance, { maxDecimals: 2, unit: true });
   },
 
   bookSort(key) {

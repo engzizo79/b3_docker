@@ -517,4 +517,28 @@ async def address_book(request: Request):
     except (RPCError, RPCNotAllowed, RPCUnavailable):
         pass  # stakes are optional enrichment
 
+    # True balance = sum of the wallet's own unspent outputs per address.
+    # "amount" above is lifetime RECEIVED, which does not drop when coins
+    # are spent. Display-only; every spend path re-derives its own inputs.
+    # None (not 0) when the node cannot say, so the UI shows "unknown".
+    balances: dict | None
+    try:
+        unspent = await state.rpc.call("listunspent", 0)
+        balances = {}
+        for u in unspent or []:
+            addr = u.get("address")
+            if not addr or not u.get("spendable", True):
+                continue
+            try:
+                val = Decimal(str(u.get("amount", "0")))
+            except ArithmeticError:
+                continue
+            if val.is_finite() and val > 0:
+                balances[addr] = balances.get(addr, Decimal(0)) + val
+    except (RPCError, RPCNotAllowed, RPCUnavailable):
+        balances = None
+    for entry in out:
+        entry["balance"] = (None if balances is None
+                            else format(balances.get(entry["address"], Decimal(0)), ".9f"))
+
     return {"addresses": out}

@@ -155,6 +155,53 @@ def test_address_book_lists_labels(client: TestClient, mock_rpc: MockRPC):
     assert by_addr["SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"]["label"] == "staking"
 
 
+def test_address_book_balance_is_sum_of_unspent(client: TestClient, mock_rpc: MockRPC):
+    """`balance` is what the address holds now (unspent outputs), not the
+    lifetime `amount` received; addresses with nothing unspent read 0."""
+    out = login(client, headers=LOCAL)
+    r = client.get("/api/wallet/book", headers=out["headers"])
+    by_addr = {a["address"]: a for a in r.json()["addresses"]}
+    assert mock_rpc.called("listunspent")
+    assert by_addr["SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"]["balance"] == "1.920000000"
+    assert by_addr["SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"]["balance"] == "0.000000000"
+
+
+def test_address_book_balance_excludes_spent_and_unspendable(client: TestClient, mock_rpc: MockRPC):
+    """Received > balance once coins are spent; unspendable (watch-only)
+    outputs never count toward the balance."""
+    out = login(client, headers=LOCAL)
+    addr = "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"
+    orig_call = mock_rpc.call
+    async def call(method, *params):
+        if method == "listunspent":
+            return [
+                {"txid": "u1", "vout": 0, "address": addr, "amount": 0.1,
+                 "spendable": True},
+                {"txid": "u2", "vout": 0, "address": addr, "amount": 9.0,
+                 "spendable": False},
+            ]
+        return await orig_call(method, *params)
+    mock_rpc.call = call
+    r = client.get("/api/wallet/book", headers=out["headers"])
+    entry = {a["address"]: a for a in r.json()["addresses"]}[addr]
+    assert entry["amount"] == "1.920000000"      # lifetime received
+    assert entry["balance"] == "0.100000000"     # what it holds now
+
+
+def test_address_book_balance_null_when_listunspent_fails(client: TestClient, mock_rpc: MockRPC):
+    from app.rpc import RPCError
+    out = login(client, headers=LOCAL)
+    orig_call = mock_rpc.call
+    async def call(method, *params):
+        if method == "listunspent":
+            raise RPCError(-1, "boom")
+        return await orig_call(method, *params)
+    mock_rpc.call = call
+    r = client.get("/api/wallet/book", headers=out["headers"])
+    assert r.status_code == 200
+    assert all(a["balance"] is None for a in r.json()["addresses"])
+
+
 def test_address_book_fallback_to_groupings(client: TestClient, mock_rpc: MockRPC):
     """If listreceivedbyaddress raises (e.g. on a legacy wallet), the
     endpoint falls back to listaddressgroupings."""

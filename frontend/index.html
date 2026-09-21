@@ -1379,7 +1379,7 @@
                       <span class="meta mono" x-text="truncAddr(a.address)"></span>
                     </span>
                     <span class="trail row gap-2">
-                      <span class="t-sm muted" x-text="fmtAmount(a.amount, { maxDecimals: 2, unit: true })"></span>
+                      <span class="t-sm muted" x-text="bookBalText(a)"></span>
                       <button class="btn btn-ghost btn-sm btn-icon" type="button"
                               @click="copyText(a.address, 'Address copied')" aria-label="Copy">
                         <svg class="i-sm"><use href="#i-copy"/></svg>
@@ -1527,8 +1527,8 @@
                       </template>
                     </td>
                     <td><code class="addr-full" x-text="a.address"></code></td>
-                    <td class="num t-sm" :class="Number(a.amount) > 0 ? '' : 'muted'"
-                        x-text="fmtAmount(a.amount, { maxDecimals: 2, unit: true })"></td>
+                    <td class="num t-sm" :class="bookBalNum(a) > 0 ? '' : 'muted'"
+                        x-text="bookBalText(a)"></td>
                     <td class="num addr-actions">
                       <button class="btn btn-ghost btn-sm btn-icon" type="button" @click="startRename(a)"
                               aria-label="Rename" data-tip="Rename"><svg class="i-sm"><use href="#i-pen"/></svg></button>
@@ -1554,8 +1554,8 @@
                   <span class="col" style="gap:1px" x-show="book.editing !== a.address">
                     <strong class="t-sm" x-text="a.label || 'No label'"></strong>
                     <span class="meta mono" x-text="truncAddr(a.address, 7, 6)"></span>
-                    <span class="meta t-sm" :class="Number(a.amount) > 0 ? '' : 'muted'"
-                          x-text="fmtAmount(a.amount, { maxDecimals: 2, unit: true })"></span>
+                    <span class="meta t-sm" :class="bookBalNum(a) > 0 ? '' : 'muted'"
+                          x-text="bookBalText(a)"></span>
                   </span>
                   <span class="row gap-2" x-show="book.editing === a.address">
                       <input class="input" style="min-height:36px" x-model="book.draftLabel"
@@ -4253,7 +4253,7 @@
                 <strong class="t-sm" x-text="a.label || 'No label'"></strong>
                 <span class="meta mono" x-text="truncAddr(a.address, 10, 8)"></span>
               </span>
-              <span class="trail t-sm muted" x-text="fmtAmount(a.amount, { maxDecimals: 2, unit: true })"></span>
+              <span class="trail t-sm muted" x-text="bookBalText(a)"></span>
             </button>
           </template>
         </div>
