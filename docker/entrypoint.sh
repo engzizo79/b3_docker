@@ -471,6 +471,7 @@ start_tailscale() {
     run_as /usr/local/bin/tailscaled \
         --tun=userspace-networking \
         --state="${TS_STATE_DIR}/tailscaled.state" \
+        --statedir="${TS_STATE_DIR}" \
         --socket="${TS_SOCKET}" \
         >> "${TS_LOG}" 2>&1 &
     TS_PID=$!

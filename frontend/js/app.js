@@ -164,7 +164,7 @@ function initialState() {
   },
 
     /* ---------------------------------------------------------- tailscale */
-  ts: { loaded: false, available: true, joined: false, serve_enabled: false,
+  ts: { loaded: false, available: true, joined: false, needs_login: false, rekey: false, serve_enabled: false,
     https_url: null, tailnet: null, detail: '', authkey: '', joinOpen: false,
     busy: false, error: '' },
 

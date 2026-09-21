@@ -21,6 +21,7 @@ so WebCrypto envelope encryption is always available remotely.
 import asyncio
 import json
 import os
+import re
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -59,8 +60,23 @@ async def _ts(*args: str, timeout: float = 45.0) -> tuple[int, str]:
         out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
         proc.kill()
-        raise HTTPException(504, "tailscale CLI timed out")
+        # Keep whatever the CLI printed: when Serve/HTTPS is not enabled on
+        # the tailnet it prints an enable link and then waits for it.
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=2.0)
+        except asyncio.TimeoutError:
+            out = b""
+        text = out.decode(errors="replace").strip()
+        raise HTTPException(
+            504, "tailscale CLI timed out" + (f": {text[-300:]}" if text else ""))
     return proc.returncode or 0, out.decode(errors="replace").strip()
+
+
+def _ts_hostname() -> str:
+    """Stable tailnet name. Without it the node is named after the container
+    ID, which changes on every recreate and breaks bookmarked URLs."""
+    h = os.environ.get("TS_HOSTNAME", "b3hive").strip().lower()
+    return h if re.fullmatch(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?", h) else "b3hive"
 
 
 class JoinBody(BaseModel):
@@ -93,7 +109,10 @@ async def tailscale_status(request: Request):
                 "https_url": None, "serve_enabled": False,
                 "detail": "unparsable status"}
     backend = st.get("BackendState") or ""
-    joined = backend in ("Running", "NeedsLogin") and bool(st.get("Self", {}))
+    # NeedsLogin means the node is signed out: it must NOT read as joined
+    # (serve/HTTPS fail with "Logged out"); the UI offers a fresh sign-in.
+    needs_login = backend in ("NeedsLogin", "NeedsMachineAuth")
+    joined = backend == "Running" and bool(st.get("Self", {}))
     https_url = None
     serve_enabled = False
     if joined:
@@ -106,7 +125,7 @@ async def tailscale_status(request: Request):
                 serve_enabled = bool(json.loads(s_out))
         except (HTTPException, ValueError):
             pass
-    return {"available": True, "joined": joined,
+    return {"available": True, "joined": joined, "needs_login": needs_login,
             "https_url": https_url, "serve_enabled": serve_enabled,
             "tailnet": (st.get("CurrentTailnet") or {}).get("Name"),
             "detail": backend}
@@ -130,6 +149,7 @@ async def tailscale_join(body: JoinBody, request: Request):
                 break
             await asyncio.sleep(1)
         rc, out = await _ts("up", "--reset", "--authkey", key,
+                            "--hostname", _ts_hostname(),
                             "--timeout", "30s", timeout=60.0)
     except FileNotFoundError:
         raise HTTPException(503, "tailscale not installed")
@@ -163,8 +183,13 @@ async def tailscale_serve(body: ServeBody, request: Request):
     try:
         if enable:
             port = os.environ.get("WEB_PORT", "8080")
-            rc, out = await _ts("serve", "--https=443", port,
-                                timeout=45.0)
+            # Best effort: adopt the stable hostname before publishing the
+            # URL (renames nodes that joined under the container-ID name).
+            await _ts("set", "--hostname", _ts_hostname(), timeout=15.0)
+            # --bg: without it serve runs in the foreground and the config
+            # vanishes when the CLI exits (or is killed on timeout).
+            rc, out = await _ts("serve", "--bg", "--https=443", port,
+                                timeout=20.0)
         else:
             rc, out = await _ts("serve", "--https=443", "off",
                                 timeout=45.0)

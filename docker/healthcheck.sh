@@ -6,7 +6,8 @@
 set -uo pipefail
 
 B3_DATA_DIR="${B3_DATA_DIR:-/data}"
-CONF="${B3_DATA_DIR}/b3coin.conf"
+# v0.6.0: the node datadir (and its b3coin.conf) lives under <data>/node.
+CONF="${B3_DATA_DIR}/node/b3coin.conf"
 RUN_UI="${RUN_UI:-true}"
 
 # Blocked setup mode (storage not persistent): the daemon intentionally

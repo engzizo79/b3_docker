@@ -1683,7 +1683,7 @@
           </div>
         </div>
 
-<div class="card danger-card mt-4" x-data="{ open: false }" x-show="mode === 'advanced'">
+<div class="card danger-card" x-data="{ open: false }" x-show="mode === 'advanced'" style="grid-column:1/-1">
  <div class="card-pad">
   <div class="between">
    <div class="row gap-2">
@@ -3314,7 +3314,8 @@
     </div>
     <span class="badge badge-success" x-show="ts.loaded && ts.joined && ts.serve_enabled">HTTPS on</span>
     <span class="badge" x-show="ts.loaded && ts.joined && !ts.serve_enabled">Joined</span>
-    <span class="badge badge-neutral" x-show="ts.loaded && !ts.joined">Not connected</span>
+    <span class="badge badge-warning" x-show="ts.loaded && !ts.joined && ts.needs_login">Signed out</span>
+    <span class="badge badge-neutral" x-show="ts.loaded && !ts.joined && !ts.needs_login">Not connected</span>
   </div>
   <div class="card-pad">
     <div class="stack gap-2">
@@ -3322,35 +3323,58 @@
         Tailscale is not installed in this container build. Update to the
         latest image to get guided remote access.
       </p>
-      <p class="muted t-sm" x-show="ts.loaded && ts.available && !ts.joined">
+      <p class="muted t-sm" x-show="ts.loaded && ts.available && !ts.joined && ts.needs_login">
+        This node was signed out of Tailscale (the key expired or was removed).
+        Paste a fresh auth key to sign in again.
+      </p>
+      <p class="muted t-sm" x-show="ts.loaded && ts.available && !ts.joined && !ts.needs_login">
         This container bundles Tailscale. Paste an auth key from
         <code>login.tailscale.com/admin/settings/keys</code> to join your
         private network and get a real HTTPS address
         (<code>&lt;node&gt;.ts.net</code>) that works from any device — phone
         included — with a valid certificate, never exposed to the public internet.
       </p>
-      <div x-show="ts.loaded && ts.joined && ts.https_url">
+      <div x-show="ts.loaded && ts.joined && ts.https_url && ts.serve_enabled">
         <div class="banner banner-ok">
           <svg class="i"><use href="#i-shield"/></svg>
           <span class="t-sm">Your wallet is reachable at
-          <code x-text="ts.https_url"></code> — encrypted with a real
-          Let&#39;s Encrypt certificate. Book it on your phone.</span>
+          <a :href="ts.https_url" target="_blank" rel="noopener noreferrer"><code x-text="ts.https_url"></code></a>
+          — encrypted with a real Let&#39;s Encrypt certificate. Bookmark it on your
+          phone (the Tailscale app must be connected).</span>
+        </div>
+        <div class="flex gap-2 mt-2" style="flex-wrap:wrap">
+          <a class="btn btn-secondary btn-sm" :href="ts.https_url" target="_blank" rel="noopener noreferrer">
+            <svg class="i-sm"><use href="#i-external"/></svg><span>Open</span>
+          </a>
+          <button class="btn btn-secondary btn-sm" type="button" @click="copyText(ts.https_url, 'Address copied')">
+            <svg class="i-sm"><use href="#i-copy"/></svg><span>Copy address</span>
+          </button>
         </div>
       </div>
-      <div class="field" x-show="ts.loaded && !ts.joined">
+      <p class="muted t-sm" x-show="ts.loaded && ts.joined && !ts.serve_enabled">
+        Joined, but HTTPS is off, so <code x-text="ts.https_url"></code> is not
+        serving anything yet. Press <strong>Turn on HTTPS</strong>.
+      </p>
+      <div class="field" x-show="ts.loaded && ts.available && (!ts.joined || ts.rekey)">
         <label>Auth key</label>
         <input class="input input-mono" type="password" x-model="ts.authkey" placeholder="tskey-..."
                autocomplete="off" :disabled="ts.busy">
       </div>
       <p class="danger t-sm" x-show="ts.error" x-text="ts.error"></p>
-      <div class="flex gap-2">
-        <button class="btn btn-primary" x-show="ts.loaded && !ts.joined"
-                @click="tsJoin()" :disabled="ts.busy">Join tailnet</button>
-        <button class="btn" x-show="ts.loaded && ts.joined && !ts.serve_enabled"
+      <div class="flex gap-2" style="flex-wrap:wrap">
+        <button class="btn btn-primary" x-show="ts.loaded && ts.available && (!ts.joined || ts.rekey)"
+                @click="tsJoin()" :disabled="ts.busy">
+          <span x-text="ts.joined ? 'Sign in with new key' : (ts.needs_login ? 'Sign in again' : 'Join tailnet')"></span>
+        </button>
+        <button class="btn btn-secondary" x-show="ts.loaded && ts.joined && !ts.serve_enabled"
                 @click="tsServe(true)" :disabled="ts.busy">Turn on HTTPS</button>
-        <button class="btn btn-ghost" x-show="ts.loaded && ts.joined && ts.serve_enabled"
+        <button class="btn btn-secondary" x-show="ts.loaded && ts.joined && ts.serve_enabled"
                 @click="tsServe(false)" :disabled="ts.busy">Turn off HTTPS</button>
-        <button class="btn btn-danger" x-show="ts.loaded && ts.joined"
+        <button class="btn btn-secondary" x-show="ts.loaded && ts.joined && !ts.rekey"
+                @click="ts.rekey = true; ts.error = ''" :disabled="ts.busy">Use a different key</button>
+        <button class="btn btn-ghost" x-show="ts.rekey"
+                @click="ts.rekey = false; ts.authkey = ''; ts.error = ''" :disabled="ts.busy">Cancel</button>
+        <button class="btn btn-danger-quiet" x-show="ts.loaded && ts.joined"
                 @click="tsLeave()" :disabled="ts.busy">Disconnect</button>
       </div>
     </div>

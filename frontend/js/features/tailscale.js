@@ -25,6 +25,7 @@ export const tailscaleMixin = {
       this.ts.loaded = true;
       this.ts.available = st.available;
       this.ts.joined = st.joined;
+      this.ts.needs_login = !!st.needs_login;
       this.ts.https_url = st.https_url;
       this.ts.serve_enabled = st.serve_enabled;
       this.ts.tailnet = st.tailnet;
@@ -45,6 +46,7 @@ export const tailscaleMixin = {
         body: JSON.stringify({ authkey: key }),
       });
       this.ts.authkey = ''; // never keep the key around
+      this.ts.rekey = false;
       this.showToast('Joined your tailnet.', 'success');
       await this.loadTailscale();
       // Joining enables the node's ts.net name; offer HTTPS serving next.
