@@ -28,7 +28,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Pin a version with `B3_IMAGE_TAG=v0.8.5-beta` (default is the release in `docker-compose.yml`). To build from source instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
+Pin a version with `B3_IMAGE_TAG=v0.8.6-beta` (default is the release in `docker-compose.yml`). To build from source instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
 
 ## Quick start
 
@@ -56,7 +56,7 @@ The same image runs in three modes:
 
 **UI only** suits a node you already run (another container, a VPS, a home server). The node must be reachable from the container, have its RPC enabled with `rpcallowip` covering the container, and have the wallet loaded. The backend still enforces its RPC allowlist and the login/2FA rules, but RPC credentials and traffic now cross a network, so keep that link private (same host, a LAN you trust, or Tailscale) and never expose node RPC to the internet. Daemon install and upgrade are managed-mode features and are not available here; update the external node yourself.
 
-**Headless caveat:** the daemon binary is not baked into the image; it is downloaded by the setup wizard. With `RUN_UI=false` there is no wizard, so on a **fresh** data volume the daemon never starts (the container logs "deferred" and its healthcheck fails). Headless works today only on a volume where the daemon was already installed, for example after one run with the UI enabled: set up once with the UI, then switch `RUN_UI=false` on the same `/data` volume. Automatic daemon install for headless first runs is not implemented yet.
+**Headless notes:** with no wizard, the entrypoint installs the daemon itself on the first run: the newest stable release, or the one named in `B3_DAEMON_VERSION` (e.g. `v1.1.4`). The download is SHA256-verified. If it fails (no network, unknown version) the container exits with an error so your restart policy retries, rather than idling with no node. There is also no chain-snapshot step, so a fresh headless node syncs from block 0, which takes a long time. RPC listens on loopback inside the container only; edit `node/b3coin.conf` on the volume if you need it reachable. To use a snapshot, run the wizard once with the UI enabled, then switch `RUN_UI=false` on the same volume.
 
 ### Upgrades
 

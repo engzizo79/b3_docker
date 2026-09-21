@@ -169,7 +169,11 @@ if [ -z "${BLOCKED}" ] && [ "${B3_DAEMON_MODE}" = "managed" ]; then
     if [ -x "${DAEMON_BIN}" ]; then
         log "Daemon binary present: $(cat ${DAEMON_VERSION_FILE} 2>/dev/null || echo unknown)"
     else
-        log "Daemon binary not found — will be downloaded via the setup wizard"
+        if [ "${RUN_UI}" = "false" ]; then
+            log "Daemon binary not found — will be installed automatically (headless)"
+        else
+            log "Daemon binary not found — will be downloaded via the setup wizard"
+        fi
     fi
 fi
 
@@ -284,6 +288,48 @@ start_daemon() {
     fi
 }
 
+install_daemon_headless() {
+    # Headless (RUN_UI=false) has no setup wizard to download the daemon, so
+    # do it here: B3_DAEMON_VERSION (tag or version) if set, else the newest
+    # stable release that meets MIN_DAEMON_VERSION. Same verified installer
+    # (SHA256-checked) the wizard and upgrades use.
+    log "Headless first run: installing the daemon (${B3_DAEMON_VERSION:-latest stable})"
+    mkdir -p "${DAEMON_DIR}"
+    HEADLESSPY_RC=0
+    WANT_VERSION="${B3_DAEMON_VERSION:-}" DAEMON_DIR="${DAEMON_DIR}" \
+    DAEMON_VERSION_FILE="${DAEMON_VERSION_FILE}" \
+    MIN_DAEMON_VERSION="${MIN_DAEMON_VERSION:-1.1.4}" python3 - <<'HEADLESSPY' || HEADLESSPY_RC=$?
+import os, sys
+sys.path.insert(0, "/app")
+from app import daemon_release
+want = os.environ.get("WANT_VERSION", "").strip()
+minimum = os.environ.get("MIN_DAEMON_VERSION", "1.1.4")
+try:
+    rels = daemon_release.list_releases(include_prerelease=False, timeout=30)
+except Exception as exc:
+    print(f"ERROR: cannot list releases: {exc}", file=sys.stderr); sys.exit(1)
+rels = [r for r in rels if daemon_release.meets_minimum(r.version, minimum)]
+if want:
+    v = want.lstrip("vV")
+    rel = next((r for r in rels if r.tag == want or r.version == v), None)
+    if rel is None:
+        print(f"ERROR: B3_DAEMON_VERSION={want} not found (or below {minimum})", file=sys.stderr); sys.exit(1)
+else:
+    if not rels:
+        print("ERROR: no suitable release found", file=sys.stderr); sys.exit(1)
+    rel = rels[0]  # list_releases sorts newest first
+try:
+    daemon_release.install_version(rel, os.environ["DAEMON_DIR"],
+                                  os.environ["DAEMON_VERSION_FILE"], timeout=300)
+    print(f"Installed {rel.tag}")
+except Exception as exc:
+    print(f"ERROR: {exc}", file=sys.stderr); sys.exit(1)
+HEADLESSPY
+    # Installed as root: hand the binaries to the daemon user.
+    if [ "$(id -u)" = "0" ]; then chown -R b3coin:b3coin "${DAEMON_DIR}" 2>/dev/null || true; fi
+    return "${HEADLESSPY_RC:-0}"
+}
+
 DAEMON_PID=""
 TAIL_PID=""
 DAEMON_LOG="${B3_DAEMON_LOG:-${B3_DATA_DIR}/daemon.log}"
@@ -294,6 +340,15 @@ elif [ "${B3_DAEMON_MODE}" = "external" ]; then
 elif [ "${RUN_UI}" != "false" ] && [ ! -f "${WIZARD_MARKER}" ]; then
     touch "${DEFERRED_FILE}"; own "${DEFERRED_FILE}"
     log "First UI run — daemon deferred until the setup wizard is completed (Finish Setup)"
+elif [ ! -x "${DAEMON_BIN}" ] && [ "${RUN_UI}" = "false" ]; then
+    # No wizard exists to install the daemon: do it now. Failing loudly (exit)
+    # lets the restart policy retry, instead of idling with no node.
+    if install_daemon_headless; then
+        start_daemon
+    else
+        log "Headless daemon install FAILED - exiting (check network / B3_DAEMON_VERSION)"
+        exit 1
+    fi
 elif [ ! -x "${DAEMON_BIN}" ]; then
     # v0.6.0+: the daemon is no longer baked into the image. On upgrade from
     # an older version the wizard marker exists but the binary doesn't. Defer

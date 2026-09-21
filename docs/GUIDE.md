@@ -39,7 +39,7 @@ docker run -d --name b3hive --restart unless-stopped \
   -p 8080:8080 \
   -v ~/.B3-CoinV2:/data \
   --stop-timeout 600 \
-  ghcr.io/engzizo79/b3hive:v0.8.5-beta
+  ghcr.io/engzizo79/b3hive:v0.8.6-beta
 ```
 
 - The volume **must** map to `/data`. Without a persistent volume the app refuses to start (the chain and wallet would be lost with the container).
@@ -53,7 +53,8 @@ docker run -d --name b3hive --restart unless-stopped \
 | `WEB_PORT` | `8080` | Host port for the UI |
 | `B3_DATA_DIR` | `~/.B3-CoinV2` | Host folder for chain + wallet (compose only) |
 | `B3_IMAGE_TAG` | current release | Version to run (compose only) |
-| `RUN_UI` | `true` | `false` = node only, no web UI. Needs the daemon already installed on the volume (fresh volumes never start it; see README "Run modes") |
+| `RUN_UI` | `true` | `false` = node only, no web UI. On a fresh volume the daemon is installed automatically (see `B3_DAEMON_VERSION`) and syncs from scratch |
+| `B3_DAEMON_VERSION` | latest stable | Headless only: daemon release to install on first run, e.g. `v1.1.4` |
 | `B3_DAEMON_MODE` | `managed` | `external` = UI only, talk to a node running elsewhere; also set `EXT_RPC_HOST`, `EXT_RPC_PORT`, `EXT_RPC_USER`, `EXT_RPC_PASSWORD` (or choose it in the wizard) |
 | `UI_PASSWORD` | unset | Preset the login password (normally use the wizard) |
 | `LOCALHOST_SKIP_2FA` | `true` | `false` = require 2FA even from the Docker host |
