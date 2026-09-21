@@ -68,7 +68,7 @@ export const VIEWS = {
     keywords: 'rpc terminal command expert debug console',
   },
   settings: {
-    label: 'Settings', icon: 'settings', width: 'flow',
+    label: 'Settings', icon: 'settings', width: 'app',
     title: 'Settings', sub: 'Security, appearance and setup',
     keywords: '2fa totp theme dark light mode password about version',
   },

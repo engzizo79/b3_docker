@@ -375,3 +375,16 @@
 
 /* Keyboard safety: a focused field must never sit under a sticky footer. */
 .input, .textarea, .select { scroll-margin-block: 96px; }
+
+/* Two-column flow for stacks of independent cards on wide screens.
+   Cards keep their order (top-to-bottom, then next column); banners,
+   callouts and .span-all items run across both columns. */
+@media (min-width: 1280px) {
+  .stack.cols-2 { display: block; column-count: 2; column-gap: var(--space-4); }
+  .stack.cols-2 > * { break-inside: avoid; margin-bottom: var(--space-4); }
+  .stack.cols-2 > .span-all,
+  .stack.cols-2 > .banner,
+  .stack.cols-2 > .callout { column-span: all; }
+  /* A column's bottom margin is lost where a spanning item begins. */
+  .stack.cols-2 > .card.span-all { margin-top: var(--space-4); }
+}

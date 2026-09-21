@@ -1505,7 +1505,7 @@
                             :aria-sort="bookAria('label')">Label <span x-text="bookArrow('label')"></span></button></th>
                 <th>Address</th>
                 <th class="num"><button class="th-sort" type="button" @click="bookSort('amount')"
-                            :aria-sort="bookAria('amount')"><span x-text="bookArrow('amount')"></span> Received</button></th>
+                            :aria-sort="bookAria('amount')"><span x-text="bookArrow('amount')"></span> Balance</button></th>
                 <th class="num addr-actions-h"><span class="sr-only">Actions</span></th>
               </tr></thead>
               <tbody>
@@ -1776,7 +1776,7 @@
       </section>
 
       <!-- ================================================= AUTOMATION ===== -->
-      <section x-show="view === 'automation'" class="stack">
+      <section x-show="view === 'automation'" class="stack cols-2">
         <div class="callout callout-warning">
           <div class="callout-title">
             <svg class="i-sm"><use href="#i-alert"/></svg>
@@ -2086,7 +2086,7 @@
         </template>
 
         <!-- Activity log: what THIS app did (not the daemon log) -->
-        <div class="card">
+        <div class="card span-all">
           <div class="card-head">
             <strong>Activity log</strong>
             <button class="btn btn-secondary btn-sm" type="button" @click="loadAutoLog()"
@@ -2370,7 +2370,7 @@
       </section>
 
       <!-- ===================================================== WALLET ===== -->
-      <section x-show="view === 'wallet'" class="stack">
+      <section x-show="view === 'wallet'" class="stack cols-2">
 
         <!-- Lock state, stated in three distinct ways. -->
         <div class="card card-pad">
@@ -2881,10 +2881,10 @@
       </section>
 
       <!-- ====================================================== TOOLS ===== -->
-      <section x-show="view === 'tools'" class="stack">
+      <section x-show="view === 'tools'" class="stack cols-2">
 
         <!-- ---- Batch recipes ---- -->
-        <div class="card">
+        <div class="card span-all">
           <div class="card-head">
             <div>
               <strong>Batch actions</strong>
@@ -3431,7 +3431,7 @@
 </section>
 
 <!-- =================================================== SETTINGS ===== -->
-      <section x-show="view === 'settings'" class="stack">
+      <section x-show="view === 'settings'" class="stack cols-2">
 
 <!-- Transport security guide (v0.5.0): shown when the connection is not encrypted. -->
 <div class="card" x-show="session.transport_secure === false">
