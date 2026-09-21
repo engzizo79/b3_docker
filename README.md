@@ -8,7 +8,7 @@ One Docker container with the B3Hive daemon (b3coind) **and a full b3coin-qt rep
 
 ## Architecture (single all-in-one container)
 
-One image contains b3coind + FastAPI backend proxy + static SPA. The browser never talks to the node RPC directly: the backend is the sole RPC client, over loopback inside the container, behind an allowlist. The only published port is the UI. `RUN_UI=false` runs the same image as a headless daemon. Remote access requires TOTP 2FA; localhost bypasses it (configurable; local = loopback, the Docker host, and addresses in `B3_LOCAL_ADDRS`).
+One image contains b3coind + FastAPI backend proxy + static SPA. The browser never talks to the node RPC directly: the backend is the sole RPC client, over loopback inside the container, behind an allowlist. The only published port is the UI. The same image can also run as a UI in front of an existing node, or as a headless daemon (see [Run modes](#run-modes)). Remote access requires TOTP 2FA; localhost bypasses it (configurable; local = loopback, the Docker host, and addresses in `B3_LOCAL_ADDRS`).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -44,9 +44,19 @@ docker compose up -d
 
 Your data persists in the mapped host directory (default `~/.B3-CoinV2`) — chain state, wallet, and `b3coin.conf` survive upgrades.
 
-### Headless (daemon only)
+### Run modes
 
-Set `RUN_UI=false` in `.env` — same image, no UI, no published UI port.
+The same image runs in three modes:
+
+| Mode | How | What runs |
+|---|---|---|
+| **Full** (default) | nothing to set | b3coind + backend + UI in one container. The setup wizard downloads the daemon, applies your node settings and optional chain snapshot, then starts it. |
+| **UI only** (external daemon) | pick "Use an existing node" in the wizard's Node step, or set `B3_DAEMON_MODE=external` plus `EXT_RPC_HOST`, `EXT_RPC_PORT`, `EXT_RPC_USER`, `EXT_RPC_PASSWORD` | Backend + UI only. No local daemon is started or downloaded; every RPC goes to the node you named. |
+| **Headless** (daemon only) | `RUN_UI=false` | b3coind only, no UI and no published UI port. |
+
+**UI only** suits a node you already run (another container, a VPS, a home server). The node must be reachable from the container, have its RPC enabled with `rpcallowip` covering the container, and have the wallet loaded. The backend still enforces its RPC allowlist and the login/2FA rules, but RPC credentials and traffic now cross a network, so keep that link private (same host, a LAN you trust, or Tailscale) and never expose node RPC to the internet. Daemon install and upgrade are managed-mode features and are not available here; update the external node yourself.
+
+**Headless caveat:** the daemon binary is not baked into the image; it is downloaded by the setup wizard. With `RUN_UI=false` there is no wizard, so on a **fresh** data volume the daemon never starts (the container logs "deferred" and its healthcheck fails). Headless works today only on a volume where the daemon was already installed, for example after one run with the UI enabled: set up once with the UI, then switch `RUN_UI=false` on the same `/data` volume. Automatic daemon install for headless first runs is not implemented yet.
 
 ### Upgrades
 
@@ -55,7 +65,7 @@ B3_IMAGE_TAG=<new tag> docker compose pull
 B3_IMAGE_TAG=<new tag> docker compose up -d
 ```
 
-New image = new b3coind binaries. Data stays on the host volume. (If a release needs a `b3coin-wallet` migration, it's an explicit documented step.)
+The image contains the UI and backend only. The b3coind daemon lives on your data volume and is updated separately from the UI, so a new image does not change your node version. Data stays on the host volume. (If a release needs a `b3coin-wallet` migration, it's an explicit documented step.)
 
 ### Production with HTTPS (internet-facing)
 

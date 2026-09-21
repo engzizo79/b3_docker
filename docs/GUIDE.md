@@ -53,7 +53,8 @@ docker run -d --name b3hive --restart unless-stopped \
 | `WEB_PORT` | `8080` | Host port for the UI |
 | `B3_DATA_DIR` | `~/.B3-CoinV2` | Host folder for chain + wallet (compose only) |
 | `B3_IMAGE_TAG` | current release | Version to run (compose only) |
-| `RUN_UI` | `true` | `false` = node only, no web UI |
+| `RUN_UI` | `true` | `false` = node only, no web UI. Needs the daemon already installed on the volume (fresh volumes never start it; see README "Run modes") |
+| `B3_DAEMON_MODE` | `managed` | `external` = UI only, talk to a node running elsewhere; also set `EXT_RPC_HOST`, `EXT_RPC_PORT`, `EXT_RPC_USER`, `EXT_RPC_PASSWORD` (or choose it in the wizard) |
 | `UI_PASSWORD` | unset | Preset the login password (normally use the wizard) |
 | `LOCALHOST_SKIP_2FA` | `true` | `false` = require 2FA even from the Docker host |
 | `B3_LOCAL_ADDRS` | empty | Extra addresses treated as local (skip 2FA). IPs/CIDRs, nothing broader than /16. Never list a reverse proxy. |
