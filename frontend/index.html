@@ -1428,7 +1428,49 @@
                     x-show="history.txs.length" @click="history.filter = 'all'">Show all</button>
           </div>
 
-          <div>
+          <!-- Desktop: table, so the amount sits next to what it belongs to. -->
+          <div class="table-wrap only-desktop" x-show="filteredHistory().length">
+            <table class="tbl act-tbl">
+              <thead><tr>
+                <th>Type</th><th>Time</th><th>Label / address</th>
+                <th class="num">Amount</th><th class="num">Status</th>
+              </tr></thead>
+              <template x-for="(row, i) in historyGroups()" :key="i">
+                <tbody>
+                  <tr class="act-group-row" x-show="row.heading"><th colspan="5" x-text="row.heading"></th></tr>
+                  <tr class="clickable" x-show="row.tx" tabindex="0"
+                      @click="openTx(row.tx?.txid)" @keydown.enter="openTx(row.tx?.txid)">
+                    <td>
+                      <span class="row gap-2">
+                        <span class="lead lead-sm" :class="txLeadClass(row.tx?.category)">
+                          <svg class="i-sm"><use :href="'#i-' + txIcon(row.tx?.category)"/></svg>
+                        </span>
+                        <strong class="t-sm" x-text="txLabel(row.tx?.category)"></strong>
+                      </span>
+                    </td>
+                    <td class="t-sm muted nowrap" x-text="fmtTime(row.tx?.time || row.tx?.timereceived)"></td>
+                    <td class="t-sm">
+                      <span x-show="row.tx?.label" x-text="row.tx?.label"></span>
+                      <span class="mono muted" x-show="row.tx?.address"
+                            :class="row.tx?.label ? 'act-addr' : ''" x-text="truncAddr(row.tx?.address, 10, 8)"></span>
+                    </td>
+                    <td class="num nowrap">
+                      <span :class="txIsIncoming(row.tx?.category) ? 'amt-in' : 'amt-out'"
+                            x-html="amountHtml(row.tx?.amount, { unit: true, maxDecimals: 9, sign: 'always' })"></span>
+                    </td>
+                    <td class="num t-sm nowrap">
+                      <span class="badge badge-warning" x-show="row.tx?.confirmations != null && row.tx?.confirmations < 6">
+                        <span x-text="row.tx?.confirmations || 0"></span> / 6
+                      </span>
+                      <span class="muted" x-show="!(row.tx?.confirmations != null && row.tx?.confirmations < 6)">Confirmed</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </template>
+            </table>
+          </div>
+
+          <div class="only-mobile">
             <template x-for="(row, i) in historyGroups()" :key="i">
               <div>
                 <div class="act-group-head" x-show="row.heading" x-text="row.heading"></div>
@@ -3422,9 +3464,9 @@
       </div>
       <p class="help mt-2" x-show="console.settings">
         Current: networks
-        <span x-text="console.settings.networks || '(from compose file)'"></span>,
+        <span x-text="console.settings?.networks || '(from compose file)'"></span>,
         remotes
-        <span x-text="console.settings.remote_full_access ? 'full access' : 'read-only'"></span>
+        <span x-text="console.settings?.remote_full_access ? 'full access' : 'read-only'"></span>
       </p>
     </div>
   </div>

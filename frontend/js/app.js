@@ -160,7 +160,7 @@ function initialState() {
   console: {
     input: '', lines: [], history: [], histPos: -1,
     catalog: null, loaded: false, gate: null, gateMsg: '', busy: false,
-    mode: null, settings: null, sform: null, sbusy: false, max: false,
+    mode: null, settings: null, sform: { networks: '', remote_full_access: false }, sbusy: false, max: false,
   },
 
     /* ---------------------------------------------------------- tailscale */

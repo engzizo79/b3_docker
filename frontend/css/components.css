@@ -920,3 +920,27 @@ input.select-sm, .input.select-sm { min-height: var(--min-target-sm); }
 .th-sort:hover { color: var(--text); }
 .list-row .trail.trail-row { flex-direction: row; align-items: center; gap: var(--space-1); }
 .list-row .body .meta.mono { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---- Activity: desktop table ---- */
+.act-tbl tr.clickable { cursor: pointer; }
+.act-tbl tr.clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.act-tbl .act-group-row th {
+  text-align: left; padding: var(--space-3) var(--space-3) var(--space-1);
+  font-size: var(--text-xs); letter-spacing: var(--tracking-label); text-transform: uppercase;
+  color: var(--text-muted); border-bottom: 0; background: none;
+}
+.act-tbl tbody:first-of-type .act-group-row th { padding-top: var(--space-2); }
+.act-tbl .act-addr { margin-left: var(--space-2); }
+.act-tbl td:first-child { width: 14rem; }
+.lead-sm { width: 28px; height: 28px; border-radius: var(--radius-sm); display: inline-flex;
+  align-items: center; justify-content: center; flex: none; }
+.lead-sm.in  { background: var(--success-bg); color: var(--success); }
+.lead-sm.out { background: var(--danger-bg);  color: var(--danger); }
+.lead-sm.stake { background: var(--accent-bg); color: var(--accent-text); }
+
+/* Phone: filter tabs must fit beside a card-head action, not scroll off-screen. */
+@media (max-width: 639.98px) {
+  .card-head > .tabs { flex: 1 1 auto; min-width: 0; }
+  .card-head > .tabs .tab { flex: 1 1 auto; justify-content: center; padding: 0 var(--space-2); }
+}
+.list-row .body .meta .mono { white-space: nowrap; }
