@@ -847,7 +847,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: var(--text-base);
   background: var(--bg-inset, #0d0f14);
   border: 1px solid var(--border, #2a2d36);
   border-radius: var(--radius-md, 10px);
-  /* Grows with output; scrolls past max-height. Maximize = fixed tall view. */
+  /* Grows with output; scrolls past max-height. Maximize = modal. */
   min-height: 72px; max-height: 45vh;
   overflow-y: auto;
   padding: var(--space-3);
@@ -856,7 +856,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: var(--text-base);
   gap: var(--space-1);
   margin-block: var(--space-3);
 }
-.console-out.is-max { height: 75vh; max-height: none; }
+.console-modal { height: min(90dvh, 900px); }
+.console-modal-body { display: flex; flex-direction: column; min-height: 0; }
+.console-modal-body .console-out { flex: 1; max-height: none; margin-block-start: 0; }
 .console-line { display: flex; gap: var(--space-2); align-items: flex-start; }
 .console-prompt { color: var(--accent, #f59e0b); font-family: var(--font-mono); user-select: none; }
 .console-text {

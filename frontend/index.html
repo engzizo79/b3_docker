@@ -3401,8 +3401,21 @@
           access.</p>
       </div>
 
+      <!-- Maximized, this pane becomes a modal (backdrop + dialog). -->
+      <div :class="console.max && 'backdrop'" @click.self="console.max = false"
+           @keydown.escape.window="console.max = false">
+      <div :class="console.max && 'modal modal--xl console-modal'"
+           :role="console.max ? 'dialog' : null" :aria-modal="console.max ? 'true' : null"
+           :aria-label="console.max ? 'Expert console' : null">
+      <div class="modal-head" x-show="console.max">
+        <h2>Expert console</h2>
+        <button class="btn btn-ghost btn-sm" type="button" @click="console.max = false">
+          <span>Restore</span>
+        </button>
+      </div>
+      <div :class="console.max && 'modal-body console-modal-body'">
       <!-- output -->
-      <div id="console-scroll" class="console-out" :class="{ 'is-max': console.max }" aria-live="polite">
+      <div id="console-scroll" class="console-out" aria-live="polite">
         <template x-for="(l, i) in console.lines" :key="i">
           <div class="console-line" :class="'console-' + l.kind">
             <span class="console-prompt" x-show="l.kind === 'in'">&gt;</span>
@@ -3431,6 +3444,9 @@
           :disabled="console.busy">
         <button class="btn btn-primary btn-sm" type="button" @click="consoleSubmit()"
           :disabled="console.busy || !console.input.trim()">Run</button>
+      </div>
+      </div>
+      </div>
       </div>
     </div>
   </div>

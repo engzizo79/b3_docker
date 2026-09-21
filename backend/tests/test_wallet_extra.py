@@ -164,7 +164,9 @@ def test_address_book_balance_is_sum_of_unspent(client: TestClient, mock_rpc: Mo
     assert mock_rpc.called("listunspent")
     assert by_addr["SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"]["balance"] == "1.920000000"
     assert by_addr["SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"]["spendable"] == "1.920000000"
-    assert by_addr["SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"]["balance"] == "0.000000000"
+    # Stake owner: not in listunspent, balance comes from the stake (locked).
+    assert by_addr["SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"]["balance"] == "1000.000000000"
+    assert by_addr["SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"]["spendable"] == "0.000000000"
 
 
 def test_address_book_balance_excludes_spent_and_unspendable(client: TestClient, mock_rpc: MockRPC):
@@ -411,3 +413,35 @@ class TestWalletManagement:
                         json={"wallet_name": "w", "passphrase": "p" * 8},
                         headers=hdr)
         assert r.status_code == 403
+
+
+def test_address_book_lists_change_addresses_holding_coins(client: TestClient, mock_rpc: MockRPC):
+    """Change addresses are absent from listreceivedbyaddress but hold
+    coins; they must still appear with their balance."""
+    out = login(client, headers=LOCAL)
+    change = "SQ32gwB3rpYaAtWabhAHgD4obMRnRjNFqF"
+    orig_call = mock_rpc.call
+    async def call(method, *params):
+        if method == "listunspent":
+            return [{"txid": "c1", "vout": 1, "address": change, "amount": 4.5,
+                     "spendable": True,
+                     "scriptPubKey": "76a914" + "00" * 20 + "88ac"}]
+        return await orig_call(method, *params)
+    mock_rpc.call = call
+    r = client.get("/api/wallet/book", headers=out["headers"])
+    entry = {a["address"]: a for a in r.json()["addresses"]}[change]
+    assert entry["balance"] == "4.500000000"
+    assert entry["spendable"] == "4.500000000"
+
+
+def test_address_book_stake_owner_shows_staked_amount_as_locked(client: TestClient, mock_rpc: MockRPC):
+    """The stake carrier output is absent from listunspent; the owner
+    address must still show the staked amount, all of it locked."""
+    out = login(client, headers=LOCAL)
+    r = client.get("/api/wallet/book", headers=out["headers"])
+    stake = [a for a in r.json()["addresses"] if a.get("stake")]
+    assert stake, "mock has no stake owner"
+    e = stake[0]
+    assert e["balance"] == "1000.000000000"
+    assert e["spendable"] == "0.000000000"
+    assert e["locked"] == e["balance"]

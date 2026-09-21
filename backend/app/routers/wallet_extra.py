@@ -491,6 +491,11 @@ async def address_book(request: Request):
         except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
             raise _translate(exc)
 
+    # Stake carrier outputs (B3S1) are not returned by listunspent, so the
+    # owner address would read 0 although it holds the stake. Track the
+    # staked amount per owner and count it as locked balance below.
+    staked: dict = {}
+
     # Merge stake owner addresses so the staking address is visible.
     try:
         info = await state.rpc.call_optional("getstakinginfo") or {}
@@ -498,6 +503,11 @@ async def address_book(request: Request):
             addr = s.get("owner_address")
             if not addr:
                 continue
+            try:
+                staked[addr] = staked.get(addr, Decimal(0)) + parse_amount(
+                    str(s.get("amount", "0")))
+            except (ValueError, ArithmeticError):
+                pass
             if addr in seen:
                 for entry in out:
                     if entry["address"] == addr:
@@ -546,6 +556,17 @@ async def address_book(request: Request):
                 spendables[addr] = spendables.get(addr, Decimal(0)) + val
     except (RPCError, RPCNotAllowed, RPCUnavailable):
         balances = None
+    if balances is not None:
+        for addr, amt in staked.items():
+            # Skip if listunspent already reported it (no double count).
+            if addr not in balances:
+                balances[addr] = amt
+    # Coins often sit on change addresses, which listreceivedbyaddress
+    # never returns. List every address that holds coins.
+    for addr in balances or {}:
+        if addr not in seen:
+            seen.add(addr)
+            out.append({"address": addr, "label": "", "amount": "0.000000000"})
     for entry in out:
         if balances is None:
             entry["balance"] = entry["spendable"] = entry["locked"] = None
