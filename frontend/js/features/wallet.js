@@ -199,6 +199,11 @@ export const walletMixin = {
 
   /** Current balance (unspent outputs) as a number, or null if unknown. */
   bookBalNum(a) { return a.balance == null ? null : Number(a.balance); },
+  /** "500.00 B3 locked" for coins held in stakes/assets, or '' (see /api/wallet/book). */
+  bookLocked(a) {
+    if (a.locked == null || !(Number(a.locked) > 0)) return '';
+    return this.fmtAmount(a.locked, { maxDecimals: 2, unit: true }) + ' locked';
+  },
   bookBalText(a) {
     return a.balance == null ? '—' : this.fmtAmount(a.balance, { maxDecimals: 2, unit: true });
   },

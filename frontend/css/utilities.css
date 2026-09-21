@@ -1,0 +1,12 @@
+/* B3 Hive — single-purpose utilities. Loaded LAST so they win over component
+   rules exactly as the inline styles they replaced did. */
+
+.col-full { grid-column: 1 / -1; }
+.t-left { text-align: left; }
+.w-auto { width: auto; }
+.px-0 { padding-inline: 0; }
+.rel { position: relative; }
+.h-sm { min-height: var(--min-target-sm); }
+.items-start { align-items: flex-start; }
+.i-xs { width: 12px; height: 12px; }
+.i-xl { width: 44px; height: 44px; }

@@ -163,6 +163,7 @@ def test_address_book_balance_is_sum_of_unspent(client: TestClient, mock_rpc: Mo
     by_addr = {a["address"]: a for a in r.json()["addresses"]}
     assert mock_rpc.called("listunspent")
     assert by_addr["SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"]["balance"] == "1.920000000"
+    assert by_addr["SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"]["spendable"] == "1.920000000"
     assert by_addr["SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"]["balance"] == "0.000000000"
 
 
@@ -188,6 +189,31 @@ def test_address_book_balance_excludes_spent_and_unspendable(client: TestClient,
     assert entry["balance"] == "0.100000000"     # what it holds now
 
 
+def test_address_book_locked_is_non_p2pkh_outputs(client: TestClient, mock_rpc: MockRPC):
+    """Outputs that are not plain payments (stake carriers, asset envelopes,
+    metadata cells) count toward the balance but never toward `spendable`."""
+    out = login(client, headers=LOCAL)
+    addr = "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"
+    plain = "76a914751f0b64ad7c395e05652b72101102cf0da491e888ac"
+    carrier = "6a0c4233533100000000000000"  # OP_RETURN B3S1 ... (not P2PKH)
+    orig_call = mock_rpc.call
+    async def call(method, *params):
+        if method == "listunspent":
+            return [
+                {"txid": "u1", "vout": 0, "address": addr, "amount": 2.5,
+                 "spendable": True, "scriptPubKey": plain},
+                {"txid": "u2", "vout": 1, "address": addr, "amount": 500.0,
+                 "spendable": True, "scriptPubKey": carrier},
+            ]
+        return await orig_call(method, *params)
+    mock_rpc.call = call
+    r = client.get("/api/wallet/book", headers=out["headers"])
+    entry = {a["address"]: a for a in r.json()["addresses"]}[addr]
+    assert entry["balance"] == "502.500000000"
+    assert entry["spendable"] == "2.500000000"
+    assert entry["locked"] == "500.000000000"
+
+
 def test_address_book_balance_null_when_listunspent_fails(client: TestClient, mock_rpc: MockRPC):
     from app.rpc import RPCError
     out = login(client, headers=LOCAL)
@@ -199,7 +225,8 @@ def test_address_book_balance_null_when_listunspent_fails(client: TestClient, mo
     mock_rpc.call = call
     r = client.get("/api/wallet/book", headers=out["headers"])
     assert r.status_code == 200
-    assert all(a["balance"] is None for a in r.json()["addresses"])
+    assert all(a["balance"] is None and a["spendable"] is None
+               for a in r.json()["addresses"])
 
 
 def test_address_book_fallback_to_groupings(client: TestClient, mock_rpc: MockRPC):

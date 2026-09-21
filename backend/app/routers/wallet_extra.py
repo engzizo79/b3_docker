@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app import db
+from app.batch_engine import P2PKH_SCRIPT_RE
 from app.deps import AppState
 from app.ratelimit import limiter
 from app.rpc import RPCError, RPCNotAllowed, RPCUnavailable, parse_amount
@@ -519,9 +520,14 @@ async def address_book(request: Request):
 
     # True balance = sum of the wallet's own unspent outputs per address.
     # "amount" above is lifetime RECEIVED, which does not drop when coins
-    # are spent. Display-only; every spend path re-derives its own inputs.
-    # None (not 0) when the node cannot say, so the UI shows "unknown".
+    # are spent. "spendable" is the plain-P2PKH part of that: outputs that
+    # carry stake (B3S1), colored assets (B3A1) or metadata (B3MC) are held
+    # by the wallet but are not freely spendable, so they count as "locked"
+    # (balance - spendable). Display-only; every spend path re-derives its
+    # own inputs. None (not 0) when the node cannot say, so the UI shows
+    # "unknown".
     balances: dict | None
+    spendables: dict = {}
     try:
         unspent = await state.rpc.call("listunspent", 0)
         balances = {}
@@ -533,12 +539,21 @@ async def address_book(request: Request):
                 val = Decimal(str(u.get("amount", "0")))
             except ArithmeticError:
                 continue
-            if val.is_finite() and val > 0:
-                balances[addr] = balances.get(addr, Decimal(0)) + val
+            if not (val.is_finite() and val > 0):
+                continue
+            balances[addr] = balances.get(addr, Decimal(0)) + val
+            if P2PKH_SCRIPT_RE.match(str(u.get("scriptPubKey", "")).lower()):
+                spendables[addr] = spendables.get(addr, Decimal(0)) + val
     except (RPCError, RPCNotAllowed, RPCUnavailable):
         balances = None
     for entry in out:
-        entry["balance"] = (None if balances is None
-                            else format(balances.get(entry["address"], Decimal(0)), ".9f"))
+        if balances is None:
+            entry["balance"] = entry["spendable"] = entry["locked"] = None
+        else:
+            bal = balances.get(entry["address"], Decimal(0))
+            spend = spendables.get(entry["address"], Decimal(0))
+            entry["balance"] = format(bal, ".9f")
+            entry["spendable"] = format(spend, ".9f")
+            entry["locked"] = format(bal - spend, ".9f")
 
     return {"addresses": out}

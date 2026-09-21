@@ -91,7 +91,7 @@
      what produced the "dashboard flash" before the wizard. -->
 <div class="auth-wrap" x-show="!booted">
   <div class="col center gap-3">
-    <svg class="i-xl" style="color:var(--accent-text);width:44px;height:44px"><use href="#i-hex"/></svg>
+    <svg class="i-xl i-xl accent"><use href="#i-hex"/></svg>
     <span class="spinner spinner-lg muted"></span>
     <span class="muted t-sm">Starting B3 Hive…</span>
   </div>
@@ -101,7 +101,7 @@
 <div class="auth-wrap" x-show="booted && !session.authenticated">
   <div class="auth-card">
     <div class="auth-mark">
-      <svg style="width:44px;height:44px;color:var(--accent-text)"><use href="#i-hex"/></svg>
+      <svg class="i-xl accent"><use href="#i-hex"/></svg>
       <span class="mark-title">B3 Hive</span>
       <span class="mark-sub">Wallet</span>
     </div>
@@ -129,7 +129,7 @@
            localhost skips it by default (LOCALHOST_SKIP_2FA). -->
       <form x-show="loginStep2" @submit.prevent="verify2fa()">
         <div class="row gap-2 mb-3">
-          <svg class="i" style="color:var(--accent-text)"><use href="#i-shield"/></svg>
+          <svg class="i accent"><use href="#i-shield"/></svg>
           <strong>Two-factor code</strong>
         </div>
         <p class="muted t-sm mb-3">Open your authenticator app and enter the current
@@ -218,7 +218,7 @@
 
     <!-- ------------------------------------------------------- app bar --- -->
     <header class="appbar">
-      <svg class="i-lg" style="color:var(--accent-text)"><use href="#i-hex"/></svg>
+      <svg class="i-lg accent"><use href="#i-hex"/></svg>
       <span class="appbar-title" x-text="currentView().title"></span>
 
       <button class="btn btn-ghost btn-icon" type="button" @click="openPalette()"
@@ -227,9 +227,8 @@
       </button>
 
       <div class="dd-anchor" @keydown.escape="showAlerts=false">
-        <button class="btn btn-ghost btn-icon" type="button" @click="toggleAlerts()"
-                :aria-expanded="showAlerts" aria-haspopup="true" aria-label="Alerts"
-                style="position:relative">
+        <button class="btn btn-ghost btn-icon rel" type="button" @click="toggleAlerts()"
+        :aria-expanded="showAlerts" aria-haspopup="true" aria-label="Alerts">
           <svg class="i"><use href="#i-bell"/></svg>
           <span class="bell-count" x-show="alertCount > 0" x-text="alertCount"></span>
         </button>
@@ -262,9 +261,8 @@
           <span class="kbd">⌘K</span>
         </button>
         <div class="dd-anchor" @click.outside="showAlerts=false" @keydown.escape="showAlerts=false">
-          <button class="btn btn-secondary btn-sm btn-icon" type="button" @click="toggleAlerts()"
-                  :aria-expanded="showAlerts" aria-haspopup="true" aria-label="Alerts"
-                  style="position:relative">
+          <button class="btn btn-secondary btn-sm btn-icon rel" type="button" @click="toggleAlerts()"
+         :aria-expanded="showAlerts" aria-haspopup="true" aria-label="Alerts">
             <svg class="i"><use href="#i-bell"/></svg>
             <span class="bell-count" x-show="alertCount > 0" x-text="alertCount"></span>
           </button>
@@ -438,8 +436,8 @@
  <div class="card">
  <div class="card-head"><strong>Where does your node run?</strong></div>
  <div class="card-pad">
- <button class="choice" type="button" @click="wizard.daemonMode = 'managed'"
- :aria-pressed="wizard.daemonMode === 'managed'" style="width:100%; text-align:left">
+ <button class="choice w-full t-left" type="button" @click="wizard.daemonMode = 'managed'"
+ :aria-pressed="wizard.daemonMode === 'managed'">
  <span class="choice-icon"><svg class="i"><use href="#i-server"/></svg></span>
  <span class="choice-body">
  <span class="row gap-2 wrap"><strong>On this device</strong>
@@ -454,8 +452,8 @@
  <span class="help bad" x-show="wizard.daemonReleasesErr" x-text="wizard.daemonReleasesErr"></span>
  </span>
  </button>
- <button class="choice" type="button" @click="wizard.daemonMode = 'external'"
- :aria-pressed="wizard.daemonMode === 'external'" style="width:100%; text-align:left">
+ <button class="choice w-full t-left" type="button" @click="wizard.daemonMode = 'external'"
+ :aria-pressed="wizard.daemonMode === 'external'">
  <span class="choice-icon"><svg class="i"><use href="#i-globe"/></svg></span>
  <span class="choice-body">
  <span class="row gap-2"><strong>Connect to an existing node (expert)</strong></span>
@@ -778,7 +776,7 @@
                 <template x-for="(item, i) in reviewPlan()" :key="i">
                   <div class="ci">
                     <span class="ci-mark" :style="item.danger ? 'border-color:var(--danger);color:var(--danger)' : ''">
-                      <svg class="i-sm" style="width:12px;height:12px"><use :href="'#i-' + item.icon"/></svg>
+                      <svg class="i-sm i-xs"><use :href="'#i-' + item.icon"/></svg>
                     </span>
                     <span class="ci-body">
                       <span :class="item.danger ? 'bad' : ''" x-text="item.text"></span>
@@ -850,8 +848,8 @@
               <template x-for="t in applying.tasks" :key="t.key">
                 <div class="ci" :class="t.state">
                   <span class="ci-mark">
-                    <svg class="i-sm" style="width:12px;height:12px" x-show="t.state === 'done'"><use href="#i-check"/></svg>
-                    <svg class="i-sm" style="width:12px;height:12px" x-show="t.state === 'failed'"><use href="#i-close"/></svg>
+                    <svg class="i-sm i-xs" x-show="t.state === 'done'"><use href="#i-check"/></svg>
+                    <svg class="i-sm i-xs" x-show="t.state === 'failed'"><use href="#i-close"/></svg>
                     <span class="spinner" style="width:11px;height:11px" x-show="t.state === 'active'"></span>
                   </span>
                   <span class="ci-body">
@@ -898,7 +896,7 @@
             <div class="grow">
               <div class="row gap-2">
                 <span class="spinner accent" x-show="syncBanner().level !== 'warning'"></span>
-                <svg class="i" x-show="syncBanner().level === 'warning'" style="color:var(--warning)"><use href="#i-alert"/></svg>
+                <svg class="i warn" x-show="syncBanner().level === 'warning'"><use href="#i-alert"/></svg>
                 <strong x-text="syncBanner().title"></strong>
               </div>
               <p class="t-sm mt-1" :style="syncBanner().level === 'warning' ? 'color:var(--warning)' : 'color:var(--accent-text)'"
@@ -996,7 +994,7 @@
         <div class="card" x-show="walletState() !== 'no-wallet'">
           <div class="card-head">
             <div class="row gap-2">
-              <svg class="i" style="color:var(--accent-text)"><use href="#i-spark"/></svg>
+              <svg class="i accent"><use href="#i-spark"/></svg>
               <strong x-text="staking.active ? 'Earning' : (stakeTotals().count > 0 ? 'Your stakes' : 'Staking')"></strong>
             </div>
             <button class="btn btn-ghost btn-sm" type="button" @click="go('staking')">
@@ -1081,21 +1079,21 @@
         <!-- Node health strip: reassurance, deliberately small. -->
         <div class="card span-2">
           <div class="health">
-            <button class="health-cell" type="button" @click="go('node')" style="text-align:left">
+            <button class="health-cell t-left" type="button" @click="go('node')">
               <span class="hk">
                 <span class="dot" :class="synced() ? 'ok' : 'warn'"></span><span>Sync</span>
               </span>
               <span class="hv" x-text="nodeDown() ? 'Offline' : (synced() ? 'Up to date' : fmtPercent(syncPercent() || 0, 1))"></span>
             </button>
-            <button class="health-cell" type="button" @click="go('node')" style="text-align:left">
+            <button class="health-cell t-left" type="button" @click="go('node')">
               <span class="hk"><span>Block</span></span>
               <span class="hv" x-text="fmtInt(chain.blocks)"></span>
             </button>
-            <button class="health-cell" type="button" @click="go('node')" style="text-align:left">
+            <button class="health-cell t-left" type="button" @click="go('node')">
               <span class="hk"><span>Peers</span></span>
               <span class="hv" x-text="chain.connections != null ? chain.connections : '—'"></span>
             </button>
-            <button class="health-cell" type="button" @click="go('node')" style="text-align:left">
+            <button class="health-cell t-left" type="button" @click="go('node')">
               <span class="hk"><span>Finality</span></span>
               <span class="hv t-sm" x-text="finalityHeadline().word"></span>
             </button>
@@ -1331,7 +1329,7 @@
         </template>
 
         <template x-if="walletState() !== 'no-wallet'">
-          <div class="stack">
+          <div class="stack cols-2">
             <div class="card">
               <div class="card-pad">
                 <h2 class="flow-q">Get paid in B3</h2>
@@ -1578,8 +1576,10 @@
                       </template>
                     </td>
                     <td><code class="addr-full" x-text="a.address" :title="a.address"></code></td>
-                    <td class="num t-sm" :class="bookBalNum(a) > 0 ? '' : 'muted'"
-                        x-text="bookBalText(a)"></td>
+                    <td class="num t-sm" :class="bookBalNum(a) > 0 ? '' : 'muted'">
+                      <span x-text="bookBalText(a)"></span>
+                      <span class="addr-locked" x-show="bookLocked(a)" x-text="bookLocked(a)"></span>
+                    </td>
                     <td class="num addr-actions">
                       <button class="btn btn-ghost btn-sm btn-icon" type="button" @click="startRename(a)"
                               aria-label="Rename" data-tip="Rename"><svg class="i-sm"><use href="#i-pen"/></svg></button>
@@ -1607,12 +1607,13 @@
                     <span class="meta mono" x-text="truncAddr(a.address, 7, 6)"></span>
                     <span class="meta t-sm" :class="bookBalNum(a) > 0 ? '' : 'muted'"
                           x-text="bookBalText(a)"></span>
+                    <span class="meta t-sm addr-locked" x-show="bookLocked(a)" x-text="bookLocked(a)"></span>
                   </span>
                   <span class="row gap-2" x-show="book.editing === a.address">
-                      <input class="input" style="min-height:36px" x-model="book.draftLabel"
-                             :aria-label="'Label for ' + a.address"
-                             @keydown.enter="saveLabel(a.address)"
-                             @keydown.escape="cancelRename()" maxlength="64">
+                      <input class="input h-sm" x-model="book.draftLabel"
+               :aria-label="'Label for ' + a.address"
+               @keydown.enter="saveLabel(a.address)"
+               @keydown.escape="cancelRename()" maxlength="64">
                       <button class="btn btn-primary btn-sm" type="button"
                               @click="saveLabel(a.address)">Save</button>
                       <button class="btn btn-ghost btn-sm" type="button"
@@ -1645,7 +1646,7 @@
 
         <!-- Guidance when staking is impossible: why + the exact next step. -->
         <template x-if="stakingBlocker()">
-          <div class="card" style="grid-column:1/-1">
+          <div class="card col-full">
             <div class="empty">
               <span class="empty-icon"><svg class="i-lg"><use href="#i-spark"/></svg></span>
               <h3>Staking isn't available yet</h3>
@@ -1663,7 +1664,7 @@
         </template>
 
         <!-- Status + control -->
-        <div class="card" x-show="!stakingBlocker()" style="grid-column:1/-1">
+        <div class="card col-full" x-show="!stakingBlocker()">
           <div class="card-pad">
             <div class="between-top">
               <div class="grow">
@@ -1755,7 +1756,7 @@
         </div>
 
         <!-- Your stakes -->
-        <div class="card" x-show="!stakingBlocker()" style="grid-column:1/-1">
+        <div class="card col-full" x-show="!stakingBlocker()">
           <div class="card-head">
             <div>
               <strong>Your stakes</strong>
@@ -1796,11 +1797,11 @@
           </div>
         </div>
 
-<div class="card danger-card" x-data="{ open: false }" x-show="mode === 'advanced'" style="grid-column:1/-1">
+<div class="card danger-card col-full" x-data="{ open: false }" x-show="mode === 'advanced'">
  <div class="card-pad">
   <div class="between">
    <div class="row gap-2">
-    <svg class="i" style="color:var(--danger)"><use href="#i-alert"/></svg>
+    <svg class="i bad"><use href="#i-alert"/></svg>
     <div>
      <strong>Leaving the validator set?</strong>
      <p class="help mb-0">Going offline for a long time? Revoke your finality key first.</p>
@@ -1843,7 +1844,7 @@
         <div class="card" x-show="autostake.settings">
           <div class="card-head">
             <div class="row gap-2">
-              <svg class="i" style="color:var(--accent-text)"><use href="#i-spark"/></svg>
+              <svg class="i accent"><use href="#i-spark"/></svg>
               <strong>Keep staking after a restart</strong>
             </div>
             <span class="badge" :class="autostake.settings && autostake.settings.autostake_enabled ? 'badge-success' : 'badge-neutral'"
@@ -1947,7 +1948,7 @@
         <div class="card" x-show="cons.settings">
           <div class="card-head">
             <div class="row gap-2">
-              <svg class="i" style="color:var(--accent-text)"><use href="#i-repeat"/></svg>
+              <svg class="i accent"><use href="#i-repeat"/></svg>
               <strong>Tidy up small outputs</strong>
             </div>
             <span class="badge" :class="cons.form.enabled ? 'badge-success' : 'badge-neutral'"
@@ -2124,7 +2125,7 @@
               <p class="help mb-3" x-show="autoLog.run.dry">Nothing was unlocked, signed or sent.</p>
               <ul class="stack" style="gap:6px;list-style:none;padding:0;margin:0">
                 <template x-for="(st, i) in autoLog.run.steps" :key="i">
-                  <li class="row gap-2 t-sm" style="align-items:flex-start">
+                  <li class="row gap-2 t-sm items-start">
                     <span class="badge" :class="st.ok ? 'badge-success' : 'badge-danger'"
                           x-text="st.ok ? 'OK' : 'Problem'"></span>
                     <span><strong x-text="st.step"></strong>
@@ -2203,7 +2204,7 @@
         <div class="card">
           <div class="card-head">
             <div class="row gap-2">
-              <svg class="i" style="color:var(--accent-text)"><use href="#i-layers"/></svg>
+              <svg class="i accent"><use href="#i-layers"/></svg>
               <strong>Your assets</strong>
             </div>
             <button class="btn btn-ghost btn-sm btn-icon" type="button" @click="loadAssets()"
@@ -2250,7 +2251,7 @@
         <div class="card" x-show="assets.fn">
           <div class="card-head">
             <div class="row gap-2">
-              <svg class="i" style="color:var(--accent-text)"><use href="#i-flame"/></svg>
+              <svg class="i accent"><use href="#i-flame"/></svg>
               <strong>FN Coin</strong>
             </div>
             <span class="badge" :class="assets.fn && assets.fn.active ? 'badge-success' : 'badge-neutral'">
@@ -2548,7 +2549,7 @@
                 <span class="label">Found in your data directory</span>
                 <div class="mt-2">
                   <template x-for="f in manage.onDisk" :key="f">
-                    <div class="list-row" style="padding-inline:0">
+                    <div class="list-row px-0">
                       <span class="lead"><svg class="i-sm"><use href="#i-database"/></svg></span>
                       <span class="body"><strong class="t-sm mono" x-text="f"></strong></span>
                       <button class="btn btn-secondary btn-sm trail" type="button"
@@ -2636,7 +2637,7 @@
       <section x-show="view === 'node'" class="grid grid-2">
 
         <!-- Health -->
-        <div class="card" style="grid-column:1/-1">
+        <div class="card col-full">
           <div class="card-pad">
             <div class="between-top">
               <div class="grow">
@@ -2806,7 +2807,7 @@
         </div>
 
         <!-- Peers -->
-        <div class="card" style="grid-column:1/-1">
+        <div class="card col-full">
           <div class="card-head">
             <div>
               <strong>Peers</strong>
@@ -2849,7 +2850,7 @@
         </div>
 
         <!-- Configuration -->
-        <div class="card" style="grid-column:1/-1" x-show="node.conf">
+        <div class="card col-full" x-show="node.conf">
           <div class="card-head">
             <div>
               <strong>Configuration</strong>
@@ -2895,7 +2896,7 @@
         </div>
 
         <!-- Logs (advanced) -->
-        <div class="card adv-only" x-show="sysMode.daemon_logs" style="grid-column:1/-1">
+        <div class="card adv-only col-full" x-show="sysMode.daemon_logs">
           <div class="card-head">
             <strong>Node log</strong>
             <div class="row gap-2 wrap filter-row">
@@ -2970,7 +2971,7 @@
 
           <div x-show="batch.recipes.length">
             <template x-for="r in batch.recipes" :key="r.id">
-              <div class="list-row" style="align-items:flex-start">
+              <div class="list-row items-start">
                 <span class="lead" style="margin-top:2px"><svg class="i-sm"><use href="#i-repeat"/></svg></span>
                 <span class="body">
                   <strong class="t-sm" x-text="r.name"></strong>
@@ -3901,24 +3902,24 @@
         <div class="details">
           <div class="drow">
             <span class="dkey">
-              <svg class="i-sm" x-show="startFlowStepDone('stake')" style="color:var(--success)"><use href="#i-check"/></svg>
-              <svg class="i-sm" x-show="!startFlowStepDone('stake')" style="color:var(--text-muted)"><use href="#i-circle"/></svg>
+              <svg class="i-sm ok" x-show="startFlowStepDone('stake')"><use href="#i-check"/></svg>
+              <svg class="i-sm muted" x-show="!startFlowStepDone('stake')"><use href="#i-circle"/></svg>
               &nbsp;Lock coins as stake weight
             </span>
             <span class="dval t-sm muted" x-text="startFlowStepLabel('stake')"></span>
           </div>
           <div class="drow">
             <span class="dkey">
-              <svg class="i-sm" x-show="startFlowStepDone('bind')" style="color:var(--success)"><use href="#i-check"/></svg>
-              <svg class="i-sm" x-show="!startFlowStepDone('bind')" style="color:var(--text-muted)"><use href="#i-circle"/></svg>
+              <svg class="i-sm ok" x-show="startFlowStepDone('bind')"><use href="#i-check"/></svg>
+              <svg class="i-sm muted" x-show="!startFlowStepDone('bind')"><use href="#i-circle"/></svg>
               &nbsp;Register your finality key
             </span>
             <span class="dval t-sm muted" x-text="startFlowStepLabel('bind')"></span>
           </div>
           <div class="drow">
             <span class="dkey">
-              <svg class="i-sm" x-show="startFlowStepDone('start')" style="color:var(--success)"><use href="#i-check"/></svg>
-              <svg class="i-sm" x-show="!startFlowStepDone('start')" style="color:var(--text-muted)"><use href="#i-circle"/></svg>
+              <svg class="i-sm ok" x-show="startFlowStepDone('start')"><use href="#i-check"/></svg>
+              <svg class="i-sm muted" x-show="!startFlowStepDone('start')"><use href="#i-circle"/></svg>
               &nbsp;Turn on the staking loop
             </span>
             <span class="dval t-sm muted" x-text="startFlowStepLabel('start')"></span>
@@ -4299,8 +4300,7 @@
             <p class="t-sm">No addresses match that.</p>
           </div>
           <template x-for="a in pickerResults()" :key="a.address">
-            <button class="list-row clickable" type="button" @click="pickAddress(a)"
-                    style="padding-inline:0">
+            <button class="list-row clickable px-0" type="button" @click="pickAddress(a)">
               <span class="lead"><svg class="i-sm"><use href="#i-book"/></svg></span>
               <span class="body">
                 <strong class="t-sm" x-text="a.label || 'No label'"></strong>
@@ -4354,7 +4354,7 @@
       <!-- Step 2: Download complete -> start -->
       <template x-if="install.done">
         <div>
-          <div class="row gap-2 mb-4" style="color:var(--success)">
+          <div class="row gap-2 mb-4 ok">
             <svg class="i"><use href="#i-check"/></svg>
             <span class="bold">Installed successfully</span>
           </div>
@@ -4438,7 +4438,7 @@
         </template>
         <template x-if="nodeConn.done">
           <div>
-            <div class="row gap-2 mb-4" style="color:var(--success)">
+            <div class="row gap-2 mb-4 ok">
               <svg class="i"><use href="#i-check"/></svg>
               <span class="bold">Applied</span>
             </div>

@@ -18,7 +18,7 @@ export const VIEWS = {
     keywords: 'pay transfer spend',
   },
   receive: {
-    label: 'Receive', icon: 'arrow-down', width: 'flow',
+    label: 'Receive', icon: 'arrow-down', width: 'app',
     title: 'Receive B3', sub: 'Create an address to be paid at',
     keywords: 'address qr deposit',
   },
