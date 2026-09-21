@@ -1,16 +1,15 @@
 # B3 Hive — single all-in-one container.
 # Quick start:
-#   cp .env.example .env   # fill in UI_PASSWORD etc.
-#   docker compose up -d
+#   cp .env.example .env
+#   docker compose up -d          # pulls the published image
 # Upgrade:
-#   docker compose pull && docker compose up -d
+#   B3_IMAGE_TAG=<new tag> docker compose pull && docker compose up -d
+# Build from source instead (development):
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 services:
   b3hive:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    image: b3hive:latest
+    image: ghcr.io/engzizo79/b3hive:${B3_IMAGE_TAG:-v0.8.0-beta}
     container_name: b3hive
     restart: unless-stopped
     env_file: .env

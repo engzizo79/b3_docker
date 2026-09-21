@@ -35,6 +35,6 @@ data/
 
 # Agent Zero project runtime metadata — never commit
 .a0proj/
-tmp/\nbackend/tmp/
+backend/tmp/
 tmp/
 graphify-out/

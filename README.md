@@ -12,6 +12,22 @@ One image contains b3coind + FastAPI backend proxy + static SPA. The browser nev
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/SECURITY.md](docs/SECURITY.md).
 
+## Install from the registry
+
+The image is published to GitHub Container Registry: `ghcr.io/engzizo79/b3hive` (linux/amd64).
+
+```bash
+# Only while the package is private: log in with a GitHub token that has
+# the read:packages scope (github.com/settings/tokens)
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u <your-github-username> --password-stdin
+
+git clone git@github.com:engzizo79/b3_docker.git && cd b3_docker   # or just copy docker-compose.yml + .env.example
+cp .env.example .env
+docker compose up -d
+```
+
+Pin a version with `B3_IMAGE_TAG=v0.8.0-beta` (default is the release in `docker-compose.yml`). To build from source instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
+
 ## Quick start
 
 ```bash
@@ -33,8 +49,8 @@ Set `RUN_UI=false` in `.env` — same image, no UI, no published UI port.
 ### Upgrades
 
 ```bash
-docker compose pull
-docker compose up -d
+B3_IMAGE_TAG=<new tag> docker compose pull
+B3_IMAGE_TAG=<new tag> docker compose up -d
 ```
 
 New image = new b3coind binaries. Data stays on the host volume. (If a release needs a `b3coin-wallet` migration, it's an explicit documented step.)

@@ -1,0 +1,9 @@
+# Development override: build the image from this checkout instead of pulling.
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  b3hive:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        B3_APP_VERSION: dev
