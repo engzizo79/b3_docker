@@ -51,14 +51,38 @@ def _extra_local_networks() -> list:
     return nets
 
 
+def _default_gateway_addrs() -> set:
+    """Default-route gateways from /proc/net/route. In Docker, connections
+    from the HOST to a published port arrive with the bridge gateway as the
+    source IP — that is the Docker host, i.e. the local machine. Real
+    LAN/remote clients keep their own source IP (DNAT) and stay remote.
+    Disabled by B3_TRUST_DOCKER_HOST=false (see docs/SECURITY.md)."""
+    if os.environ.get("B3_TRUST_DOCKER_HOST", "true").strip().lower() == "false":
+        return set()
+    addrs = set()
+    try:
+        with open("/proc/net/route") as f:
+            for line in f.readlines()[1:]:
+                parts = line.split()
+                if len(parts) >= 3 and parts[1] == "00000000":
+                    hexgw = parts[2]
+                    try:
+                        addrs.add(".".join(str(int(hexgw[i:i + 2], 16))
+                                           for i in (6, 4, 2, 0)))
+                    except ValueError:
+                        continue
+    except OSError:
+        pass
+    return addrs
+
+
 def is_local_address(host: str) -> bool:
-    """Is this source address 'the local machine'? Only loopback
-    (127.0.0.1 / ::1) plus addresses explicitly listed in B3_LOCAL_ADDRS.
-    Nothing is auto-detected: in Docker, host browsers arrive from the
-    bridge gateway IP, which the operator must opt in to (see README)."""
+    """Is this source address 'the local machine'? Loopback (127.0.0.1 /
+    ::1), the Docker host (the container's default gateway — unless
+    B3_TRUST_DOCKER_HOST=false), and addresses listed in B3_LOCAL_ADDRS."""
     if not host:
         return False
-    if host in _LOCALHOST:
+    if host in _LOCALHOST or host in _default_gateway_addrs():
         return True
     try:
         ip = ipaddress.ip_address(host)
@@ -111,7 +135,7 @@ def effective_client_ip(request) -> str:
 
 def client_is_localhost(request) -> bool:
     """True when the request originates from the local machine: loopback,
-    or an address the operator listed in B3_LOCAL_ADDRS. A reverse proxy
+    the Docker host, or an address listed in B3_LOCAL_ADDRS. A reverse proxy
     only counts when it forwards a local client — and only when the proxy
     itself is trusted (XFF is not spoofable)."""
     return is_local_address(effective_client_ip(request))

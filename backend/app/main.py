@@ -27,12 +27,11 @@ _SETUP_LOCKED_PAGE = """<!doctype html><meta charset="utf-8">
 <p>First-run setup can only be finished from the local machine. Until a login
 password is set, this service is locked to local access.</p>
 <p>The server sees your connection as coming from <code>{{CLIENT_IP}}</code>.</p>
-<p><b>Running in Docker and browsing from the Docker host itself?</b> Docker
-makes host connections arrive from the bridge gateway, which is not treated as
-local unless you say so. If the address above is your own host's gateway
-(e.g. <code>172.17.0.1</code>), set <code>B3_LOCAL_ADDRS=&lt;that address&gt;</code>
-in your <code>.env</code> and run <code>docker compose up -d</code>. Do not add
-an address you do not control.</p>
+<p><b>Running in Docker?</b> The Docker host is detected automatically (the
+container's default gateway). If the address above is your own machine but is
+still refused, list it in <code>B3_LOCAL_ADDRS</code> in your <code>.env</code>
+and run <code>docker compose up -d</code>. Do not add an address you do not
+control.</p>
 </body>"""
 
 

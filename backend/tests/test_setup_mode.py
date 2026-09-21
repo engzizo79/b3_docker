@@ -149,19 +149,18 @@ def test_setup_session_cannot_unlock_wallet(settings, mock_rpc):
         assert r.status_code in (401, 423, 403), r.text
 
 def test_setup_lockout_tells_operator_what_the_server_saw(settings, mock_rpc):
-    """A Docker-host browser arrives from the bridge gateway, which is NOT
-    local by default. The lockout must say which address was seen and how to
-    opt in (B3_LOCAL_ADDRS), and must not reflect it unescaped."""
+    """A refused client must be told which address the server saw and how to
+    opt in (B3_LOCAL_ADDRS), and the address must not be reflected unescaped."""
     state = _setup_state(settings, mock_rpc)
     app = create_app(state)
     app.state.app_state = state
-    gw = {"x-forwarded-for": "172.17.0.1"}
+    gw = {"x-forwarded-for": "192.168.77.5"}
     with TestClient(app) as tc:
         r = tc.get("/", headers=gw)
         assert r.status_code == 403
-        assert "172.17.0.1" in r.text and "B3_LOCAL_ADDRS" in r.text
+        assert "192.168.77.5" in r.text and "B3_LOCAL_ADDRS" in r.text
         r = tc.get("/api/setup/status", headers=gw)
         assert r.status_code == 403
-        assert r.json()["client_ip"] == "172.17.0.1"
+        assert r.json()["client_ip"] == "192.168.77.5"
         r = tc.get("/", headers={"x-forwarded-for": "<script>x</script>"})
         assert "<script>x</script>" not in r.text

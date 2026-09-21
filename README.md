@@ -8,7 +8,7 @@ One Docker container with the B3Hive daemon (b3coind) **and a full b3coin-qt rep
 
 ## Architecture (single all-in-one container)
 
-One image contains b3coind + FastAPI backend proxy + static SPA. The browser never talks to the node RPC directly: the backend is the sole RPC client, over loopback inside the container, behind an allowlist. The only published port is the UI. `RUN_UI=false` runs the same image as a headless daemon. Remote access requires TOTP 2FA; localhost bypasses it (configurable; only loopback and addresses you list in `B3_LOCAL_ADDRS` count as local).
+One image contains b3coind + FastAPI backend proxy + static SPA. The browser never talks to the node RPC directly: the backend is the sole RPC client, over loopback inside the container, behind an allowlist. The only published port is the UI. `RUN_UI=false` runs the same image as a headless daemon. Remote access requires TOTP 2FA; localhost bypasses it (configurable; local = loopback, the Docker host, and addresses in `B3_LOCAL_ADDRS`).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -20,14 +20,9 @@ docker compose up -d
 # UI at http://localhost:8080
 ```
 
-**First run in Docker:** the setup wizard is restricted to *local* clients, and only loopback counts as local. A browser on the Docker host arrives from the Docker bridge gateway, so the first page you see is "setup required", which shows the address the server saw (e.g. `172.17.0.1`). Add it to `.env`, then restart:
+**First run:** open `http://localhost:8080` **on the machine running Docker**. The Docker host counts as local, so the setup wizard opens straight away and 2FA is skipped for you; choose a password and enable 2FA for remote devices in the wizard. Every other machine (LAN, internet, Tailscale) always needs the password **and** TOTP 2FA.
 
-```bash
-echo 'B3_LOCAL_ADDRS=172.17.0.1' >> .env   # use the address shown on the page
-docker compose up -d
-```
-
-Finish the wizard (choose a password, enable 2FA). Anything not listed — every other machine on your LAN or the internet — always needs the password **and** TOTP 2FA. Details: [docs/SECURITY.md](docs/SECURITY.md#what-counts-as-local).
+> Docker Desktop (Windows/Mac) or rootless Docker? LAN clients may look like the host there. Set `B3_TRUST_DOCKER_HOST=false` (or publish the port as `127.0.0.1:8080:8080`) — see [docs/SECURITY.md](docs/SECURITY.md#what-counts-as-local).
 
 Your data persists in the mapped host directory (default `~/.B3-CoinV2`) — chain state, wallet, and `b3coin.conf` survive upgrades.
 
@@ -36,8 +31,6 @@ Your data persists in the mapped host directory (default `~/.B3-CoinV2`) — cha
 Set `RUN_UI=false` in `.env` — same image, no UI, no published UI port.
 
 ### Upgrades
-
-> **Behaviour change in the beta:** the Docker bridge gateway is no longer auto-treated as local. If you previously browsed from the Docker host and skipped 2FA, you will now be asked for TOTP (or, before a password is set, blocked from setup) until you set `B3_LOCAL_ADDRS` — see Quick start. Also, the developer console's default trusted networks are now loopback only; add ranges under Settings → Console if you relied on the old default.
 
 ```bash
 docker compose pull

@@ -22,10 +22,10 @@ services:
       # the persistence guard checks this path, and every state file
       # (wallet, chain, DB, config) lives here. A mismatch = refused startup.
       B3_DATA_DIR: /data
-      # Extra addresses to treat as "local" (2FA bypass, first-run setup).
-      # Default: none — only loopback inside the container counts. Set it in
-      # .env; .env.example explains how to find the Docker gateway address.
+      # Local trust: loopback + the Docker host are local (2FA bypass,
+      # first-run setup). Extra addresses / opt-out: see .env.example.
       B3_LOCAL_ADDRS: ${B3_LOCAL_ADDRS:-}
+      B3_TRUST_DOCKER_HOST: ${B3_TRUST_DOCKER_HOST:-true}
     ports:
       # Only the UI port is published. The node RPC binds to 127.0.0.1
       # inside the container and is NEVER published.

@@ -16,11 +16,11 @@ services:
       # Behind Caddy: cookies get the Secure flag via X-Forwarded-Proto
       COOKIE_SECURE: auto
       # Behind Caddy every request arrives from Caddy's container address,
-      # which is NOT local — and must never be listed in B3_LOCAL_ADDRS, or
-      # the whole internet would skip 2FA. Forced empty here on purpose.
-      # First-run setup (password + 2FA) therefore has to be done ONCE with
-      # docker-compose.yml on this host (B3_LOCAL_ADDRS set in .env); the
-      # data volume is shared, so afterwards switch to this file.
+      # which is not the Docker host and must never be listed in
+      # B3_LOCAL_ADDRS, or the whole internet would skip 2FA. Forced empty.
+      # No port is published here, so do the first-run setup (password +
+      # 2FA) once with docker-compose.yml on this host, then switch to this
+      # file — the data volume is shared.
       B3_LOCAL_ADDRS: ""
     volumes:
       - ${B3_DATA_DIR:-~/.B3-CoinV2}:/data

@@ -175,7 +175,7 @@ const DETAIL_REWRITES = [
     'Save your wallet passphrase first, then enable unattended staking.'],
   [/CSRF/i,                             'Your session needs refreshing — reload the page and try again.'],
   [/2FA required/i,                     'Two-factor authentication is required for this action.'],
-  [/setup required/i,                   'Finish first-run setup from the local machine first. (Docker: set B3_LOCAL_ADDRS - see README.)'],
+  [/setup required/i,                   'Finish first-run setup from the local machine first. (Docker: open the UI on the Docker host itself, or see B3_LOCAL_ADDRS in the README.)'],
   [/local access only/i,                'This can only be done from the machine running B3 Hive.'],
 ];
 

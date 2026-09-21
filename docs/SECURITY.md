@@ -34,17 +34,15 @@ The UI is designed for both local administration (same machine) and remote acces
 
 ### What counts as "local"
 
-**Only `127.0.0.1` / `::1` as seen by the backend, plus addresses you list explicitly in `B3_LOCAL_ADDRS`.** Nothing is auto-detected.
+1. **Loopback** — `127.0.0.1` / `::1` inside the container.
+2. **The Docker host** — connections from the machine running Docker to a published port arrive from the container's default gateway (e.g. `172.17.0.1`). That address is detected automatically, so `http://localhost:8080` on the host needs no setup: the first-run wizard opens and 2FA is skipped. Remote machines keep their own source IP through Docker's NAT and stay remote.
+3. **`B3_LOCAL_ADDRS`** — extra addresses you list explicitly (comma-separated IPs or CIDRs). Entries broader than `/16` (IPv4) or `/64` (IPv6), and invalid entries, are ignored with a log warning (fail closed). Every client behind a listed address becomes local, so never list a reverse proxy (Caddy, nginx) or shared NAT.
 
-This matters in Docker. A browser on the Docker host reaches a published port through the bridge gateway (`172.17.0.1`, `172.18.0.1`, …), and on Docker Desktop, rootless Docker, or any setup that masquerades traffic, *LAN clients can look identical*. Treating the gateway as local would let anyone who can reach the port skip 2FA and take over first-run setup. So the gateway is **remote by default**:
+`X-Forwarded-For` is honored only from a loopback peer or an entry of `B3_TRUSTED_PROXIES`; `B3_LOCAL_ADDRS` does not grant that trust. The developer console's trusted networks default to loopback (the Docker host already counts as local); change them under Settings → Console.
 
-- First run from the Docker host: the UI shows "setup required" and names the address the server saw. Set `B3_LOCAL_ADDRS=<that address>` in `.env`, run `docker compose up -d`, finish the wizard (set password + 2FA), and optionally remove the variable again.
-- `B3_LOCAL_ADDRS` takes comma-separated IPs or CIDRs. Entries broader than `/16` (IPv4) or `/64` (IPv6), and invalid entries, are ignored with a log warning (fail closed).
-- Listing an address makes **every client behind it** local. Never list a reverse proxy's address (Caddy, nginx) — that would put the whole internet behind the 2FA bypass.
-- `X-Forwarded-For` is honored only from a loopback peer or an entry of `B3_TRUSTED_PROXIES`; `B3_LOCAL_ADDRS` does not grant that trust.
-- The developer console's trusted networks default to loopback only (`CONSOLE_NETWORKS`).
-- Production behind Caddy: `docker-compose.prod.yml` forces `B3_LOCAL_ADDRS` empty. Do the first-run setup once with `docker-compose.yml` on the host, then switch to the prod file (same data volume).
-- Recommended for host-only use: publish the port as `127.0.0.1:8080:8080` so the LAN cannot reach it at all.
+**Caveat — set `B3_TRUST_DOCKER_HOST=false` if traffic is masqueraded.** Rule 2 assumes Docker preserves remote source IPs. On Docker Desktop (Windows/Mac), rootless Docker, or hosts using the userland proxy for LAN traffic, LAN clients can appear to come from the gateway and would wrongly count as local (2FA bypass, first-run takeover). On such setups either publish the port to loopback only (`"127.0.0.1:8080:8080"`) or set `B3_TRUST_DOCKER_HOST=false` (then list your host's address in `B3_LOCAL_ADDRS` for the first-run wizard, and remove it afterwards). Verify once: open the UI from another machine on your LAN — it must ask for the password *and* 2FA, and before setup it must show "setup required".
+
+**Production behind Caddy:** `docker-compose.prod.yml` forces `B3_LOCAL_ADDRS` empty (Caddy's address is not the Docker host). Do the first-run setup once with `docker-compose.yml`, then switch files (same data volume).
 
 ## Auth flow
 
