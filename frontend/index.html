@@ -1557,7 +1557,7 @@
                 <th>Address</th>
                 <th class="num"><button class="th-sort" type="button" @click="bookSort('amount')"
                             :aria-sort="bookAria('amount')"><span x-text="bookArrow('amount')"></span> Balance</button></th>
-                <th class="num addr-actions-h"><span class="sr-only">Actions</span></th>
+                <th class="num"><span class="sr-only">Actions</span></th>
               </tr></thead>
               <tbody>
                 <template x-for="a in bookFiltered()" :key="a.address">
@@ -3579,7 +3579,7 @@
         <input class="input input-mono" type="password" x-model="ts.authkey" placeholder="tskey-..."
                autocomplete="off" :disabled="ts.busy">
       </div>
-      <p class="danger t-sm" x-show="ts.error" x-text="ts.error"></p>
+      <p class="bad t-sm" x-show="ts.error" x-text="ts.error"></p>
       <div class="btn-row">
         <button class="btn btn-primary" x-show="ts.loaded && ts.available && (!ts.joined || ts.rekey)"
                 @click="tsJoin()" :disabled="ts.busy">
@@ -3958,13 +3958,15 @@
  </div>
  </div>
  <div class="modal-body">
- <label class="lbl" for="addstake-amount">Amount</label>
+ <div class="field">
+ <label for="addstake-amount">Amount</label>
  <input id="addstake-amount" class="input" type="text" x-model="addStake.amount"
  inputmode="decimal" :aria-invalid="addStake.err ? 'true' : 'false'">
  <span class="err" x-show="addStake.err" x-text="addStake.err" role="alert"></span>
  <span class="help" x-show="!addStake.err">You have
  <span x-text="fmtAmount(liquidAmount(), { unit: true, maxDecimals: 2 })"></span> free to lock — staked coins are excluded.
  Leave a little for the transaction fee.</span>
+ </div>
  </div>
  <div class="modal-foot">
  <button class="btn btn-ghost" type="button" @click="addStake.show = false">Cancel</button>
