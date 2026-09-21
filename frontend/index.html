@@ -1109,7 +1109,7 @@
               <h3>You need a wallet first</h3>
               <p>Sending B3 requires a wallet to send it from. Create one, or load a wallet
                 file you already have — it takes a moment.</p>
-              <div class="row gap-2 wrap center">
+              <div class="btn-row center">
                 <button class="btn btn-primary" type="button" @click="openCreateWallet()">
                   <svg class="i-sm"><use href="#i-plus"/></svg><span>Create a wallet</span>
                 </button>
@@ -1155,7 +1155,7 @@
                   </template>
                   <span class="help" x-show="!send.to">B3 addresses always start with a capital S.</span>
                 </div>
-                <div class="row gap-2 mt-3">
+                <div class="btn-row mt-3">
                   <button class="btn btn-secondary btn-sm" type="button" @click="pasteInto('to')">
                     <svg class="i-sm"><use href="#i-copy"/></svg><span>Paste</span>
                   </button>
@@ -1267,7 +1267,7 @@
                     </button>
                   </div>
                 </div>
-                <div class="row gap-2 mt-4">
+                <div class="btn-row mt-4">
                   <button class="btn btn-secondary grow" type="button" @click="go('activity')">
                     <svg class="i-sm"><use href="#i-list"/></svg><span>View in activity</span>
                   </button>
@@ -1593,7 +1593,7 @@
                 means you are chosen to produce blocks more often.</p>
             </div>
 
-            <div class="row gap-2 mt-4 wrap">
+            <div class="btn-row mt-4">
               <button class="btn btn-primary" type="button" x-show="!staking.active"
                       @click="startStaking()" :disabled="staking.working">
                 <span class="spinner" x-show="staking.working"></span>
@@ -2292,7 +2292,7 @@
                 online, and if too many stop at once market finality and the bridge can stall.
                 Your wallet must be unlocked for signing.</p>
             </div>
-            <div class="row gap-2 mt-3 wrap">
+            <div class="btn-row mt-3">
               <button class="btn btn-primary" type="button" @click="validatorAction('start')"
                       :disabled="assets.validatorBusy">
                 <svg class="i-sm"><use href="#i-play"/></svg><span>Start validator</span>
@@ -2324,7 +2324,7 @@
               <span x-text="walletStateLabel()"></span>
             </span>
           </div>
-          <div class="row gap-2 mt-4 wrap">
+          <div class="btn-row mt-4">
             <button class="btn btn-primary" type="button" x-show="walletState() === 'locked'"
                     @click="askUnlock()">
               <svg class="i-sm"><use href="#i-unlock"/></svg><span>Unlock</span>
@@ -2365,7 +2365,7 @@
         <div class="card">
           <div class="card-head">
             <strong>Wallet files</strong>
-            <div class="row gap-2">
+            <div class="btn-row">
               <button class="btn btn-secondary btn-sm" type="button"
                       @click="manage.pane = manage.pane === 'load' ? null : 'load'"
                       :disabled="manage.persistent === false">
@@ -2418,7 +2418,7 @@
                   It encrypts this wallet. Lose it and the coins are unrecoverable — there is no
                   reset and no support channel that can help.</p>
               </div>
-              <div class="row gap-2 mt-3">
+              <div class="btn-row mt-3">
                 <button class="btn btn-primary" type="button" @click="createWallet()"
                         :disabled="!createWalletReady() || manage.working">
                   <span class="spinner" x-show="manage.working"></span><span>Create wallet</span>
@@ -2453,7 +2453,7 @@
                 <span class="help">Migrating from the desktop wallet? Copy your
                   <span class="mono">wallet.dat</span> into the data directory first.</span>
               </div>
-              <div class="row gap-2 mt-3">
+              <div class="btn-row mt-3">
                 <button class="btn btn-primary" type="button"
                         @click="loadWalletFile(manage.loadName)"
                         :disabled="!manage.loadName || manage.working">
@@ -2561,7 +2561,7 @@
               </p>
             </div>
 
-            <div class="row gap-2 mt-4 wrap">
+            <div class="btn-row mt-4">
               <button class="btn btn-primary" type="button" x-show="nodeDown()"
                       @click="startNode()" :disabled="node.working || nodeStarting()">
                 <span class="spinner" x-show="node.working || nodeStarting()"></span>
@@ -2765,7 +2765,7 @@
                     <span class="help" x-text="confHelp(k)"></span>
                   </div>
                 </template>
-                <div class="row gap-2 mt-4">
+                <div class="btn-row mt-4">
                   <button class="btn btn-primary" type="button" x-show="sysMode.node_restart" @click="applyConf()"
                           :disabled="node.working">
                     <span class="spinner" x-show="node.working"></span><span>Apply and restart</span>

@@ -893,3 +893,8 @@ input.select-sm, .input.select-sm { min-height: var(--min-target-sm); }
 @media (max-width: 639.98px) {
   .filter-row > .select-sm { flex: 1 1 calc(50% - var(--space-2)); min-width: 0; }
 }
+
+/* Card footers hold action buttons: same phone behaviour as .btn-row. */
+@media (max-width: 639.98px) {
+  .card-foot > .btn { flex: 1 1 calc(50% - var(--space-2)); min-width: 0; padding-inline: var(--space-3); }
+}

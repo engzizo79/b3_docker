@@ -39,7 +39,7 @@ export const VIEWS = {
   },
   automation: {
     label: 'Automation', icon: 'repeat', width: 'app', advanced: true,
-    title: 'Staking automation', sub: 'Unattended top-ups and UTXO consolidation',
+    title: 'Automation', sub: 'Unattended top-ups and UTXO consolidation',
     keywords: 'autostake consolidation sweep vault reconcile unattended',
   },
   assets: {
