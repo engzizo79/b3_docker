@@ -9,6 +9,8 @@ Image: `ghcr.io/engzizo79/b3hive` (linux/amd64 only — no Apple Silicon / Raspb
 
 You need Docker, and `docker-compose.yml` in an empty folder.
 
+**Requires Docker Compose v2.24 or newer** (check with `docker compose version`). Older versions fail with an `env_file`/`required` error — update Docker, or create an empty `.env` file (`touch .env`) as a workaround. The old `docker-compose` (v1) command is not supported.
+
 ```bash
 docker compose up -d
 ```
