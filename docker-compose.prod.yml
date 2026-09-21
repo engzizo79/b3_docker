@@ -7,7 +7,7 @@
 
 services:
   b3hive:
-    image: ghcr.io/engzizo79/b3hive:${B3_IMAGE_TAG:-v0.8.1-beta}
+    image: ghcr.io/engzizo79/b3hive:${B3_IMAGE_TAG:-v0.8.2-beta}
     container_name: b3hive
     restart: unless-stopped
     env_file:
