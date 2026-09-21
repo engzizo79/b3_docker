@@ -12,37 +12,67 @@ One image contains b3coind + FastAPI backend proxy + static SPA. The browser nev
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/SECURITY.md](docs/SECURITY.md).
 
-## Install from the registry
+## Getting started
 
-New here? Start with the **[quick guide](docs/GUIDE.md)** (Docker Compose, `docker run`, all settings, troubleshooting).
+**You need:** Docker with Compose v2.24 or newer (`docker compose version`), a 64-bit Linux/Windows/Mac machine (the image is `linux/amd64` only, so no Raspberry Pi or Apple Silicon without emulation), and a few GB of free disk (the chain is currently about 1.3 GB and grows). The image is published to GitHub Container Registry as `ghcr.io/engzizo79/b3hive`.
 
-The image is published to GitHub Container Registry: `ghcr.io/engzizo79/b3hive` (linux/amd64).
+### Option A: Docker Compose (recommended)
+
+You only need `docker-compose.yml`; cloning the repo is optional.
 
 ```bash
-# Only while the package is private: log in with a GitHub token that has
-# the read:packages scope (github.com/settings/tokens)
-echo "$GITHUB_TOKEN" | docker login ghcr.io -u <your-github-username> --password-stdin
-
-git clone git@github.com:engzizo79/b3_docker.git && cd b3_docker   # or just copy docker-compose.yml + .env.example
-cp .env.example .env
+mkdir b3hive && cd b3hive
+curl -O https://raw.githubusercontent.com/engzizo79/b3_docker/master/docker-compose.yml
 docker compose up -d
 ```
 
-Pin a version with `B3_IMAGE_TAG=v0.8.6-beta` (default is the release in `docker-compose.yml`). To build from source instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
+Then open **http://localhost:8080 on the machine that runs Docker**. The setup wizard starts by itself: choose a login password, pick how to sync (a chain snapshot is much faster than syncing from scratch), and create or load a wallet. The first node start takes about 5 minutes or more; `docker ps` shows `(healthy)` once it is up.
 
-## Quick start
+> Repo is private, or the package is? Log in first with a GitHub token that has the `read:packages` scope: `echo "$GITHUB_TOKEN" | docker login ghcr.io -u <your-github-username> --password-stdin`.
+
+Settings are optional. To change any, copy `.env.example` to `.env` next to the compose file (`cp .env.example .env`); see the [settings table](docs/GUIDE.md#settings-env-or--e--all-optional). Everything has a safe default.
+
+Where things live: chain, wallet and `b3coin.conf` are stored in the host folder `~/.B3-CoinV2` (change it with `B3_DATA_DIR` in `.env`). **Deleting that folder deletes the wallet, so back it up** and keep your wallet passphrase somewhere safe.
+
+### Option B: plain `docker run`
 
 ```bash
-cp .env.example .env   # required by compose; all settings have safe defaults
-docker compose up -d
-# UI at http://localhost:8080
+docker run -d --name b3hive --restart unless-stopped \
+  -p 8080:8080 \
+  -v b3hive-data:/data \
+  --stop-timeout 600 \
+  ghcr.io/engzizo79/b3hive:latest
 ```
 
-**First run:** open `http://localhost:8080` **on the machine running Docker**. The Docker host counts as local, so the setup wizard opens straight away and 2FA is skipped for you; choose a password and enable 2FA for remote devices in the wizard. Every other machine (LAN, internet, Tailscale) always needs the password **and** TOTP 2FA.
+- `-v ...:/data` is required. It can be a named volume (as above) or a host folder such as `-v ~/.B3-CoinV2:/data`. Without persistent storage the app refuses to start, because the chain and wallet would vanish with the container.
+- `--stop-timeout 600` gives the node time to shut down cleanly. Compose sets this for you.
+- Add settings with `-e NAME=value` or `--env-file .env`.
+- Only the UI port is published. The node RPC port never is.
 
-> Docker Desktop (Windows/Mac) or rootless Docker? LAN clients may look like the host there. Set `B3_TRUST_DOCKER_HOST=false` (or publish the port as `127.0.0.1:8080:8080`) — see [docs/SECURITY.md](docs/SECURITY.md#what-counts-as-local).
+### Everyday commands (Compose)
 
-Your data persists in the mapped host directory (default `~/.B3-CoinV2`) — chain state, wallet, and `b3coin.conf` survive upgrades.
+| Do this | Command |
+|---|---|
+| Watch the logs | `docker compose logs -f` |
+| Stop (data is kept) | `docker compose down` |
+| Start again | `docker compose up -d` |
+| Restart | `docker compose restart` |
+| Update to the newest release | `docker compose pull && docker compose up -d` |
+| Check health | `docker ps` (look for `healthy`; allow ~10 min on first start) |
+
+With plain `docker run`, use `docker logs -f b3hive`, `docker stop b3hive`, and to update: `docker pull ghcr.io/engzizo79/b3hive:latest`, then `docker rm -f b3hive` and run the same `docker run` command again (your data stays in the volume).
+
+### Versions: `latest` or pinned
+
+The default tag is `latest`, which always points at the newest release, so updating is just pull and up. This is a beta: if you would rather choose when to change, pin a version with `B3_IMAGE_TAG=v0.8.6-beta` in `.env` (or on the command line) and change it deliberately. Available versions are listed under the repository's tags. To build from source instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
+
+### First run and other devices
+
+The Docker host counts as local, so opening `http://localhost:8080` on it skips 2FA and starts the wizard. Every other device (phone, laptop, LAN, Tailscale) always needs the password **and** TOTP 2FA, which you enable in the wizard or in Settings. For access from outside, enable the bundled Tailscale in Settings (HTTPS from anywhere, no domain needed) or use the HTTPS section below.
+
+> Docker Desktop (Windows/Mac) or rootless Docker? LAN clients may look like the host there. Set `B3_TRUST_DOCKER_HOST=false` (or publish the port as `127.0.0.1:8080:8080`); see [docs/SECURITY.md](docs/SECURITY.md#what-counts-as-local).
+
+More help and troubleshooting: [docs/GUIDE.md](docs/GUIDE.md).
 
 ### Run modes
 
@@ -61,11 +91,11 @@ The same image runs in three modes:
 ### Upgrades
 
 ```bash
-B3_IMAGE_TAG=<new tag> docker compose pull
-B3_IMAGE_TAG=<new tag> docker compose up -d
+docker compose pull
+docker compose up -d
 ```
 
-The image contains the UI and backend only. The b3coind daemon lives on your data volume and is updated separately from the UI, so a new image does not change your node version. Data stays on the host volume. (If a release needs a `b3coin-wallet` migration, it's an explicit documented step.)
+If you pinned `B3_IMAGE_TAG`, change it first. The image contains the UI and backend only. The b3coind daemon lives on your data volume and is updated separately from the UI, so a new image does not change your node version. Data stays on the host volume. (If a release needs a `b3coin-wallet` migration, it's an explicit documented step.)
 
 ### Production with HTTPS (internet-facing)
 

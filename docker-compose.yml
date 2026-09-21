@@ -3,13 +3,14 @@
 #   (optional) cp .env.example .env   # only if you want to change settings
 #   docker compose up -d          # pulls the published image
 # Upgrade:
-#   B3_IMAGE_TAG=<new tag> docker compose pull && docker compose up -d
+#   docker compose pull && docker compose up -d   # default tag is 'latest'
+# Pin a version: set B3_IMAGE_TAG=vX.Y.Z-beta in .env
 # Build from source instead (development):
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 services:
   b3hive:
-    image: ghcr.io/engzizo79/b3hive:${B3_IMAGE_TAG:-v0.8.6-beta}
+    image: ghcr.io/engzizo79/b3hive:${B3_IMAGE_TAG:-latest}
     container_name: b3hive
     restart: unless-stopped
     env_file:
