@@ -64,7 +64,7 @@ ALLOWED: dict[str, set[str]] = {
         "getwalletassets", "listflowmeshmarkets", "getflowmeshmarketdata",
     },
     "assets_write": {  # gated: require unlocked wallet in the API layer
-        "startflowmeshvalidator", "stopflowmeshvalidator",
+        "startflowmeshvalidator", "stopflowmeshvalidator", "createfncoin",
     },
     "wallet_lifecycle": {"createwallet", "loadwallet", "listwallets", "listwalletdir", "unloadwallet", "backupwallet"},
 }

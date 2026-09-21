@@ -9,15 +9,25 @@ Read surface (verified against B3-CoinV2 v1.1.5 source):
 
 Write surface (Advanced mode, unlock-gated, audited):
 - startflowmeshvalidator / stopflowmeshvalidator
+- createfncoin (destroys native B3 to mint exactly one FN Coin)
 """
 
+import re
+
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 
 from app.deps import AppState
 from app.rpc import RPCError, RPCNotAllowed, RPCUnavailable
 from app import db
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
+
+_ADDRESS_RE = re.compile(r"^S[1-9A-HJ-NP-Za-km-z]{26,34}$")
+
+
+class FnCreateBody(BaseModel):
+    address: str | None = None
 
 
 def _state(request: Request) -> AppState:
@@ -115,3 +125,27 @@ async def validator_stop(request: Request):
         raise _translate(exc)
     db.audit(state.settings.db_path, "flowmesh_validator_stop", sess.username)
     return result or {"stopped": True}
+
+
+@router.post("/fn/create")
+async def fn_create(body: FnCreateBody, request: Request):
+    """Create one FN Coin. IRREVERSIBLE: the node destroys a consensus-pinned
+    amount of native B3 (tiered by slot). Unlock-gated, audited; the UI shows
+    the cost and requires explicit acknowledgement before calling this."""
+    state = _state(request)
+    sess = state.require_wallet_unlocked(request)
+    params: list = []
+    address = (body.address or "").strip()
+    if address:
+        if not _ADDRESS_RE.match(address):
+            raise HTTPException(status_code=400, detail="invalid B3 P2PKH address")
+        params.append(address)
+    try:
+        result = await state.rpc.call("createfncoin", *params)
+    except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
+        db.audit(state.settings.db_path, "fn_create", sess.username,
+                 detail=f"failed: {type(exc).__name__}", success=False)
+        raise _translate(exc)
+    db.audit(state.settings.db_path, "fn_create", sess.username,
+             detail=f"txid={(result or {}).get('txid')} tier={(result or {}).get('tier')}")
+    return result or {}

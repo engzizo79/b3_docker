@@ -28,7 +28,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Pin a version with `B3_IMAGE_TAG=v0.8.0-beta` (default is the release in `docker-compose.yml`). To build from source instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
+Pin a version with `B3_IMAGE_TAG=v0.8.1-beta` (default is the release in `docker-compose.yml`). To build from source instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
 
 ## Quick start
 

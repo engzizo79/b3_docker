@@ -185,7 +185,7 @@ function initialState() {
     /* ------------------------------------------------------------- assets */
     assets: {
       list: [], fn: null, markets: [], loaded: false, busy: false,
-      validatorBusy: false, createSupported: null,
+      validatorBusy: false, createSupported: true,
     },
     fnCreate: { open: false, ack: false, address: '', busy: false, result: null },
 

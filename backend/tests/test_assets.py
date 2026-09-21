@@ -120,6 +120,30 @@ def test_allowlist_assets_categories(client: TestClient):
     assert "getflowmeshmarketdata" in ALLOWED["assets_read"]
     assert "startflowmeshvalidator" in ALLOWED["assets_write"]
     assert "stopflowmeshvalidator" in ALLOWED["assets_write"]
+    assert "createfncoin" in ALLOWED["assets_write"]
     # issuance/burn RPCs must NOT be allowed yet (not exposed by this UI)
-    for m in ("issueasset", "sendasset", "burnasset", "createfncoin"):
+    for m in ("issueasset", "sendasset", "burnasset"):
         assert m not in ALLOWED_METHODS, m
+
+
+def test_fn_create_requires_unlock(client: TestClient):
+    mock = _mock(client)
+    mock.responses["createfncoin"] = {"txid": "ee" * 32, "tier": 1}
+    out = login(client)
+    r = client.post("/api/assets/fn/create", json={}, headers=out["headers"])
+    assert r.status_code == 423
+
+
+def test_fn_create_audited_and_validates_address(client: TestClient):
+    mock = _mock(client)
+    mock.responses["createfncoin"] = {"txid": "ee" * 32, "tier": 1}
+    out = login(client)
+    unlock(client, out["headers"])
+    r = client.post("/api/assets/fn/create", json={"address": "bc1qbad"},
+                    headers=out["headers"])
+    assert r.status_code == 400
+    r = client.post("/api/assets/fn/create", json={}, headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert r.json()["tier"] == 1
+    dbp = client.app.state.app_state.settings.db_path
+    assert "fn_create" in [a["action"] for a in db.audit_list(dbp)]

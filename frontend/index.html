@@ -2179,6 +2179,9 @@
         </div>
 
         <!-- ---- Validator (advanced) ---- -->
+        <!-- Hidden: starting a validator needs an FN Coin, and FlowMesh is not
+             ready in v1.1.4. Remove x-if/template wrapper to re-enable. -->
+        <template x-if="false">
         <div class="card adv-only">
           <div class="card-head"><strong>FlowMesh validator</strong></div>
           <div class="card-pad">
@@ -2203,6 +2206,7 @@
             </div>
           </div>
         </div>
+        </template>
       </section>
 
       <!-- ===================================================== WALLET ===== -->

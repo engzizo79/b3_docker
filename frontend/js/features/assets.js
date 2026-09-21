@@ -57,10 +57,8 @@ export const assetsMixin = {
       this.assets.markets = d.markets || [];
     } catch { this.assets.markets = []; }
 
-    // One-time capability probe for the optional creation endpoint.
-    if (this.assets.createSupported === null) {
-      this.assets.createSupported = await this.apiSupports('/api/assets/fn/create');
-    }
+    // NOTE: never probe /api/assets/fn/create (apiSupports POSTs, which would
+    // actually create an FN Coin and destroy B3). The endpoint always exists.
     this.assets.busy = false;
   },
 
