@@ -890,14 +890,19 @@
 
       <!-- Sync / bootstrap banner: visible on EVERY view while catching up. -->
       <template x-if="syncBanner()">
-        <div class="card card-pad mb-3" style="border-color:var(--accent-border);background:var(--accent-bg)">
+        <div class="card card-pad mb-3"
+             :style="syncBanner().level === 'warning'
+               ? 'border-color:var(--warning-border);background:var(--warning-bg)'
+               : 'border-color:var(--accent-border);background:var(--accent-bg)'">
           <div class="between-top">
             <div class="grow">
               <div class="row gap-2">
-                <span class="spinner accent"></span>
+                <span class="spinner accent" x-show="syncBanner().level !== 'warning'"></span>
+                <svg class="i" x-show="syncBanner().level === 'warning'" style="color:var(--warning)"><use href="#i-alert"/></svg>
                 <strong x-text="syncBanner().title"></strong>
               </div>
-              <p class="t-sm mt-1" style="color:var(--accent-text)" x-text="syncBanner().detail"></p>
+              <p class="t-sm mt-1" :style="syncBanner().level === 'warning' ? 'color:var(--warning)' : 'color:var(--accent-text)'"
+                 x-text="syncBanner().detail"></p>
             </div>
             <span class="badge badge-accent nowrap" x-show="syncBanner().pct != null"
                   x-text="fmtPercent(syncBanner().pct, 1)"></span>

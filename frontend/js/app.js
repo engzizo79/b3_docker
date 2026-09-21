@@ -145,7 +145,12 @@ function initialState() {
     chain: {
       blocks: null, headers: null, connections: null, mempool: null,
       sync: null, summary: null, finality: null,
+      // Why the node is (not) answering, from /api/chain/node-state; null = not asked yet.
+      nodeState: null,
     },
+    // True while the BACKEND itself cannot be reached (server stopped, proxy up
+    // without it, network gone). Distinct from the node not answering.
+    backend: { down: false },
     node: {
       info: null, peers: [], bridge: null, supply: null,
       conf: null, confForm: {}, confEditing: false,

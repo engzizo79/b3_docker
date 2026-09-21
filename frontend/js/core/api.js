@@ -33,9 +33,14 @@ export const apiMixin = {
         body: opts.body,
       });
     } catch (e) {
-      // Network-level failure: the node/backend is unreachable or restarting.
+      // Network-level failure: the backend is unreachable or restarting.
+      this._setBackendDown(true);
       throw new ApiError('Cannot reach B3 Hive. Is the service still running?', 0);
     }
+    // A dead backend behind the reverse proxy answers 502/503/504 with no JSON
+    // body (decided below); any other status means the backend itself spoke.
+    const proxyStatus = [502, 503, 504].includes(res.status);
+    if (!proxyStatus) this._setBackendDown(false);
 
     if (res.status === 401) {
       this.session.authenticated = false;
@@ -47,8 +52,27 @@ export const apiMixin = {
     }
 
     const data = await res.json().catch(() => ({}));
+    if (proxyStatus) {
+      // Our backend always includes {detail} (e.g. "node unavailable"); a bare
+      // 5xx is the proxy saying there is nothing behind it.
+      const backendSpoke = typeof data?.detail === 'string';
+      this._setBackendDown(!backendSpoke);
+      if (!backendSpoke) {
+        throw new ApiError('Cannot reach B3 Hive. Is the service still running?', 0);
+      }
+    }
     if (!res.ok) throw new ApiError(friendlyError(res.status, data), res.status, data);
     return data;
+  },
+
+  /** Track backend reachability; announce recovery and refresh straight away. */
+  _setBackendDown(down) {
+    if (this.backend.down === down) return;
+    this.backend.down = down;
+    if (!down) {
+      this.showToast('Reconnected to B3 Hive');
+      this.pollNow?.();
+    }
   },
 
   /** Probe whether an endpoint exists at all, without surfacing an error.

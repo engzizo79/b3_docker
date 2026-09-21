@@ -77,6 +77,9 @@ export const stateMixin = {
 
   nodeDown() { return this.chain.blocks === null; },
 
+  /** Backend-reported reason the node is not answering (see /api/chain/node-state), or null. */
+  nodeState() { return this.chain.nodeState ? this.chain.nodeState.state : null; },
+
  /** True while the daemon is booting, derived from BACKEND state so it
  * survives page reloads and navigation (regression: the Node view kept
  * 'starting' in browser memory only, so after a reload the Start button
@@ -87,7 +90,11 @@ export const stateMixin = {
  * - daemon_deferred === true -> the daemon was NEVER started: keep the
  * button enabled so the user can start it here. */
  nodeStarting() {
+ if (this.backend.down) return false; // unknown, not "starting"
  if (this.node.starting) return true; // optimistic in-session flag
+ // The backend said why the node is not answering: trust it over inference.
+ const ns = this.nodeState();
+ if (ns) return ns === 'warming_up' || ns === 'starting';
  if (!this.setup.checked) return false;
  if (this.setup.daemon_deferred === null || this.setup.daemon_deferred === undefined) return false;
  return this.setup.daemon_deferred === false && this.nodeDown();
@@ -146,6 +153,16 @@ export const stateMixin = {
     if (this.setupActive()) return null;
     if (!this.setup.wizard_done) return null;
 
+    // Cannot even reach the backend: the rest of this is stale, say so first.
+    if (this.backend.down) {
+      return {
+        kind: 'offline', level: 'warning',
+        title: 'Can’t reach B3 Hive',
+        detail: 'The service may be restarting, or the connection dropped. Retrying automatically…',
+        pct: null,
+      };
+    }
+
     const phase = this.bootstrapPhase();
     if (this.bootstrapActive()) {
       const labels = {
@@ -162,10 +179,29 @@ export const stateMixin = {
       };
     }
     if (this.nodeDown()) {
+      const ns = this.nodeState();
+      const why = (this.chain.nodeState && this.chain.nodeState.detail) || '';
+      // Never started / not installed: the guidance card owns those.
+      if (ns === 'not_started' || ns === 'binary_missing') return null;
+      if (ns === 'unreachable') {
+        return { kind: 'error', level: 'warning', title: 'Can’t reach your external node',
+                 detail: (why ? why + ' did not answer. ' : '') + 'Check that it is running and the address is right.',
+                 pct: null };
+      }
+      if (ns === 'auth_error') {
+        return { kind: 'error', level: 'warning', title: 'Your node rejected the login',
+                 detail: 'The RPC username or password does not match the node’s configuration.',
+                 pct: null };
+      }
+      if (ns === 'error') {
+        return { kind: 'error', level: 'warning', title: 'Your node reported a problem',
+                 detail: why || 'It answered with an error.', pct: null };
+      }
       return {
         kind: 'starting',
         title: 'Your node is starting',
-        detail: 'B3 nodes take a few minutes to scan their index before they answer.',
+        detail: why ? 'The node says: ' + why
+                    : 'B3 nodes take a few minutes to scan their index before they answer.',
         pct: null,
       };
     }
@@ -238,7 +274,8 @@ export const stateMixin = {
 
     /* 3. Node genuinely never started — the only state where offering
        Start is correct (fresh deferred install / wizard skipped it). */
-    if (this.nodeDown() && !this.bootstrapActive()) {
+    if (this.nodeDown() && !this.bootstrapActive() && !this.backend.down
+        && [null, 'not_started'].includes(this.nodeState())) {
       return {
         level: 'warning', icon: 'server', title: 'Your node isn’t running',
         text: 'B3 Hive needs the node to read balances and send coins. '

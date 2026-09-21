@@ -24,22 +24,33 @@ export const nodeMixin = {
       this.chain.mempool = d.mempool?.size ?? null;
       this.chain.summary = d;
       this.chain.sync = d.sync || null;
+      this.chain.nodeState = { state: 'running', detail: '' };
       // The node answered: end the honest "starting" state.
       if (this.node.starting || this.nodeStarting()) {
         this.node.starting = false;
         this.showToast('Your node is responding');
       }
     } catch {
-      // Expected while the node boots (~5 min index scan). nodeDown() reads
-      // chain.blocks === null, which drives the guided "node is starting" card.
+      // The backend itself is unreachable: say nothing about the node and keep
+      // the last known chain data instead of pretending the node is starting.
+      if (this.backend.down) return;
       this.chain.blocks = null;
       this.chain.sync = null;
       this.chain.summary = null;
+      // Ask the backend WHY (warming up / never started / external node
+      // unreachable / bad credentials) rather than guessing.
+      try {
+        this.chain.nodeState = await this.api('/api/chain/node-state');
+        if (this.chain.nodeState.state !== 'starting') this.node.starting = false;
+      } catch {
+        if (this.backend.down) return;
+        this.chain.nodeState = null;
+      }
     }
     try {
       const f = await this.api('/api/chain/finality');
       this.chain.finality = f.finality || null;
-    } catch { this.chain.finality = null; }
+    } catch { if (!this.backend.down) this.chain.finality = null; }
   },
 
   /** Heavier reads, only when the Node view is open. */

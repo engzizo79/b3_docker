@@ -1,5 +1,7 @@
 """Read-only chain-state endpoints for the dashboard."""
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Request
 
 from app.deps import AppState
@@ -55,6 +57,52 @@ async def chain_summary(request: Request):
         "mempool": mempool,
         "sync": sync,
     }
+
+
+# Bitcoin-derived nodes answer RPC while warming up (block index load, verify,
+# rescan) with this error code; the message says which phase they are in.
+RPC_IN_WARMUP = -28
+
+
+@router.get("/node-state")
+async def node_state(request: Request):
+    """Why the node is (not) answering, so the UI can tell them apart.
+
+    running        node answers RPC
+    warming_up     node is up and says it is still loading (detail = its words)
+    not_started    managed daemon was never told to start (first-run deferral)
+    starting       managed daemon launched but RPC is not listening yet
+    unreachable    external node did not answer at host:port
+    binary_missing managed mode but the daemon binary is not installed
+    auth_error     node rejected the RPC credentials
+    error          node answered with some other error (detail = its message)
+
+    "The backend itself is down" cannot be reported here by definition; the
+    browser detects that from the failed request (see api.js)."""
+    state = _state(request)
+    state.require_2fa(request)
+    cfg = state.settings
+    try:
+        await state.rpc.call("getblockchaininfo")
+        return {"state": "running", "detail": ""}
+    except RPCError as exc:
+        if exc.code == RPC_IN_WARMUP:
+            return {"state": "warming_up", "detail": exc.message}
+        if "rejected credentials" in exc.message:
+            return {"state": "auth_error", "detail": exc.message}
+        return {"state": "error", "detail": exc.message}
+    except RPCNotAllowed as exc:
+        raise _translate(exc)
+    except RPCUnavailable:
+        pass
+    if cfg.daemon_mode == "external":
+        return {"state": "unreachable",
+                "detail": f"{cfg.ext_rpc_host}:{cfg.ext_rpc_port}"}
+    if not (Path(cfg.daemon_dir) / "b3coind").is_file():
+        return {"state": "binary_missing", "detail": ""}
+    if Path(cfg.daemon_deferred_file).is_file():
+        return {"state": "not_started", "detail": ""}
+    return {"state": "starting", "detail": ""}
 
 
 @router.get("/finality")
