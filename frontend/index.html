@@ -1468,12 +1468,19 @@
               <svg class="i-sm"><use href="#i-plus"/></svg><span>New address</span>
             </button>
           </div>
-          <div class="card-pad" x-show="book.addresses.length > 6">
-            <div class="field">
+          <div class="card-pad addr-toolbar" x-show="book.addresses.length > 1">
+            <div class="field addr-search">
               <label class="sr-only" for="addr-search">Search addresses</label>
-              <input id="addr-search" class="input" x-model="book.query"
+              <input id="addr-search" class="input" type="search" x-model="book.query"
                      placeholder="Search by label or address">
             </div>
+            <label class="check t-sm">
+              <input type="checkbox" x-model="book.hideEmpty"><span>Hide empty</span>
+            </label>
+            <span class="t-sm muted addr-count">
+              <span x-text="bookFiltered().length"></span> of <span x-text="book.addresses.length"></span>
+              · <span x-text="fmtAmount(bookTotal(), { maxDecimals: 2, unit: true })"></span>
+            </span>
           </div>
 
           <div class="empty" x-show="book.loaded && !book.addresses.length">
@@ -1485,14 +1492,70 @@
             </button>
           </div>
 
-          <div>
+          <div class="empty empty--tight" x-show="book.addresses.length && !bookFiltered().length">
+            <h3>No matches</h3>
+            <p>Nothing matches your search or the “Hide empty” filter.</p>
+          </div>
+
+          <!-- Desktop: a real table (full address, sortable, right-aligned balance). -->
+          <div class="table-wrap only-desktop" x-show="bookFiltered().length">
+            <table class="tbl addr-tbl">
+              <thead><tr>
+                <th><button class="th-sort" type="button" @click="bookSort('label')"
+                            :aria-sort="bookAria('label')">Label <span x-text="bookArrow('label')"></span></button></th>
+                <th>Address</th>
+                <th class="num"><button class="th-sort" type="button" @click="bookSort('amount')"
+                            :aria-sort="bookAria('amount')"><span x-text="bookArrow('amount')"></span> Received</button></th>
+                <th class="num addr-actions-h"><span class="sr-only">Actions</span></th>
+              </tr></thead>
+              <tbody>
+                <template x-for="a in bookFiltered()" :key="a.address">
+                  <tr>
+                    <td class="addr-label">
+                      <template x-if="book.editing !== a.address">
+                        <strong x-text="a.label || 'No label'" :class="a.label ? '' : 'muted'"></strong>
+                      </template>
+                      <template x-if="book.editing === a.address">
+                        <span class="row gap-2">
+                          <input class="input select-sm" x-model="book.draftLabel"
+                                 :aria-label="'Label for ' + a.address" maxlength="64"
+                                 @keydown.enter="saveLabel(a.address)" @keydown.escape="cancelRename()"
+                                 x-init="$nextTick(() => $el.focus())">
+                          <button class="btn btn-primary btn-sm" type="button" @click="saveLabel(a.address)">Save</button>
+                          <button class="btn btn-ghost btn-sm" type="button" @click="cancelRename()">Cancel</button>
+                        </span>
+                      </template>
+                    </td>
+                    <td><code class="addr-full" x-text="a.address"></code></td>
+                    <td class="num t-sm" :class="Number(a.amount) > 0 ? '' : 'muted'"
+                        x-text="fmtAmount(a.amount, { maxDecimals: 2, unit: true })"></td>
+                    <td class="num addr-actions">
+                      <button class="btn btn-ghost btn-sm btn-icon" type="button" @click="startRename(a)"
+                              aria-label="Rename" data-tip="Rename"><svg class="i-sm"><use href="#i-pen"/></svg></button>
+                      <button class="btn btn-ghost btn-sm btn-icon" type="button"
+                              @click="copyText(a.address, 'Address copied')"
+                              aria-label="Copy address" data-tip="Copy address"><svg class="i-sm"><use href="#i-copy"/></svg></button>
+                      <button class="btn btn-ghost btn-sm btn-icon" type="button"
+                              @click="sendTo(a.address, a.label)" aria-label="Send to this address"
+                              data-tip="Send to this address"><svg class="i-sm"><use href="#i-arrow-up"/></svg></button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Phone: compact list rows. -->
+          <div class="only-mobile">
             <template x-for="a in bookFiltered()" :key="a.address">
               <div class="list-row">
                 <span class="lead"><svg class="i-sm"><use href="#i-book"/></svg></span>
                 <span class="body">
                   <span class="col" style="gap:1px" x-show="book.editing !== a.address">
                     <strong class="t-sm" x-text="a.label || 'No label'"></strong>
-                    <span class="meta mono" x-text="truncAddr(a.address, 10, 8)"></span>
+                    <span class="meta mono" x-text="truncAddr(a.address, 7, 6)"></span>
+                    <span class="meta t-sm" :class="Number(a.amount) > 0 ? '' : 'muted'"
+                          x-text="fmtAmount(a.amount, { maxDecimals: 2, unit: true })"></span>
                   </span>
                   <span class="row gap-2" x-show="book.editing === a.address">
                       <input class="input" style="min-height:36px" x-model="book.draftLabel"
@@ -1505,8 +1568,7 @@
                               @click="cancelRename()">Cancel</button>
                   </span>
                 </span>
-                <span class="trail row gap-1" x-show="book.editing !== a.address">
-                  <span class="t-sm muted nowrap" x-text="fmtAmount(a.amount, { maxDecimals: 2, unit: true })"></span>
+                <span class="trail trail-row" x-show="book.editing !== a.address">
                   <button class="btn btn-ghost btn-sm btn-icon" type="button"
                           @click="startRename(a)" aria-label="Rename" data-tip="Rename">
                     <svg class="i-sm"><use href="#i-pen"/></svg>

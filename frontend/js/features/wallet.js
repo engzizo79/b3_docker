@@ -175,7 +175,35 @@ export const walletMixin = {
       list = list.filter((a) =>
         (a.label || '').toLowerCase().includes(q) || a.address.toLowerCase().includes(q));
     }
+    if (this.book.hideEmpty) list = list.filter((a) => Number(a.amount) > 0);
+    const { key, dir } = this.book.sort;
+    if (key) {
+      const sign = dir === 'desc' ? -1 : 1;
+      list = [...list].sort((x, y) => sign * (key === 'amount'
+        ? Number(x.amount) - Number(y.amount)
+        : (x.label || '\uffff').localeCompare(y.label || '\uffff')));
+    }
     return list;
+  },
+
+  /** Display-only total of the visible rows (never used for spending math). */
+  bookTotal() {
+    return this.bookFiltered().reduce((t, a) => t + Number(a.amount || 0), 0).toFixed(9);
+  },
+
+  bookSort(key) {
+    const s = this.book.sort;
+    this.book.sort = (s.key === key)
+      ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: key === 'amount' ? 'desc' : 'asc' };
+  },
+  bookArrow(key) {
+    const s = this.book.sort;
+    return s.key === key ? (s.dir === 'asc' ? '▲' : '▼') : '';
+  },
+  bookAria(key) {
+    const s = this.book.sort;
+    return s.key === key ? (s.dir === 'asc' ? 'ascending' : 'descending') : 'none';
   },
 
   /* ------------------------------------------------- wallet files (manage) */
