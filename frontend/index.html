@@ -3237,9 +3237,9 @@
         </label>
         <div class="field">
           <span class="field-label">Remote sessions with 2FA</span>
-          <label class="toggle-row">
+          <label class="check">
             <input type="checkbox" x-model="console.sform.remote_full_access">
-            <span class="toggle-text">
+            <span class="check-body">
               <strong class="t-sm">Full access</strong>
               <span class="help">On (default): a remote session that passes 2FA can run
                 everything, like localhost. Off: remotes are read-only even with 2FA. Turning
@@ -3339,7 +3339,7 @@
       </div>
       <div class="field" x-show="ts.loaded && !ts.joined">
         <label>Auth key</label>
-        <input type="password" x-model="ts.authkey" placeholder="tskey-..."
+        <input class="input input-mono" type="password" x-model="ts.authkey" placeholder="tskey-..."
                autocomplete="off" :disabled="ts.busy">
       </div>
       <p class="danger t-sm" x-show="ts.error" x-text="ts.error"></p>

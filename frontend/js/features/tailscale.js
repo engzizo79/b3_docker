@@ -9,6 +9,13 @@
  The ts.net URL is real HTTPS (Let's Encrypt), which also makes the
  browser a secure context — envelope encryption then always seals. */
 
+/* Tailscale failures carry the CLI's own explanation (bad/expired/used key,
+   daemon not reachable); the generic status text hides the actual cause. */
+function tsMessage(e) {
+  const d = e && e.data && typeof e.data.detail === 'string' ? e.data.detail : '';
+  return d ? d.replace(/tskey-\S+/g, 'tskey-…') : e.message;
+}
+
 export const tailscaleMixin = {
 
   async loadTailscale() {
@@ -43,7 +50,7 @@ export const tailscaleMixin = {
       // Joining enables the node's ts.net name; offer HTTPS serving next.
       this.ts.joinOpen = false;
     } catch (e) {
-      this.ts.error = e.message;
+      this.ts.error = tsMessage(e);
     } finally {
       this.ts.busy = false;
     }
@@ -60,7 +67,7 @@ export const tailscaleMixin = {
                         : 'HTTPS serving turned off.', 'success');
       await this.loadTailscale();
     } catch (e) {
-      this.ts.error = e.message;
+      this.ts.error = tsMessage(e);
     } finally {
       this.ts.busy = false;
     }
@@ -79,7 +86,7 @@ export const tailscaleMixin = {
           this.showToast('Left the tailnet.', 'success');
           await this.loadTailscale();
         } catch (e) {
-          this.ts.error = e.message;
+          this.ts.error = tsMessage(e);
         } finally {
           this.ts.busy = false;
         }

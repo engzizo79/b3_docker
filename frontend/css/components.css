@@ -841,7 +841,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: var(--text-base);
   background: var(--bg-inset, #0d0f14);
   border: 1px solid var(--border, #2a2d36);
   border-radius: var(--radius-md, 10px);
-  max-height: 320px;
+  height: 60vh; min-height: 320px; max-height: 85vh;
+  resize: vertical;
   overflow-y: auto;
   padding: var(--space-3);
   display: flex;
@@ -852,7 +853,8 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: var(--text-base);
 .console-line { display: flex; gap: var(--space-2); align-items: flex-start; }
 .console-prompt { color: var(--accent, #f59e0b); font-family: var(--font-mono); user-select: none; }
 .console-text {
-  margin: 0; font-family: var(--font-mono); font-size: 0.82rem;
+  margin: 0; font-family: var(--font-mono); font-size: var(--text-sm);
+  line-height: 1.5;
   white-space: pre-wrap; word-break: break-word; flex: 1;
 }
 .console-in .console-text { color: var(--text, #e6e6e6); }

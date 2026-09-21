@@ -122,8 +122,15 @@ async def tailscale_join(body: JoinBody, request: Request):
     if not key.startswith("tskey-"):
         raise HTTPException(422, "invalid auth key (must start with tskey-)")
     try:
-        rc, out = await _ts("up", "--authkey", key, "--timeout", "30s",
-                            timeout=60.0)
+        # --reset: a node with prior non-default settings otherwise fails
+        # with "changing settings via 'tailscale up' requires mentioning
+        # all non-default flags". Wait briefly for tailscaled's socket.
+        for _ in range(10):
+            if os.path.exists(_socket()):
+                break
+            await asyncio.sleep(1)
+        rc, out = await _ts("up", "--reset", "--authkey", key,
+                            "--timeout", "30s", timeout=60.0)
     except FileNotFoundError:
         raise HTTPException(503, "tailscale not installed")
     if rc != 0:

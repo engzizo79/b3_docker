@@ -95,8 +95,10 @@ async def update_settings(body: dict, request: Request):
     sess = state.require_session(request)
     body = body or {}
     dbp = state.settings.db_path
-    target = _amount_or_400(body.get("autostake_target", ""), "target")
-    reserve = _amount_or_400(body.get("autostake_reserve", ""), "reserve")
+    target = _amount_or_400(body.get("autostake_target", ""), "target",
+                            allow_zero=True)
+    reserve = _amount_or_400(body.get("autostake_reserve", ""), "reserve",
+                             allow_zero=True)
     enable = bool(body.get("autostake_enabled"))
     passphrase = str(body.get("passphrase") or "")
     acknowledged = bool(body.get("acknowledge_risk"))
