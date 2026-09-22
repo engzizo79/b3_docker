@@ -12,6 +12,21 @@ One image contains b3coind + FastAPI backend proxy + static SPA. The browser nev
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/SECURITY.md](docs/SECURITY.md).
 
+## Is this safe to run with a real wallet?
+
+This handles real coins, so you shouldn't have to take that on faith — the source is public, so read it instead of trusting this paragraph. Here's exactly what it does and doesn't do, and what you're actually trusting if you run it.
+
+**What never leaves your machine:** your wallet passphrase is held only in your browser session and the backend's memory; it's never written to disk unencrypted, and the backend's own database only ever stores it Fernet-encrypted — and only if you opt into autostake, to unlock the wallet locally for its own scheduled checks. In the default (all-in-one) mode, it's sent to the node over `127.0.0.1` inside the container, nowhere else. Node RPC credentials are generated locally into `b3coin.conf` / `.secrets.env` on your own data volume and never transmitted. The frontend is fully self-hosted (`Content-Security-Policy: default-src 'self'` — see [docs/SECURITY.md](docs/SECURITY.md)): no CDN scripts, no fonts, no analytics, nothing loaded from a third party at all.
+
+**The few things that do reach the internet, and why:** a GitHub API call to check/download `b3coind` releases (Settings → node install/upgrade, or automatically on a fresh headless run — see [Run modes](#run-modes)); an optional block-height check against `EXPLORER_URL` (set it empty to disable); and a webhook POST of a short alert message, only if you set `WEBHOOK_URL` yourself. None of these ever carry your passphrase, keys or RPC credentials — check `backend/app/monitor.py`, `backend/app/daemon_release.py` and `backend/app/routers/setup.py` yourself.
+
+**What you're trusting, spelled out:**
+- **This project's code** — public, and small enough to actually read. Issues and PRs welcome.
+- **The published image** (`ghcr.io/engzizo79/b3hive`) — built straight from this repo by the GitHub Actions workflow in [`.github/workflows/release.yml`](.github/workflows/release.yml); nothing hand-uploaded. If you'd rather not trust that pipeline (or my GitHub account) at all, build it yourself: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
+- **The `b3coind` binary itself** — downloaded from B3-Coin/B3-CoinV2's own GitHub releases, not built by this project. Its SHA256 is checked against that same release's checksums before it's installed, which catches a corrupted or tampered *download* — it does not audit the upstream project's own code. You're trusting B3Hive's binaries the same as you would running them any other way.
+
+None of that makes this bulletproof — it's beta software (see [Status](#status)), and "the code looks fine" is not a substitute for keeping backups and not risking more than you can afford to lose.
+
 ## Getting started
 
 **You need:** Docker with Compose v2.24 or newer (`docker compose version`), a 64-bit Linux/Windows/Mac machine (the image is `linux/amd64` only, so no Raspberry Pi or Apple Silicon without emulation), and a few GB of free disk (the chain is currently about 1.3 GB and grows). The image is published to GitHub Container Registry as `ghcr.io/engzizo79/b3hive`.
@@ -23,6 +38,7 @@ You only need `docker-compose.yml`; cloning the repo is optional.
 ```bash
 mkdir b3hive && cd b3hive
 curl -O https://raw.githubusercontent.com/engzizo79/b3_docker/master/docker-compose.yml
+mkdir -p ~/.B3-CoinV2   # the data folder compose maps in — create it before first run
 docker compose up -d
 ```
 
