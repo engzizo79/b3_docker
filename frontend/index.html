@@ -320,6 +320,8 @@
                       <span class="badge" :class="alertBadgeClass(al.level)"
                             x-text="alertLevelWord(al.level)"></span>
                       <span class="meta" x-text="fmtRelative(al.ts)"></span>
+                      <span class="badge badge-neutral" x-show="al.node_name && nodes.list.length > 1"
+                            x-text="al.node_name"></span>
                     </div>
                     <span class="t-sm" x-text="al.message"></span>
                   </div>

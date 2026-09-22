@@ -127,6 +127,16 @@ CREATE TABLE IF NOT EXISTS notification_state (
  id INTEGER PRIMARY KEY CHECK (id = 1), -- single row
  seeded INTEGER NOT NULL DEFAULT 0 -- wallet monitor has completed its no-notify seed pass
 );
+CREATE TABLE IF NOT EXISTS notification_seeded_nodes (
+ -- Phase 3: one seeded flag PER NODE (notification_state above stays the
+ -- legacy single-node/global flag for any caller that doesn't pass a node
+ -- id). Without this, the first node's wallet monitor to complete its seed
+ -- pass would mark seeding globally done, and every OTHER node's monitor
+ -- would then skip its own seed pass and instantly "discover" — and
+ -- notify for — that node's entire transaction history.
+ node_id INTEGER PRIMARY KEY,
+ seeded INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS nodes (
  id INTEGER PRIMARY KEY,
  name TEXT UNIQUE NOT NULL,          -- operator-facing label, e.g. "validator-2"
@@ -149,9 +159,24 @@ def _connect(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, coldef: str) -> None:
+    """Additive column migration for a table that predates it (there is no
+    migration framework — see docs/MULTINODE_PLAN.md — so new columns on an
+    EXISTING table are added defensively here; a brand-new table just goes
+    straight in SCHEMA as CREATE TABLE IF NOT EXISTS). Safe to call every
+    boot: a no-op once the column exists."""
+    cols = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coldef}")
+
+
 def init_db(db_path: str) -> None:
     with _lock, _connect(db_path) as conn:
         conn.executescript(SCHEMA)
+        # Multi-node fleet (docs/MULTINODE_PLAN.md Phase 3): which node an
+        # alert came from. NULL on pre-Phase-3 rows and on alerts raised
+        # with no node context (e.g. general backend errors).
+        _ensure_column(conn, "alerts", "node_id", "INTEGER")
 
 
 def ensure_user(db_path: str, username: str, password: str) -> None:
@@ -236,18 +261,32 @@ def audit(db_path: str, action: str, username: str | None = None,
             (time.time(), username, action, detail, 1 if success else 0))
 
 
-def alert_add(db_path: str, level: str, message: str) -> None:
+def alert_add(db_path: str, level: str, message: str, node_id: int | None = None) -> None:
     with _lock, _connect(db_path) as conn:
-        conn.execute("INSERT INTO alerts (level, message) VALUES (?, ?)", (level, message))
+        conn.execute("INSERT INTO alerts (level, message, node_id) VALUES (?, ?, ?)",
+                     (level, message, node_id))
 
 
-def alert_list(db_path: str, unacked_only: bool = False, limit: int = 100) -> list[dict]:
+def alert_list(db_path: str, unacked_only: bool = False, limit: int = 100,
+              node_id: int | None = None) -> list[dict]:
+    """Each row carries node_name alongside the raw node_id (a LEFT JOIN, so
+    an alert from a since-deleted node still returns — node_name just comes
+    back None) — the bell shows which node without the frontend needing its
+    own node lookup."""
     with _lock, _connect(db_path) as conn:
-        q = "SELECT * FROM alerts"
+        q = ("SELECT a.*, n.name AS node_name FROM alerts a "
+            "LEFT JOIN nodes n ON n.id = a.node_id")
+        where, args = [], []
         if unacked_only:
-            q += " WHERE acknowledged=0"
-        q += " ORDER BY id DESC LIMIT ?"
-        rows = conn.execute(q, (limit,)).fetchall()
+            where.append("a.acknowledged=0")
+        if node_id is not None:
+            where.append("a.node_id=?")
+            args.append(node_id)
+        if where:
+            q += " WHERE " + " AND ".join(where)
+        q += " ORDER BY a.id DESC LIMIT ?"
+        args.append(limit)
+        rows = conn.execute(q, args).fetchall()
         return [dict(r) for r in rows]
 
 
@@ -675,17 +714,30 @@ def notification_seen_prune(db_path: str, older_than_ts: float) -> None:
         conn.execute("DELETE FROM notification_seen WHERE ts < ?", (older_than_ts,))
 
 
-def notification_seeded(db_path: str) -> bool:
+def notification_seeded(db_path: str, node_id: int | None = None) -> bool:
+    """node_id=None is the legacy/global flag (single-node installs, and
+    any caller not yet passing a node); a real node id checks its own row
+    in notification_seeded_nodes — see that table's comment."""
     with _lock, _connect(db_path) as conn:
-        row = conn.execute("SELECT seeded FROM notification_state WHERE id=1").fetchone()
+        if node_id is None:
+            row = conn.execute("SELECT seeded FROM notification_state WHERE id=1").fetchone()
+        else:
+            row = conn.execute(
+                "SELECT seeded FROM notification_seeded_nodes WHERE node_id=?",
+                (node_id,)).fetchone()
     return bool(row and row["seeded"])
 
 
-def notification_mark_seeded(db_path: str) -> None:
+def notification_mark_seeded(db_path: str, node_id: int | None = None) -> None:
     with _lock, _connect(db_path) as conn:
-        conn.execute(
-            "INSERT INTO notification_state (id, seeded) VALUES (1, 1)"
-            " ON CONFLICT(id) DO UPDATE SET seeded=1")
+        if node_id is None:
+            conn.execute(
+                "INSERT INTO notification_state (id, seeded) VALUES (1, 1)"
+                " ON CONFLICT(id) DO UPDATE SET seeded=1")
+        else:
+            conn.execute(
+                "INSERT INTO notification_seeded_nodes (node_id, seeded) VALUES (?, 1)"
+                " ON CONFLICT(node_id) DO UPDATE SET seeded=1", (node_id,))
 
 
 def notification_pending_get(db_path: str, event_type: str) -> dict | None:

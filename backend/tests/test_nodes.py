@@ -277,12 +277,22 @@ def test_fleet_status_degrades_one_bad_node(client: TestClient, monkeypatch):
     assert rows["local"]["finality"]["bound"] is True
     assert rows["local"]["fn_balance"] == 1200
     assert rows["local"]["height_delta"] == 0
+    # "local" was in the registry at lifespan startup, so it has a running
+    # background monitor (Phase 3 done-when: visible in the fleet view).
+    assert rows["local"]["monitor"]["stall_count"] == 0
 
     assert rows["validator-2"]["reachable"] is True
+    # validator-2 was registered mid-session (after startup), so it has no
+    # monitor yet — see start_monitors' docstring (next restart picks it up).
+    assert rows["validator-2"]["monitor"] is None
 
     assert rows["dead"]["reachable"] is False
     assert "error" in rows["dead"]
     assert rows["dead"]["height_delta"] is None
+    # Monitor status is attached BEFORE the reachability probe runs, so it
+    # shows up even for a node that's down right now — but this one was
+    # also registered mid-session, so it has no monitor either way.
+    assert rows["dead"]["monitor"] is None
     # A dead node never even attempted the wallet-scoped calls that would
     # need a real "staking"/"finality" shape.
     assert "staking" not in rows["dead"]

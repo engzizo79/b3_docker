@@ -32,11 +32,20 @@ def _read_progress(settings: Settings) -> dict | None:
 
 
 class ChainMonitor:
-    """Periodic chain-health checker."""
+    """Periodic chain-health checker.
 
-    def __init__(self, settings: Settings, rpc: B3RPCClient) -> None:
+    node_id/node_name (Phase 3, docs/MULTINODE_PLAN.md): which node this
+    instance watches. Both default so a direct ChainMonitor(settings, rpc)
+    call (tests, or any caller not yet node-aware) behaves exactly as
+    before Phase 3 — node_id=None means the legacy/global alert + a plain,
+    unkeyed notifier coalescing scope."""
+
+    def __init__(self, settings: Settings, rpc: B3RPCClient,
+                node_id: int | None = None, node_name: str = "") -> None:
         self.settings = settings
         self.rpc = rpc
+        self.node_id = node_id
+        self.node_name = node_name
         self._task: asyncio.Task | None = None
         self._last_blocks: int | None = None
         self._last_ts: float | None = None
@@ -93,7 +102,8 @@ class ChainMonitor:
                 msg = (f"Chain stall: block {blocks} unchanged for "
                        f"{int(elapsed/60)} min (stall #{self._stall_count})")
                 logger.warning(msg)
-                await notifier.notify(self.settings, "stall", msg)
+                await notifier.notify(self.settings, "stall", msg,
+                                      node_id=self.node_id, node_name=self.node_name)
                 await self._maybe_recover()
                 self._last_ts = now  # reset timer to avoid flood
         else:
@@ -128,7 +138,8 @@ class ChainMonitor:
                         msg = (f"Sync lag: local={local_blocks} explorer={explorer_blocks} "
                                f"({lag} blocks behind)")
                         logger.warning(msg)
-                        await notifier.notify(self.settings, "lag", msg)
+                        await notifier.notify(self.settings, "lag", msg,
+                                              node_id=self.node_id, node_name=self.node_name)
         except Exception as exc:
             logger.debug("explorer check failed: %s", exc)
 
@@ -147,24 +158,30 @@ class ChainMonitor:
                 self._recovery_triggered = True
                 msg = f"Recovery: wrote {cmd} to {cmd_file}"
                 logger.info(msg)
-                await notifier.notify(self.settings, "recovery", msg)
+                await notifier.notify(self.settings, "recovery", msg,
+                                      node_id=self.node_id, node_name=self.node_name)
             except Exception as exc:
                 logger.error("failed to write recovery cmd: %s", exc)
 
 
-# Singleton (created in main.py lifespan)
-monitor: ChainMonitor | None = None
+# Registry keyed by node id (Phase 3, docs/MULTINODE_PLAN.md) — one
+# ChainMonitor per registered node.
+monitors: dict[int, ChainMonitor] = {}
 
 
-def start_monitor(settings: Settings, rpc: B3RPCClient) -> ChainMonitor:
-    global monitor
-    monitor = ChainMonitor(settings, rpc)
-    monitor.start()
-    return monitor
+def start_monitors(settings: Settings, state) -> None:
+    """One instance per row in the node registry, each on its own RPC
+    client (state.client_for_node — cached, normal timeout, unlike the
+    fleet dashboard's throwaway probes)."""
+    from app import db
+    for node in db.node_list(settings.db_path):
+        mon = ChainMonitor(settings, state.client_for_node(node),
+                           node_id=node["id"], node_name=node["name"])
+        mon.start()
+        monitors[node["id"]] = mon
 
 
-async def stop_monitor() -> None:
-    global monitor
-    if monitor is not None:
-        await monitor.stop()
-        monitor = None
+async def stop_monitors() -> None:
+    for mon in monitors.values():
+        await mon.stop()
+    monitors.clear()

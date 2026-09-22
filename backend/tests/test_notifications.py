@@ -250,6 +250,69 @@ def test_seed_pass_records_history_without_notifying(client, mock_rpc, settings,
     assert fake_push["calls"] == []
 
 
+def test_seed_pass_is_per_node(client, mock_rpc, settings, fake_push):
+    """Phase 3 regression: node A finishing its no-backfill seed pass must
+    never make node B's monitor think IT is already seeded too — that
+    would flip B straight into "notify" mode on its very first tick and
+    backfill-flood B's entire existing history."""
+    from tests.conftest import MockRPC
+    _unpause(settings)
+    txs = [_tx("aa" * 32, "receive", 5.0), _tx("bb" * 32, "stake", 100.0)]
+    mock_rpc.responses["listwallets"] = ["wallet"]
+    mock_rpc.responses["listtransactions"] = txs
+    rpc_b = MockRPC()
+    rpc_b.responses["listwallets"] = ["wallet"]
+    rpc_b.responses["listtransactions"] = txs
+
+    import asyncio
+    wm_a = WalletMonitor(settings, mock_rpc, node_id=1, node_name="local")
+    asyncio.run(wm_a._check())
+    assert db.notification_seeded(settings.db_path, node_id=1) is True
+
+    # Node B has NOT run yet — its own flag must still be unset even though
+    # node A's just flipped to seeded.
+    assert db.notification_seeded(settings.db_path, node_id=2) is False
+
+    wm_b = WalletMonitor(settings, rpc_b, node_id=2, node_name="validator-2")
+    asyncio.run(wm_b._check())
+    assert db.notification_seeded(settings.db_path, node_id=2) is True
+
+    # Both were seed passes (no notification), not a backfill flood.
+    assert db.alert_list(settings.db_path) == []
+    assert fake_push["calls"] == []
+
+
+def test_same_txid_on_two_nodes_both_notify(client, mock_rpc, settings, fake_push):
+    """Two nodes can legitimately see the same txid (docs/MULTINODE_PLAN.md
+    3.2) — e.g. two validators whose wallets both received the same
+    payment. Node A recording it as "seen" must not make node B's monitor
+    think IT already reported that txid:vout too."""
+    from tests.conftest import MockRPC
+    _unpause(settings)
+    _subscribe(settings)
+    same_tx = _tx("cc" * 32, "receive", "12.500000000")
+    mock_rpc.responses["listwallets"] = ["wallet"]
+    mock_rpc.responses["listtransactions"] = []
+    rpc_b = MockRPC()
+    rpc_b.responses["listwallets"] = ["wallet"]
+    rpc_b.responses["listtransactions"] = []
+
+    import asyncio
+    wm_a = WalletMonitor(settings, mock_rpc, node_id=1, node_name="local")
+    wm_b = WalletMonitor(settings, rpc_b, node_id=2, node_name="validator-2")
+    asyncio.run(wm_a._check())  # seed pass, nothing to seed
+    asyncio.run(wm_b._check())  # seed pass, nothing to seed
+
+    mock_rpc.responses["listtransactions"] = [same_tx]
+    rpc_b.responses["listtransactions"] = [same_tx]
+    asyncio.run(wm_a._check())
+    asyncio.run(wm_b._check())
+
+    alerts = db.alert_list(settings.db_path)
+    assert len(alerts) == 2  # both nodes reported it, neither suppressed the other
+    assert {a["node_id"] for a in alerts} == {1, 2}
+
+
 def test_new_tx_after_seed_notifies_once(client, mock_rpc, settings, fake_push):
     import asyncio
     _unpause(settings)
@@ -381,6 +444,46 @@ def test_lone_event_in_window_flushes_silently(client, settings, fake_push):
     _force_flush(settings, "stake")
     asyncio.run(notifier.flush_due(settings))
     assert len(fake_push["calls"]) == 1  # no second, empty digest
+
+
+def test_burst_on_two_nodes_produces_independent_digests(client, settings, fake_push):
+    """The regression docs/MULTINODE_PLAN.md Phase 3 exists to prevent: a
+    burst on node A must not coalesce with — and suppress — a burst on
+    node B. Before the node-id-keyed pending key, both bursts would have
+    shared the single "stake" window: only the very first event across
+    BOTH nodes would dispatch instantly, and one combined digest would
+    quietly absorb the other node's events too."""
+    import asyncio
+    _subscribe(settings)
+    node_b = db.node_add(settings.db_path, name="validator-2", kind="remote",
+                         host="10.0.0.5", port=38647,
+                         rpc_user_enc=None, rpc_password_enc=None)
+
+    # 5 events on node 1 ("local", auto-seeded), then 5 on node 2 —
+    # interleaved in time but each burst is its own node's window.
+    for i in range(5):
+        asyncio.run(notifier.notify(settings, "stake", f"A reward #{i}",
+                                    amount=Decimal("1"), node_id=1, node_name="local"))
+    for i in range(5):
+        asyncio.run(notifier.notify(settings, "stake", f"B reward #{i}",
+                                    amount=Decimal("2"), node_id=node_b, node_name="validator-2"))
+
+    # Each node's FIRST event dispatched instantly -> 2 pushes so far, not 1.
+    assert len(fake_push["calls"]) == 2
+
+    _force_flush(settings, f"stake@1")
+    _force_flush(settings, f"stake@{node_b}")
+    asyncio.run(notifier.flush_due(settings))
+
+    # Each window flushes its OWN digest -> 2 more pushes (4 total), each
+    # reporting exactly its own node's 4 folded-in events, never both
+    # nodes' 8 combined into one.
+    assert len(fake_push["calls"]) == 4
+    bodies = [call[1]["body"] for call in fake_push["calls"][2:]]
+    titles = [call[1]["title"] for call in fake_push["calls"][2:]]
+    assert any("4 more" in b and "+4" in b for b in bodies)  # node A: 4 folded (not 9)
+    assert any("local" in t for t in titles)
+    assert any("validator-2" in t for t in titles)
 
 
 def test_disabled_type_suppresses_dispatch_but_still_alerts(client, settings, fake_push):

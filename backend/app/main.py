@@ -54,18 +54,29 @@ class SpaStaticApp(StaticFiles):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: initialize app state, then start the chain monitor.
+    # Startup: initialize app state, then start the per-node monitors.
     if not hasattr(app.state, "app_state") or app.state.app_state is None:
         app.state.app_state = create_app_state()
-    from app.monitor import start_monitor, stop_monitor
     state: AppState = app.state.app_state
-    start_monitor(state.settings, state.rpc)
-    # Wallet-event notifier: polls for new receives/sends/stakes and feeds
-    # the shared notifier (push + webhook, per-type digest controls).
-    from app.wallet_monitor import start_wallet_monitor, stop_wallet_monitor
-    start_wallet_monitor(state.settings, state.rpc)
-    # Unattended autostake (opt-in via Staking settings): reconcile at
-    # startup (retries while the node boots after crash/reboot), hourly.
+    # Multi-node fleet (docs/MULTINODE_PLAN.md Phase 3): one ChainMonitor +
+    # one WalletMonitor PER REGISTERED NODE, each on its own RPC client
+    # (state.client_for_node). The registry is read once here, at startup —
+    # a node added later via the API gets its own monitor pair on the next
+    # restart, not live.
+    from app.monitor import start_monitors, stop_monitors
+    start_monitors(state.settings, state)
+    from app.wallet_monitor import start_wallet_monitors, stop_wallet_monitors
+    start_wallet_monitors(state.settings, state)
+    # Notifier digest flushing is a single global concern (not per-node —
+    # see notifier.start_flush_loop's docstring), so it gets exactly one
+    # ticking source regardless of fleet size.
+    from app import notifier
+    notifier.start_flush_loop(state.settings)
+    # Unattended autostake / consolidation (opt-in via Staking settings):
+    # deliberately DEFAULT-NODE-ONLY for now (docs/MULTINODE_PLAN.md
+    # Phase 3.1) — unattended spending on N nodes at once is a much bigger
+    # blast radius than watching N nodes, and FlowMesh testing doesn't need
+    # it. Revisit only with an explicit reason to widen it.
     from app.autostake import start_autostake, stop_autostake
     from app.consolidation import start_consolidation, stop_consolidation
     from app.vault import vault_from_settings
@@ -77,9 +88,10 @@ async def lifespan(app: FastAPI):
     from app.wizard_queue import start_wizard_queue, stop_wizard_queue
     start_wizard_queue(state.settings, state.rpc, _vault)
     yield
-    # Shutdown: stop the monitor, autostake and consolidation tasks.
-    await stop_monitor()
-    await stop_wallet_monitor()
+    # Shutdown: stop the monitors, flush loop, autostake and consolidation.
+    await stop_monitors()
+    await stop_wallet_monitors()
+    await notifier.stop_flush_loop()
     await stop_autostake()
     await stop_consolidation()
     await stop_wizard_queue()

@@ -130,6 +130,29 @@ class AppState:
 
     # -- multi-node fleet --------------------------------------------------
 
+    def client_for_node(self, node: dict) -> B3RPCClient:
+        """Build/cache the long-lived RPC client for a node row. Shared by
+        rpc_for() (per-request) and the per-node background monitors
+        (Phase 3), which both want the SAME cached, normal-timeout client —
+        unlike the fleet dashboard's probes (routers/nodes.py), which
+        deliberately use short-timeout, uncached, throwaway clients so one
+        hung node can never stall the rest."""
+        if node["kind"] == "local":
+            return self.rpc
+        client = self._node_clients.get(node["id"])
+        if client is None:
+            from app.vault import vault_from_settings
+            vault = vault_from_settings(self.settings, self.settings.b3_data_dir)
+            user = password = ""
+            if vault is not None:
+                if node["rpc_user_enc"]:
+                    user = vault.decrypt(node["rpc_user_enc"]) or ""
+                if node["rpc_password_enc"]:
+                    password = vault.decrypt(node["rpc_password_enc"]) or ""
+            client = B3RPCClient(node["host"], node["port"], user, password)
+            self._node_clients[node["id"]] = client
+        return client
+
     def rpc_for(self, request: Request) -> B3RPCClient:
         """Resolve the X-B3-Node header to that node's RPC client.
 
@@ -153,21 +176,7 @@ class AppState:
             node = db.node_get(self.settings.db_path, node_id)
             if node is None:
                 raise HTTPException(status_code=404, detail="unknown node")
-        if node["kind"] == "local":
-            return self.rpc
-        client = self._node_clients.get(node["id"])
-        if client is None:
-            from app.vault import vault_from_settings
-            vault = vault_from_settings(self.settings, self.settings.b3_data_dir)
-            user = password = ""
-            if vault is not None:
-                if node["rpc_user_enc"]:
-                    user = vault.decrypt(node["rpc_user_enc"]) or ""
-                if node["rpc_password_enc"]:
-                    password = vault.decrypt(node["rpc_password_enc"]) or ""
-            client = B3RPCClient(node["host"], node["port"], user, password)
-            self._node_clients[node["id"]] = client
-        return client
+        return self.client_for_node(node)
 
 
 def _mount_is_persistent(data_dir: str,

@@ -46,9 +46,14 @@ def test_alert_ack_all(client: TestClient):
 
 
 def test_monitor_status_running(client: TestClient):
+    """Per-node monitor status (Phase 3): the auto-seeded 'local' node has
+    its own running ChainMonitor."""
     out = login(client, headers=LOCAL)
     r = client.get("/api/alerts/status", headers=out["headers"])
     assert r.status_code == 200
     data = r.json()
-    assert data["running"] is True
-    assert data["level"] == "alert"
+    assert len(data["monitors"]) == 1
+    mon = data["monitors"][0]
+    assert mon["node_name"] == "local"
+    assert mon["running"] is True
+    assert mon["level"] == "alert"

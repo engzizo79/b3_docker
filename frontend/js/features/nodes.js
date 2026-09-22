@@ -94,17 +94,26 @@ export const nodesMixin = {
           : ''));
     }
     if (row.fn_balance != null) parts.push('FN ' + this.fmtInt(row.fn_balance));
+    // Background monitor status (Phase 3): a stall the monitor already
+    // caught is worth surfacing here even though the node still answers
+    // RPC right now — that's exactly the gap between "reachable" and
+    // "healthy".
+    if (row.monitor && row.monitor.stall_count > 0) {
+      parts.push('⚠ stalled ' + this.fmtInt(row.monitor.stall_count) + '×');
+    }
     return parts.join(' · ') || 'No wallet loaded on this node';
   },
 
   fleetBadgeClass(row) {
     if (!row.reachable) return 'badge-danger';
+    if (row.monitor && row.monitor.stall_count > 0) return 'badge-warning';
     if (row.staking && row.staking.running) return 'badge-success';
     return 'badge-neutral';
   },
 
   fleetBadgeText(row) {
     if (!row.reachable) return 'Unreachable';
+    if (row.monitor && row.monitor.stall_count > 0) return 'Stalled';
     if (row.staking && row.staking.running) return 'Staking';
     return 'Online';
   },

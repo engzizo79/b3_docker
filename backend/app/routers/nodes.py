@@ -121,6 +121,20 @@ async def _probe(state: AppState, node: dict) -> dict:
     missing wallet never hides the rest of a reachable node's row."""
     out = {"id": node["id"], "name": node["name"], "kind": node["kind"],
           "is_default": bool(node["is_default"]), "reachable": False}
+    # Per-node background monitor status (Phase 3 done-when: "visible in
+    # the fleet view") — read straight from the in-process registry, no
+    # extra RPC, and included regardless of whether THIS probe reaches the
+    # node: a monitor's last-known stall count is exactly the kind of
+    # thing worth showing even while the node is down. None if this node
+    # has no monitor (a node added after startup gets its monitor pair
+    # only on the next restart — see start_monitors' docstring).
+    from app.monitor import monitors as _chain_monitors
+    mon = _chain_monitors.get(node["id"])
+    out["monitor"] = {
+        "stall_count": mon._stall_count,
+        "recovery_triggered": mon._recovery_triggered,
+    } if mon else None
+
     client = _probe_client(state, node)
     try:
         info = await client.call("getblockchaininfo")

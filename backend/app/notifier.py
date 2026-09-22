@@ -64,62 +64,154 @@ def list_prefs(db_path: str) -> list[dict]:
     return out
 
 
-async def notify(settings, event_type: str, message: str, amount: Decimal | None = None) -> None:
-    """Record + (maybe) deliver one event. Never raises - a notification
-    failure must never take down the monitor loop that called it."""
+def _pending_key(event_type: str, node_id: int | None) -> str:
+    """The coalescing window's storage key. notification_pending's PRIMARY
+    KEY is still the plain event_type TEXT column (no schema change) — a
+    node id is folded into the VALUE stored there as "type@id" instead, per
+    docs/MULTINODE_PLAN.md 3.2's documented alternative to a composite PK.
+    Without this, a burst on one validator would silently coalesce with —
+    and suppress — a burst on another."""
+    return event_type if node_id is None else f"{event_type}@{node_id}"
+
+
+def _split_pending_key(key: str) -> tuple[str, int | None]:
+    event_type, sep, node_part = key.partition("@")
+    if not sep:
+        return key, None
     try:
-        db.alert_add(settings.db_path, event_type, message)
+        return event_type, int(node_part)
+    except ValueError:
+        return key, None  # not one of ours (shouldn't happen) - treat as unkeyed
+
+
+def _named(settings, title: str, body: str, node_name: str) -> tuple[str, str]:
+    """Prefix the node name onto the DISPATCHED (push/webhook) title only
+    when it would actually disambiguate something — i.e. more than one node
+    is registered. The in-app alert list instead carries node_id/node_name
+    as its own column (db.alert_list's LEFT JOIN) rather than baking it into
+    the text, so it stays clean for the single-node case."""
+    if not node_name:
+        return title, body
+    try:
+        multi = len(db.node_list(settings.db_path)) > 1
+    except Exception:
+        multi = bool(node_name)
+    if not multi:
+        return title, body
+    return f"{title} — {node_name}", body
+
+
+async def notify(settings, event_type: str, message: str, amount: Decimal | None = None,
+                 node_id: int | None = None, node_name: str = "") -> None:
+    """Record + (maybe) deliver one event. Never raises - a notification
+    failure must never take down the monitor loop that called it.
+
+    node_id/node_name (Phase 3): which node this event came from. Callers
+    with no node context (tests, anything not yet migrated) simply omit
+    them — the alert is recorded with node_id NULL and the coalescing key
+    is the bare event_type, exactly like before Phase 3."""
+    try:
+        db.alert_add(settings.db_path, event_type, message, node_id=node_id)
     except Exception as exc:
         logger.error("notifier: alert_add failed: %s", exc)
 
+    key = _pending_key(event_type, node_id)
     try:
         prefs = effective_prefs(settings.db_path, event_type)
         if not prefs["enabled"]:
             return
         label = NOTIFICATION_TYPES.get(event_type, {}).get("label", event_type.title())
+        title, body = _named(settings, label, message, node_name)
         cooldown = prefs["cooldown_minutes"]
         if cooldown <= 0:
-            await _dispatch(settings, prefs, event_type, label, message)
+            await _dispatch(settings, prefs, event_type, title, body)
             return
 
         now = time.time()
-        pending = db.notification_pending_get(settings.db_path, event_type)
+        pending = db.notification_pending_get(settings.db_path, key)
         if pending is None:
             # First of a burst: dispatch now, open the coalescing window.
-            db.notification_pending_open(settings.db_path, event_type, now, now + cooldown * 60)
-            await _dispatch(settings, prefs, event_type, label, message)
+            db.notification_pending_open(settings.db_path, key, now, now + cooldown * 60)
+            await _dispatch(settings, prefs, event_type, title, body)
         else:
             # Already inside a window: fold in, don't dispatch.
             count = pending["count"] + 1
             total = _dec(pending["total_amount"]) + (amount or Decimal(0))
-            db.notification_pending_bump(settings.db_path, event_type, count, str(total))
+            db.notification_pending_bump(settings.db_path, key, count, str(total))
     except Exception as exc:
         logger.error("notifier: dispatch for %s failed: %s", event_type, exc)
 
 
 async def flush_due(settings) -> None:
     """Close out any coalescing windows whose time has come, sending one
-    digest for each that actually accumulated something."""
+    digest for each that actually accumulated something. A window opened
+    for node A never folds in or flushes together with node B's — see
+    _pending_key."""
     try:
         due = db.notification_pending_due(settings.db_path, time.time())
     except Exception as exc:
         logger.error("notifier: flush_due query failed: %s", exc)
         return
     for row in due:
-        event_type = row["event_type"]
+        key = row["event_type"]  # the composite "type@node_id" (or bare type)
+        event_type, node_id = _split_pending_key(key)
         try:
             if row["count"] > 0:
                 label = NOTIFICATION_TYPES.get(event_type, {}).get("label", event_type.title())
+                node_name = ""
+                if node_id is not None:
+                    node = db.node_get(settings.db_path, node_id)
+                    node_name = node["name"] if node else ""
                 body = f"{row['count']} more since the last update"
                 total = _dec(row["total_amount"])
                 if total > 0:
                     body += f", +{total} B3 total"
+                title, body = _named(settings, f"{label} (+{row['count']} more)", body, node_name)
                 prefs = effective_prefs(settings.db_path, event_type)
                 if prefs["enabled"]:
-                    await _dispatch(settings, prefs, event_type, f"{label} (+{row['count']} more)", body)
-            db.notification_pending_close(settings.db_path, event_type)
+                    await _dispatch(settings, prefs, event_type, title, body)
+            db.notification_pending_close(settings.db_path, key)
         except Exception as exc:
-            logger.error("notifier: flush of %s failed: %s", event_type, exc)
+            logger.error("notifier: flush of %s failed: %s", key, exc)
+
+
+# ---------------------------------------------------------------------------
+# Standalone flush loop (Phase 3): previously ridden on WalletMonitor's
+# tick, but WalletMonitor became one-instance-per-node — several instances
+# all calling flush_due() on their own ticks could race on notification_pending_due()
+# for a window neither of them opened (double-dispatching the same digest;
+# see docs/MULTINODE_PLAN.md 3.1). Coalescing is a global (not per-node)
+# concern, so it gets exactly one ticking source regardless of fleet size.
+# ---------------------------------------------------------------------------
+_flush_task: asyncio.Task | None = None
+
+
+async def _flush_loop(settings) -> None:
+    while True:
+        await asyncio.sleep(settings.notify_interval)
+        try:
+            await flush_due(settings)
+        except Exception as exc:
+            logger.error("notifier: flush loop tick failed: %s", exc)
+
+
+def start_flush_loop(settings) -> None:
+    global _flush_task
+    if _flush_task is None:
+        _flush_task = asyncio.create_task(_flush_loop(settings))
+        logger.info("notifier flush loop started (interval=%ds)", settings.notify_interval)
+
+
+async def stop_flush_loop() -> None:
+    global _flush_task
+    if _flush_task is not None:
+        _flush_task.cancel()
+        try:
+            await _flush_task
+        except asyncio.CancelledError:
+            pass
+        _flush_task = None
+        logger.info("notifier flush loop stopped")
 
 
 async def send_test(settings, event_type: str) -> None:
