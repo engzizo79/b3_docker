@@ -141,7 +141,7 @@ export const routerMixin = {
       case 'tools':      this.loadRecipes(); break;
       case 'console': this.consoleLoad(); break;
       case 'node':       this.loadSystemInfo(); this.loadNodeExtras(); break;
-      case 'settings': this.loadSystemInfo(); this.loadTailscale(); break;
+      case 'settings': this.loadSystemInfo(); this.loadTailscale(); this.loadNotificationPrefs(); break;
       case 'send':       this.resetSend(opts.keep); this.loadAddressBook(); this.loadContacts(); break;
     }
   },

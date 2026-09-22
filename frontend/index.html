@@ -7,6 +7,8 @@
 <meta name="theme-color" content="#12100e">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="manifest" href="/manifest.json">
 <!-- No webfonts: this app's own CSP is `style-src 'self'` with no external
      origins, so the previous Google Fonts link could never load. The type
      scale uses the system stack instead. -->
@@ -3995,6 +3997,108 @@
             </button>
             <p class="help mt-2">Re-opens the first-run wizard so you can change node settings or
               re-sync the chain. Nothing is applied until you finish it.</p>
+          </div>
+        </div>
+
+        <!-- Notifications -->
+        <div class="card" x-show="notif.loaded">
+          <div class="card-head">
+            <div class="row gap-2">
+              <svg class="i accent"><use href="#i-bell"/></svg>
+              <strong>Notifications</strong>
+            </div>
+          </div>
+          <div class="card-pad">
+            <p class="muted t-sm">Choose what reaches you and how often. A burst of the
+              same kind of event — say, a dozen stakes in an hour — folds into one
+              summary instead of one push each.</p>
+
+            <div class="toggle-row mt-3">
+              <div class="toggle-text">
+                <strong class="t-sm">Push notifications on this device</strong>
+                <span class="help" x-show="!notif.pushSupported">
+                  Not supported in this browser.</span>
+                <span class="help" x-show="notif.pushSupported && notif.permission === 'denied'">
+                  Blocked for this site — check your browser's site settings to allow it.</span>
+                <span class="help" x-show="notif.pushSupported && notif.permission !== 'denied'">
+                  Works even when this tab is closed. Install this app to your home screen
+                  for the most reliable delivery.</span>
+              </div>
+              <button class="btn btn-secondary btn-sm" type="button"
+                      x-show="notif.pushSupported && !notif.subscribedHere"
+                      :disabled="notif.enrolling || notif.permission === 'denied'"
+                      @click="enableDeviceNotifications()">
+                <span class="spinner" x-show="notif.enrolling"></span><span>Enable</span>
+              </button>
+              <button class="btn btn-ghost btn-sm" type="button"
+                      x-show="notif.pushSupported && notif.subscribedHere"
+                      :disabled="notif.enrolling" @click="disableDeviceNotifications()">
+                <span>Turn off</span>
+              </button>
+            </div>
+
+            <template x-if="notif.subs.length">
+              <div class="mt-2">
+                <span class="help">Devices subscribed</span>
+                <template x-for="s in notif.subs" :key="s.id">
+                  <div class="between mt-1">
+                    <span class="t-sm mono" x-text="(s.user_agent || 'Unknown device').slice(0, 40)"></span>
+                    <button class="btn btn-ghost btn-sm" type="button"
+                            @click="revokePushSubscription(s.id)" data-tip="Remove this device">
+                      <svg class="i-sm"><use href="#i-trash"/></svg>
+                    </button>
+                  </div>
+                </template>
+              </div>
+            </template>
+
+            <div class="mt-4">
+              <template x-for="t in notif.types" :key="t.event_type">
+                <div class="notif-type">
+                  <div class="toggle-row">
+                    <div class="toggle-text">
+                      <strong class="t-sm" x-text="t.label"></strong>
+                      <span class="help" x-text="t.enabled ? ('Digest: ' + cooldownLabel(t.cooldown_minutes)) : 'Off'"></span>
+                    </div>
+                    <button class="toggle" type="button" role="switch" :aria-checked="t.enabled"
+                            :aria-label="t.label"
+                            @click="t.enabled = !t.enabled; saveNotifPref(t)"><span class="knob"></span></button>
+                  </div>
+                  <template x-if="t.enabled">
+                    <div class="grid grid-2 mt-2">
+                      <div class="field">
+                        <label :for="'notif-cd-' + t.event_type">Digest window</label>
+                        <select :id="'notif-cd-' + t.event_type" class="select select-sm"
+                                x-model.number="t.cooldown_minutes" @change="saveNotifPref(t)">
+                          <option value="0">Instant</option>
+                          <option value="15">Every 15 min</option>
+                          <option value="60">Hourly</option>
+                          <option value="360">Every 6 hours</option>
+                          <option value="1440">Daily</option>
+                        </select>
+                      </div>
+                      <div class="field">
+                        <label>Channels</label>
+                        <div class="row gap-3">
+                          <label class="check">
+                            <input type="checkbox" x-model="t.push" @change="saveNotifPref(t)">
+                            <span class="check-body t-sm">Push</span>
+                          </label>
+                          <label class="check">
+                            <input type="checkbox" x-model="t.webhook" @change="saveNotifPref(t)">
+                            <span class="check-body t-sm">Webhook</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+                  <button class="btn btn-ghost btn-sm mt-2" type="button"
+                          @click="sendTestNotification(t.event_type)">
+                    <svg class="i-sm"><use href="#i-bell"/></svg><span>Send test</span>
+                  </button>
+                </div>
+              </template>
+            </div>
           </div>
         </div>
 

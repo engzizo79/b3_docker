@@ -31,6 +31,7 @@ import { assetsMixin } from './features/assets.js';
 import { batchMixin } from './features/batch.js';
 import { nodeMixin } from './features/node.js';
 import { alertsMixin } from './features/alerts.js';
+import { notifMixin } from './features/notifications.js';
 import { consoleMixin } from './features/console.js';
 import { wizardMixin } from './features/wizard.js';
 import { installMixin } from './features/wizard.js';
@@ -216,6 +217,12 @@ function initialState() {
     /* ------------------------------------------------------------- alerts */
     alerts: [], alertCount: 0, showAlerts: false,
 
+    /* ------------------------------------------------------ notifications */
+    notif: {
+      loaded: false, busy: false, types: [], subs: [],
+      pushSupported: false, permission: 'default', subscribedHere: false, enrolling: false,
+    },
+
     /* -------------------------------------------------------------- setup */
     setup: {
       checked: false, wizard_done: true, setup_required: false,
@@ -270,6 +277,7 @@ function b3app() {
     batchMixin,
     nodeMixin,
     alertsMixin,
+    notifMixin,
     consoleMixin,
     wizardMixin,
     installMixin,
@@ -296,6 +304,7 @@ function b3app() {
         if (VIEWS[want]) this.view = want;
         this.checkSession();
  this.fetchSysMode();
+        this.registerServiceWorker();
       },
     },
   );

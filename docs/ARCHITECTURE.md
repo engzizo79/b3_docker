@@ -56,6 +56,15 @@ Host data dir ───────────┘
 - **Wallet operations**: SPA → backend (auth + 2FA check) → node (send, receive, stake, consolidate). Every wallet-affecting action requires an unlocked wallet (passphrase) and is audited.
 - **Send flow**: SPA preview (dry-run via testmempoolaccept) → explicit user confirm → backend → node (createrawtransaction, signrawtransactionwithwallet, sendrawtransaction).
 - **Explorer comparison**: backend polls https://explorer.b3hive.io/api/ (and chainz.cryptoid.info/b3), displays sync-lag.
+- **Notifications**: `app/notifier.py` is one shared "detect → in-app alert
+  → maybe push/webhook" pipeline used by both `app/monitor.py` (chain
+  stall/lag/recovery) and `app/wallet_monitor.py` (polls `listtransactions`
+  for new receives/sends/stakes — one poller instead of instrumenting every
+  wallet-write code path). Delivery is per-type configurable (push and/or
+  webhook) with a smart-coalescing digest: the first event of a type fires
+  immediately and opens a cooldown window; anything else of that type
+  inside the window folds into one summary sent when it closes, instead of
+  one notification per event.
 
 ## Security layers
 

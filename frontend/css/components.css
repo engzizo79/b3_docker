@@ -299,6 +299,13 @@
 .toggle-row .toggle-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .toggle-row .toggle-text .help { font-size: var(--text-sm); color: var(--text-muted); }
 
+/* A per-type notification row: its own toggle-row up top, plus an
+   expanding digest/channel form below when enabled. Same "adjacent
+   sibling gets a rule" divider pattern as .toggle-row/.coin-list-row. */
+.notif-type { padding: var(--space-3) 0; }
+.notif-type + .notif-type { border-top: 1px solid var(--border); }
+.notif-type .toggle-row { padding: 0; }
+
 /* =========================================================== Progress ===== */
 
 .progress {

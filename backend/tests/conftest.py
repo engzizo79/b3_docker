@@ -171,6 +171,8 @@ def settings(tmp_path: Path) -> Settings:
     s.explorer_url = ""
     s.webhook_url = ""
     s.monitor_interval = 3600
+    s.notify_interval = 3600
+    s.vapid_subject = "mailto:test@example.com"
     s.recovery_cmd_file = str(tmp_path / "recovery.cmd")
     s.b3_data_dir = str(tmp_path)
     s.bootstrap_cmd_file = str(tmp_path / "bootstrap.cmd")

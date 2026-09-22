@@ -95,6 +95,38 @@ CREATE TABLE IF NOT EXISTS console_settings (
  remote_full_access INTEGER NOT NULL DEFAULT 1, -- 2FA remotes: full (1) or read-only (0)
  updated_ts REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+ id INTEGER PRIMARY KEY,
+ endpoint TEXT UNIQUE NOT NULL,
+ p256dh TEXT NOT NULL,
+ auth TEXT NOT NULL,
+ user_agent TEXT,
+ created_ts REAL NOT NULL,
+ last_seen_ts REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notification_prefs (
+ event_type TEXT PRIMARY KEY,
+ enabled INTEGER NOT NULL DEFAULT 1,
+ cooldown_minutes INTEGER NOT NULL DEFAULT 0, -- 0 = always instant, no coalescing
+ push INTEGER NOT NULL DEFAULT 1,
+ webhook INTEGER NOT NULL DEFAULT 1,
+ updated_ts REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notification_seen (
+ seen_key TEXT PRIMARY KEY, -- "{txid}:{vout}:{bucket}"
+ ts REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notification_pending (
+ event_type TEXT PRIMARY KEY, -- an open smart-coalescing window
+ opened_ts REAL NOT NULL,
+ flush_ts REAL NOT NULL,
+ count INTEGER NOT NULL DEFAULT 0, -- events folded in since the instant one
+ total_amount TEXT NOT NULL DEFAULT '0' -- 9dp string sum, if amounts apply
+);
+CREATE TABLE IF NOT EXISTS notification_state (
+ id INTEGER PRIMARY KEY CHECK (id = 1), -- single row
+ seeded INTEGER NOT NULL DEFAULT 0 -- wallet monitor has completed its no-notify seed pass
+);
 """
 
 
@@ -526,7 +558,158 @@ def set_console_settings(db_path: str, networks: str,
         conn.execute(
             "INSERT INTO console_settings (id, networks, remote_full_access,"
             " updated_ts) VALUES (1,?,?,?) ON CONFLICT(id) DO UPDATE SET"
-            " networks=excluded.networks," 
+            " networks=excluded.networks,"
             " remote_full_access=excluded.remote_full_access,"
             " updated_ts=excluded.updated_ts",
             (networks, 1 if remote_full_access else 0, time.time()))
+
+
+# ---------------------------------------------------------------------------
+# Push notifications: subscriptions, per-type prefs, dedupe/coalescing state.
+# ---------------------------------------------------------------------------
+
+def push_subscription_upsert(db_path: str, endpoint: str, p256dh: str,
+                             auth: str, user_agent: str | None = None) -> None:
+    """A device re-subscribing (permission re-granted, browser refresh of
+    its own push endpoint) just refreshes the same row - endpoint is the
+    natural key."""
+    now = time.time()
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO push_subscriptions (endpoint, p256dh, auth, user_agent,"
+            " created_ts, last_seen_ts) VALUES (?,?,?,?,?,?)"
+            " ON CONFLICT(endpoint) DO UPDATE SET p256dh=excluded.p256dh,"
+            " auth=excluded.auth, user_agent=excluded.user_agent,"
+            " last_seen_ts=excluded.last_seen_ts",
+            (endpoint, p256dh, auth, user_agent, now, now))
+
+
+def push_subscription_list(db_path: str) -> list[dict]:
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM push_subscriptions ORDER BY created_ts DESC").fetchall()
+        return [dict(r) for r in rows]
+
+
+def push_subscription_delete(db_path: str, *, endpoint: str | None = None,
+                             sub_id: int | None = None) -> None:
+    with _lock, _connect(db_path) as conn:
+        if endpoint is not None:
+            conn.execute("DELETE FROM push_subscriptions WHERE endpoint=?", (endpoint,))
+        elif sub_id is not None:
+            conn.execute("DELETE FROM push_subscriptions WHERE id=?", (sub_id,))
+
+
+_PREF_FIELDS = {"enabled", "cooldown_minutes", "push", "webhook"}
+
+
+def notification_prefs_get(db_path: str, event_type: str) -> dict | None:
+    """Raw stored override for one type, or None if the caller should fall
+    back to the registry default (see app/notifier.py)."""
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM notification_prefs WHERE event_type=?", (event_type,)).fetchone()
+    if row is None:
+        return None
+    return {"enabled": bool(row["enabled"]), "cooldown_minutes": int(row["cooldown_minutes"]),
+            "push": bool(row["push"]), "webhook": bool(row["webhook"])}
+
+
+def notification_prefs_list(db_path: str) -> dict[str, dict]:
+    """All stored overrides, keyed by event_type."""
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute("SELECT * FROM notification_prefs").fetchall()
+    return {r["event_type"]: {"enabled": bool(r["enabled"]),
+                              "cooldown_minutes": int(r["cooldown_minutes"]),
+                              "push": bool(r["push"]), "webhook": bool(r["webhook"])}
+            for r in rows}
+
+
+def notification_prefs_set(db_path: str, event_type: str, **fields) -> None:
+    """Upsert one type's prefs row, seeded from defaults for any field not
+    given (so a partial update never clobbers the others with column
+    defaults). Callers pass a complete dict — see routers/notifications.py."""
+    clean = {k: v for k, v in fields.items() if k in _PREF_FIELDS}
+    if not clean:
+        return
+    cols = ", ".join(clean.keys())
+    placeholders = ", ".join("?" for _ in clean)
+    updates = ", ".join(f"{k}=excluded.{k}" for k in clean)
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            f"INSERT INTO notification_prefs (event_type, {cols}, updated_ts)"
+            f" VALUES (?, {placeholders}, ?)"
+            f" ON CONFLICT(event_type) DO UPDATE SET {updates}, updated_ts=excluded.updated_ts",
+            (event_type, *clean.values(), time.time()))
+
+
+def notification_seen_has(db_path: str, key: str) -> bool:
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM notification_seen WHERE seen_key=?", (key,)).fetchone()
+    return row is not None
+
+
+def notification_seen_add(db_path: str, key: str) -> None:
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO notification_seen (seen_key, ts) VALUES (?, ?)",
+            (key, time.time()))
+
+
+def notification_seen_prune(db_path: str, older_than_ts: float) -> None:
+    with _lock, _connect(db_path) as conn:
+        conn.execute("DELETE FROM notification_seen WHERE ts < ?", (older_than_ts,))
+
+
+def notification_seeded(db_path: str) -> bool:
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute("SELECT seeded FROM notification_state WHERE id=1").fetchone()
+    return bool(row and row["seeded"])
+
+
+def notification_mark_seeded(db_path: str) -> None:
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO notification_state (id, seeded) VALUES (1, 1)"
+            " ON CONFLICT(id) DO UPDATE SET seeded=1")
+
+
+def notification_pending_get(db_path: str, event_type: str) -> dict | None:
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM notification_pending WHERE event_type=?", (event_type,)).fetchone()
+    return dict(row) if row else None
+
+
+def notification_pending_open(db_path: str, event_type: str,
+                              opened_ts: float, flush_ts: float) -> None:
+    """Open a fresh coalescing window (count starts at 0 — the triggering
+    event was already dispatched instantly, not folded)."""
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO notification_pending (event_type, opened_ts, flush_ts, count, total_amount)"
+            " VALUES (?, ?, ?, 0, '0')"
+            " ON CONFLICT(event_type) DO UPDATE SET opened_ts=excluded.opened_ts,"
+            " flush_ts=excluded.flush_ts, count=0, total_amount='0'",
+            (event_type, opened_ts, flush_ts))
+
+
+def notification_pending_bump(db_path: str, event_type: str,
+                              count: int, total_amount: str) -> None:
+    with _lock, _connect(db_path) as conn:
+        conn.execute(
+            "UPDATE notification_pending SET count=?, total_amount=? WHERE event_type=?",
+            (count, total_amount, event_type))
+
+
+def notification_pending_due(db_path: str, now_ts: float) -> list[dict]:
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM notification_pending WHERE flush_ts <= ?", (now_ts,)).fetchall()
+        return [dict(r) for r in rows]
+
+
+def notification_pending_close(db_path: str, event_type: str) -> None:
+    with _lock, _connect(db_path) as conn:
+        conn.execute("DELETE FROM notification_pending WHERE event_type=?", (event_type,))

@@ -51,6 +51,15 @@ class Settings:
         self.explorer_url: str = os.environ.get("EXPLORER_URL", "https://explorer.b3hive.io")
         self.webhook_url: str = os.environ.get("WEBHOOK_URL", "")
         self.monitor_interval: int = int(os.environ.get("MONITOR_INTERVAL", "60"))
+        # Wallet-event notifier: how often the wallet monitor polls
+        # listtransactions for new receives/sends/stakes, and flushes any
+        # due notification digests. Snappier than the chain monitor by
+        # default - a receive should feel prompt.
+        self.notify_interval: int = int(os.environ.get("NOTIFY_INTERVAL", "30"))
+        # Web Push VAPID "sub" claim (a contact URI, per RFC 8292). Not a
+        # secret; push services may log it. A generic default keeps push
+        # notifications working with zero configuration.
+        self.vapid_subject: str = os.environ.get("VAPID_SUBJECT", "mailto:noreply@b3hive.local")
         self.recovery_cmd_file: str = os.environ.get("RECOVERY_CMD_FILE", str(Path(self.b3_data_dir) / "recovery.cmd"))
         # Cookie Secure flag: auto (default, HTTPS-aware via X-Forwarded-Proto), true, false
         self.cookie_secure: str = os.environ.get("COOKIE_SECURE", "auto")

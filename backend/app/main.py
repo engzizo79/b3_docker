@@ -60,6 +60,10 @@ async def lifespan(app: FastAPI):
     from app.monitor import start_monitor, stop_monitor
     state: AppState = app.state.app_state
     start_monitor(state.settings, state.rpc)
+    # Wallet-event notifier: polls for new receives/sends/stakes and feeds
+    # the shared notifier (push + webhook, per-type digest controls).
+    from app.wallet_monitor import start_wallet_monitor, stop_wallet_monitor
+    start_wallet_monitor(state.settings, state.rpc)
     # Unattended autostake (opt-in via Staking settings): reconcile at
     # startup (retries while the node boots after crash/reboot), hourly.
     from app.autostake import start_autostake, stop_autostake
@@ -75,6 +79,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown: stop the monitor, autostake and consolidation tasks.
     await stop_monitor()
+    await stop_wallet_monitor()
     await stop_autostake()
     await stop_consolidation()
     await stop_wizard_queue()
@@ -145,6 +150,7 @@ def create_app(state: AppState | None = None) -> FastAPI:
     from app.routers import console
     from app.routers import logs
     from app.routers import contacts
+    from app.routers import notifications
     app.include_router(auth.router)
     app.include_router(chain.router)
     app.include_router(wallet.router)
@@ -159,6 +165,7 @@ def create_app(state: AppState | None = None) -> FastAPI:
     app.include_router(logs.router)
     app.include_router(contacts.router)
     app.include_router(setup.router)
+    app.include_router(notifications.router)
 
     @app.get("/api/health")
     async def health(request: Request):

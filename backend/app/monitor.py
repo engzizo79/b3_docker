@@ -12,7 +12,7 @@ from pathlib import Path
 
 import httpx
 
-from app import db
+from app import notifier
 from app.config import Settings
 from app.rpc import B3RPCClient
 
@@ -92,9 +92,8 @@ class ChainMonitor:
                 self._stall_count += 1
                 msg = (f"Chain stall: block {blocks} unchanged for "
                        f"{int(elapsed/60)} min (stall #{self._stall_count})")
-                db.alert_add(self.settings.db_path, "stall", msg)
                 logger.warning(msg)
-                await self._notify_webhook("stall", msg)
+                await notifier.notify(self.settings, "stall", msg)
                 await self._maybe_recover()
                 self._last_ts = now  # reset timer to avoid flood
         else:
@@ -128,9 +127,8 @@ class ChainMonitor:
                     if lag > 10:
                         msg = (f"Sync lag: local={local_blocks} explorer={explorer_blocks} "
                                f"({lag} blocks behind)")
-                        db.alert_add(self.settings.db_path, "lag", msg)
                         logger.warning(msg)
-                        await self._notify_webhook("lag", msg)
+                        await notifier.notify(self.settings, "lag", msg)
         except Exception as exc:
             logger.debug("explorer check failed: %s", exc)
 
@@ -148,21 +146,10 @@ class ChainMonitor:
                 cmd_file.write_text(cmd)
                 self._recovery_triggered = True
                 msg = f"Recovery: wrote {cmd} to {cmd_file}"
-                db.alert_add(self.settings.db_path, "recovery", msg)
                 logger.info(msg)
-                await self._notify_webhook("recovery", msg)
+                await notifier.notify(self.settings, "recovery", msg)
             except Exception as exc:
                 logger.error("failed to write recovery cmd: %s", exc)
-
-    async def _notify_webhook(self, event: str, message: str) -> None:
-        url = self.settings.webhook_url
-        if not url:
-            return
-        try:
-            async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(url, json={"event": event, "message": message})
-        except Exception as exc:
-            logger.debug("webhook failed: %s", exc)
 
 
 # Singleton (created in main.py lifespan)

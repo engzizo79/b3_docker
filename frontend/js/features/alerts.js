@@ -49,8 +49,8 @@ export const alertsMixin = {
 
   alertBadgeClass(level) {
     const l = String(level || '').toLowerCase();
-    if (l === 'stall' || l === 'warning') return 'badge-warning';
-    if (l === 'recovery' || l === 'ok') return 'badge-success';
+    if (l === 'stall' || l === 'warning' || l === 'lag') return 'badge-warning';
+    if (l === 'recovery' || l === 'ok' || l === 'received' || l === 'stake') return 'badge-success';
     if (l === 'error' || l === 'critical') return 'badge-danger';
     return 'badge-info';
   },
@@ -59,7 +59,8 @@ export const alertsMixin = {
     const l = String(level || '').toLowerCase();
     const map = {
       stall: 'Stalled', recovery: 'Recovered', warning: 'Warning',
-      error: 'Error', critical: 'Critical', info: 'Info',
+      error: 'Error', critical: 'Critical', info: 'Info', lag: 'Sync lag',
+      received: 'Received', sent: 'Sent', stake: 'Staking reward',
     };
     return map[l] || (level ? String(level) : 'Notice');
   },

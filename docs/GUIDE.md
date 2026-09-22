@@ -64,7 +64,9 @@ docker run -d --name b3hive --restart unless-stopped \
 | `COOKIE_SECURE` | `auto` | Cookie Secure flag: `auto`, `always`, `never` |
 | `STALL_ALERT_MINUTES` | `10` | Minutes without a new block before an alert |
 | `STALL_LEVEL` | `alert` | Response to a stall: `alert`, `restart`, `reindex` |
-| `WEBHOOK_URL` | empty | Discord/Slack-style URL for alerts |
+| `WEBHOOK_URL` | empty | Discord/Slack-style URL for alerts and wallet-event notifications |
+| `NOTIFY_INTERVAL` | `30` | Seconds between wallet-event polls and digest flushes |
+| `VAPID_SUBJECT` | `mailto:noreply@b3hive.local` | Contact URI in the Web Push VAPID claim (not a secret) |
 | `EXPLORER_URL` | explorer.b3hive.io | Used to compare your sync height; empty disables |
 | `RPC_USER` / `RPC_PASSWORD` / `RPC_PORT` | random / random / `32647` | Seed `b3coin.conf` on first run only |
 | `B3_DOMAIN` | empty | Domain for HTTPS (`docker-compose.prod.yml`) |
@@ -75,6 +77,24 @@ Internal secrets are generated automatically and stored in the data folder — l
 
 - **Tailscale** is bundled: enable it in the UI's Settings for HTTPS from anywhere, no domain needed.
 - **Your own domain:** set `B3_DOMAIN` in `.env` and run `docker compose -f docker-compose.prod.yml up -d` (automatic HTTPS via Caddy). Do the first-run setup once with the normal compose file, then switch.
+
+## Notifications
+
+Settings → Notifications controls what reaches you and how often, per event
+type (coins received, a send confirming, a staking reward, and the chain
+alerts above). Two channels, either or both per type:
+
+- **Push** — a real browser/OS notification, works even with the tab
+  closed. Click "Enable" on the device you want it on (needs HTTPS, or
+  `localhost`); installing the app to your home screen makes delivery more
+  reliable, especially on iOS.
+- **Webhook** — relayed to `WEBHOOK_URL` alongside the chain alerts above.
+
+Each type also has a **digest window** (Instant / 15 min / hourly / every 6
+hours / daily): the first event of a burst fires right away, and anything
+else of the same type inside the window folds into one summary instead of
+one push per event — so, say, staking many blocks in an hour doesn't turn
+into many notifications.
 
 ## Troubleshooting
 

@@ -79,6 +79,7 @@ importprivkey, importmulti, dumpprivkey, dumpwallet, encryptwallet, signmessagew
 | API session secret | Generated at deploy time, stored in env |
 | TOTP secret | Per-user, stored encrypted in the backend DB (SQLite, mode 0600) |
 | App login password | Argon2id hash stored in the backend DB |
+| Web Push VAPID private key | Generated once into `<data>/.vapid_private.pem` (mode 0400), never committed — same pattern as the unattended-staking vault key |
 
 ## Transport & browser hardening (v0.1.0-alpha)
 
@@ -91,6 +92,28 @@ importprivkey, importmulti, dumpprivkey, dumpwallet, encryptwallet, signmessagew
 | Port exposure | Only Caddy's 80/443 are published in production; the backend port and node RPC are never published |
 | Image hygiene | `.dockerignore` keeps tests/dev data/secrets out of the image; backend runs as non-root `b3coin` |
 | Secrets scan | `scripts/scan_secrets.sh` pre-commit hook blocks commits with secret-like values or wallet data |
+
+## Push notifications
+
+`app/notifier.py` (chain alerts) and `app/wallet_monitor.py` (wallet events)
+feed one shared pipeline. Notes specific to it:
+
+- Every endpoint under `/api/notifications/*` requires a session; writes
+  (prefs, subscribe/unsubscribe, test) also require CSRF, same as the rest
+  of the API — see [Auth flow](#auth-flow).
+- Push payloads and webhook bodies carry only what the in-app Alerts list
+  already shows (an amount and, for wallet events, an address) — never a
+  passphrase, RPC credential, or raw transaction hex.
+- Web Push payloads are end-to-end encrypted (`aes128gcm`) to the
+  subscribing browser; the push service (Google/Mozilla/Apple's relay) can
+  route but not read them.
+- A device's subscription (endpoint + keys) is stored server-side but never
+  returned to the browser again (`GET /api/notifications/subscriptions`
+  omits it) — the device list exists for revocation, not inspection.
+- The wallet-event poller's first pass after enabling never notifies (it
+  only records what already exists) — see `wallet_monitor.py`'s seed-pass
+  comment. Without this, turning the feature on for an existing wallet
+  would instantly "discover" and notify for its entire transaction history.
 
 ## TOTP setup
 

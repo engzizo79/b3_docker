@@ -42,6 +42,8 @@ def main() -> None:
     s.explorer_url = "https://explorer.b3hive.io"
     s.webhook_url = ""
     s.monitor_interval = 3600
+    s.notify_interval = 3600
+    s.vapid_subject = "mailto:dev@example.com"
     # Expert console gate: dev browser reaches the backend via loopback.
     s.console_networks = "127.0.0.1/8,::1/128,172.16.0.0/12"
     s.extra_console_methods = ""
