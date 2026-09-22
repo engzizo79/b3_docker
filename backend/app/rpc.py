@@ -6,6 +6,7 @@ Amounts: the node uses 9-decimal B3 (1 B3 = 1e9 base units). Parsing helpers
 use Decimal — floats are never used for money."""
 
 from decimal import Decimal
+from urllib.parse import quote
 
 import httpx
 
@@ -125,21 +126,42 @@ def parse_amount(value: str) -> Decimal:
 
 
 class B3RPCClient:
-    """Async JSON-RPC client with allowlist choke point."""
+    """Async JSON-RPC client with allowlist choke point.
+
+    Wallet routing: every call() / call_optional() / call_unrestricted()
+    takes an optional `wallet` kwarg that targets Bitcoin-Core-style
+    per-wallet RPC (POST /wallet/<name> instead of POST /) — the same
+    mechanism the node itself already uses for its own multiwallet
+    support. wallet=None (every call site today) is unchanged behavior:
+    the bare endpoint, exactly as before this existed.
+
+    This is plumbing only, laid down ahead of any decision to actually
+    build per-user wallet isolation (see docs/MULTINODE_PLAN.md-adjacent
+    discussion) — nothing yet resolves a logged-in user to a wallet name.
+    It exists so that if/when that's built, the RPC layer doesn't need to
+    change: only the (as yet nonexistent) code that decides which wallet
+    a request is for needs to start passing this kwarg."""
 
     def __init__(self, host: str, port: int, user: str, password: str,
                  timeout: float = 30.0):
-        self._url = f"http://{host}:{port}/"
+        self._base_url = f"http://{host}:{port}/"
         self._auth = (user, password)
         self._timeout = timeout
 
-    async def call(self, method: str, *params) -> object:
-        assert_allowed(method)  # hard choke point — no path around it
+    def _url_for(self, wallet: str | None) -> str:
+        if not wallet:
+            return self._base_url
+        # Matches the node's own URI parsing (src/wallet/rpc/util.cpp
+        # GetWalletNameFromJSONRPCRequest): "/wallet/" + url-decoded name,
+        # no trailing slash.
+        return self._base_url + "wallet/" + quote(wallet, safe="")
+
+    async def _post(self, method: str, params: tuple, wallet: str | None) -> object:
         payload = {"jsonrpc": "2.0", "id": 1, "method": method,
                    "params": list(params)}
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(self._url, json=payload, auth=self._auth)
+                resp = await client.post(self._url_for(wallet), json=payload, auth=self._auth)
         except httpx.HTTPError as exc:
             raise RPCUnavailable(str(exc)) from exc
         if resp.status_code == 401:
@@ -150,16 +172,22 @@ class B3RPCClient:
                            data["error"].get("message", "unknown error"))
         return data.get("result")
 
-    async def call_optional(self, method: str, *params) -> object | None:
+    async def call(self, method: str, *params, wallet: str | None = None) -> object:
+        assert_allowed(method)  # hard choke point — no path around it
+        return await self._post(method, params, wallet)
+
+    async def call_optional(self, method: str, *params,
+                            wallet: str | None = None) -> object | None:
         """Like call() but returns None when the method is not allowlisted
         (used for optional features like staking RPCs on older nodes)."""
         try:
             assert_allowed(method)
         except RPCNotAllowed:
             return None
-        return await self.call(method, *params)
+        return await self.call(method, *params, wallet=wallet)
 
-    async def call_unrestricted(self, method: str, *params) -> object:
+    async def call_unrestricted(self, method: str, *params,
+                                wallet: str | None = None) -> object:
         """Raw RPC call WITHOUT the allowlist choke point.
 
         Used ONLY by the expert console in full-trust mode (localhost /
@@ -168,17 +196,4 @@ class B3RPCClient:
         Every other code path MUST use call() / call_optional() so the
         allowlist stays the hard boundary for the regular API surface.
         """
-        payload = {"jsonrpc": "2.0", "id": 1, "method": method,
-                   "params": list(params)}
-        try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(self._url, json=payload, auth=self._auth)
-        except httpx.HTTPError as exc:
-            raise RPCUnavailable(str(exc)) from exc
-        if resp.status_code == 401:
-            raise RPCError(-1, "node RPC rejected credentials")
-        data = resp.json()
-        if "error" in data and data["error"] is not None:
-            raise RPCError(data["error"].get("code", -1),
-                           data["error"].get("message", "unknown error"))
-        return data.get("result")
+        return await self._post(method, params, wallet)

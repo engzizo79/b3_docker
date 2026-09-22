@@ -106,7 +106,13 @@ class MockRPC:
 			"backupwallet": None,
         }
 
-    async def call(self, method: str, *params):
+    async def call(self, method: str, *params, wallet: str | None = None):
+        # wallet is accepted (mirrors B3RPCClient's per-wallet URL routing
+        # kwarg — plumbing laid down ahead of any actual multi-wallet
+        # decision) but not recorded: no test needs to assert on it yet,
+        # and recording it would change every existing (method, params)
+        # tuple assertion across the suite. Add a wallet-aware assertion
+        # helper here first if/when that's actually needed.
         self.calls.append((method, params))
         if method in self.fail_methods:
             raise RPCError(-14, "wallet passphrase entered was incorrect")
@@ -124,14 +130,14 @@ class MockRPC:
                 return {"isvalid": False, "error": "Invalid or unsupported encoding."}
         return self.responses[method]
 
-    async def call_optional(self, method: str, *params):
+    async def call_optional(self, method: str, *params, wallet: str | None = None):
         try:
             assert_allowed(method)
         except RPCNotAllowed:
             return None
-        return await self.call(method, *params)
+        return await self.call(method, *params, wallet=wallet)
 
-    async def call_unrestricted(self, method: str, *params):
+    async def call_unrestricted(self, method: str, *params, wallet: str | None = None):
         # Console full-trust path: no allowlist check in the mock either.
         # Unknown methods fail like the real node (RPCError, not a mock
         # AssertionError) so error mapping is exercised realistically.

@@ -155,7 +155,7 @@ def main() -> None:
     mock.responses["revokefinalitykey"] = {"txid": "rv" + "b" * 62, "action": "revoke"}
     _orig_call = mock.call
 
-    async def _stateful_call(method, *params):
+    async def _stateful_call(method, *params, **kw):
         # The frozen mock chain must track the live explorer tip the
         # monitor writes, or the node looks perpetually behind in dev.
         if method == "getblockchaininfo":
@@ -169,7 +169,7 @@ def main() -> None:
             from tests.conftest import RPCError
             raise RPCError(-14, "wallet passphrase entered was incorrect")
         print(f"WRAPPER: {method} params={params}", flush=True)
-        r = await _orig_call(method, *params)
+        r = await _orig_call(method, *params, **kw)
         if method == "createstake":
             mock.responses["getstakinginfo"]["active"] = "100.000000000"
             mock.responses["getstakinginfo"]["stakes"] = [

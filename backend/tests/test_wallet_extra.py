@@ -190,7 +190,7 @@ def test_address_book_balance_excludes_spent_and_unspendable(client: TestClient,
     out = login(client, headers=LOCAL)
     addr = "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"
     orig_call = mock_rpc.call
-    async def call(method, *params):
+    async def call(method, *params, **kw):
         if method == "listunspent":
             return [
                 {"txid": "u1", "vout": 0, "address": addr, "amount": 0.1,
@@ -198,7 +198,7 @@ def test_address_book_balance_excludes_spent_and_unspendable(client: TestClient,
                 {"txid": "u2", "vout": 0, "address": addr, "amount": 9.0,
                  "spendable": False},
             ]
-        return await orig_call(method, *params)
+        return await orig_call(method, *params, **kw)
     mock_rpc.call = call
     r = client.get("/api/wallet/book", headers=out["headers"])
     entry = {a["address"]: a for a in r.json()["addresses"]}[addr]
@@ -214,7 +214,7 @@ def test_address_book_locked_is_non_p2pkh_outputs(client: TestClient, mock_rpc: 
     plain = "76a914751f0b64ad7c395e05652b72101102cf0da491e888ac"
     carrier = "6a0c4233533100000000000000"  # OP_RETURN B3S1 ... (not P2PKH)
     orig_call = mock_rpc.call
-    async def call(method, *params):
+    async def call(method, *params, **kw):
         if method == "listunspent":
             return [
                 {"txid": "u1", "vout": 0, "address": addr, "amount": 2.5,
@@ -222,7 +222,7 @@ def test_address_book_locked_is_non_p2pkh_outputs(client: TestClient, mock_rpc: 
                 {"txid": "u2", "vout": 1, "address": addr, "amount": 500.0,
                  "spendable": True, "scriptPubKey": carrier},
             ]
-        return await orig_call(method, *params)
+        return await orig_call(method, *params, **kw)
     mock_rpc.call = call
     r = client.get("/api/wallet/book", headers=out["headers"])
     entry = {a["address"]: a for a in r.json()["addresses"]}[addr]
@@ -235,10 +235,10 @@ def test_address_book_balance_null_when_listunspent_fails(client: TestClient, mo
     from app.rpc import RPCError
     out = login(client, headers=LOCAL)
     orig_call = mock_rpc.call
-    async def call(method, *params):
+    async def call(method, *params, **kw):
         if method == "listunspent":
             raise RPCError(-1, "boom")
-        return await orig_call(method, *params)
+        return await orig_call(method, *params, **kw)
     mock_rpc.call = call
     r = client.get("/api/wallet/book", headers=out["headers"])
     assert r.status_code == 200
@@ -254,10 +254,10 @@ def test_address_book_fallback_to_groupings(client: TestClient, mock_rpc: MockRP
     # Simulate a legacy wallet where listreceivedbyaddress is not
     # supported: raise an RPCError, which the endpoint catches.
     orig_call = mock_rpc.call
-    async def fail_call(method, *params):
+    async def fail_call(method, *params, **kw):
         if method == "listreceivedbyaddress":
             raise RPCError(-32601, "Method not found")
-        return await orig_call(method, *params)
+        return await orig_call(method, *params, **kw)
     mock_rpc.call = fail_call
     r = client.get("/api/wallet/book", headers=out["headers"])
     assert r.status_code == 200
@@ -436,12 +436,12 @@ def test_address_book_lists_change_addresses_holding_coins(client: TestClient, m
     out = login(client, headers=LOCAL)
     change = "SQ32gwB3rpYaAtWabhAHgD4obMRnRjNFqF"
     orig_call = mock_rpc.call
-    async def call(method, *params):
+    async def call(method, *params, **kw):
         if method == "listunspent":
             return [{"txid": "c1", "vout": 1, "address": change, "amount": 4.5,
                      "spendable": True,
                      "scriptPubKey": "76a914" + "00" * 20 + "88ac"}]
-        return await orig_call(method, *params)
+        return await orig_call(method, *params, **kw)
     mock_rpc.call = call
     r = client.get("/api/wallet/book", headers=out["headers"])
     entry = {a["address"]: a for a in r.json()["addresses"]}[change]

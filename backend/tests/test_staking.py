@@ -510,12 +510,12 @@ def test_unstake_defaults_to_funding_source_when_resolvable(client, mock_rpc, se
  funding_addr = "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"
  prev_txid = "cc" * 32
  orig = mock_rpc.call
- async def call(method, *params):
+ async def call(method, *params, **kw):
      if method == "getrawtransaction" and params and params[0] == STAKE_TXID:
          return {"vin": [{"txid": prev_txid, "vout": 0}]}
      if method == "getrawtransaction" and params and params[0] == prev_txid:
          return {"vout": [{"scriptPubKey": {"address": funding_addr}}]}
-     return await orig(method, *params)
+     return await orig(method, *params, **kw)
  mock_rpc.call = call
  r = client.post("/api/staking/unstake",
  json={"txid": STAKE_TXID, "vout": 0, "confirm": False},
@@ -534,14 +534,14 @@ def test_unstake_falls_back_to_owner_when_funding_source_ambiguous(client, mock_
  unlock(client, out["headers"])
  prev_a, prev_b = "cc" * 32, "dd" * 32
  orig = mock_rpc.call
- async def call(method, *params):
+ async def call(method, *params, **kw):
      if method == "getrawtransaction" and params and params[0] == STAKE_TXID:
          return {"vin": [{"txid": prev_a, "vout": 0}, {"txid": prev_b, "vout": 0}]}
      if method == "getrawtransaction" and params and params[0] == prev_a:
          return {"vout": [{"scriptPubKey": {"address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"}}]}
      if method == "getrawtransaction" and params and params[0] == prev_b:
          return {"vout": [{"scriptPubKey": {"address": "SeLxbTthMTY1iMFbbBU4Du52BMR9BNSfu6"}}]}
-     return await orig(method, *params)
+     return await orig(method, *params, **kw)
  mock_rpc.call = call
  r = client.post("/api/staking/unstake",
  json={"txid": STAKE_TXID, "vout": 0, "confirm": False},
@@ -566,10 +566,10 @@ def test_unstake_falls_back_to_wallet_first_address_before_owner(client, mock_rp
      {"desc": desc, "active": True, "internal": False},
  ]}
  orig = mock_rpc.call
- async def call(method, *params):
+ async def call(method, *params, **kw):
      if method == "deriveaddresses" and params and params[0] == desc:
          return [first_addr]
-     return await orig(method, *params)
+     return await orig(method, *params, **kw)
  mock_rpc.call = call
  r = client.post("/api/staking/unstake",
  json={"txid": STAKE_TXID, "vout": 0, "confirm": False},
@@ -689,10 +689,10 @@ def test_unstake_build_failure_shows_node_reason(client, mock_rpc, settings):
     out = login(client)
     unlock(client, out["headers"])
     orig = mock_rpc.call
-    async def call(method, *params):
+    async def call(method, *params, **kw):
         if method == "sendall":
             raise RPCError(-4, "stake output is in use by the staker")
-        return await orig(method, *params)
+        return await orig(method, *params, **kw)
     mock_rpc.call = call
     r = client.post("/api/staking/unstake",
                     json={"txid": STAKE_TXID, "vout": 0, "confirm": False},
@@ -712,10 +712,10 @@ def test_unstake_confirm_succeeds_when_fee_reestimate_changes_the_tx(client, moc
     unlock(client, out["headers"])
     orig = mock_rpc.call
     hexes = iter(["aa" * 40, "bb" * 40])  # a different fee -> different bytes
-    async def call(method, *params):
+    async def call(method, *params, **kw):
         if method == "sendall":
             return {"complete": True, "hex": next(hexes)}
-        return await orig(method, *params)
+        return await orig(method, *params, **kw)
     mock_rpc.call = call
     prev = client.post("/api/staking/unstake",
                        json={"txid": STAKE_TXID, "vout": 0, "confirm": False},

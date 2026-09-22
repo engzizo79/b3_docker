@@ -14,10 +14,10 @@ from tests.conftest import LOCAL, MockRPC, login
 def _fail_with(mock_rpc: MockRPC, exc: Exception) -> None:
     orig = mock_rpc.call
 
-    async def call(method, *params):
+    async def call(method, *params, **kw):
         if method == "getblockchaininfo":
             raise exc
-        return await orig(method, *params)
+        return await orig(method, *params, **kw)
 
     mock_rpc.call = call
 
