@@ -1,6 +1,7 @@
 """Staking automation tests: settings, vault, reconcile, two-phase
 unstake. All against the mocked RPC layer - no funded wallet needed."""
 import asyncio
+import time
 
 from fastapi.testclient import TestClient
 
@@ -145,6 +146,37 @@ def test_reconcile_tops_up_and_relocks(client, mock_rpc, settings):
     wallet_calls = [m for m, _ in mock_rpc.calls
                     if m in ("walletpassphrase", "walletlock")]
     assert wallet_calls[-1] == "walletlock"
+
+
+def test_reconcile_does_not_relock_an_already_unlocked_wallet(client, mock_rpc, settings):
+    """Regression: the node has ONE global wallet lock, not a per-caller
+    lease. If a user is mid-Send/Unstake (or another pass is running) and
+    the wallet is already unlocked, a background reconcile pass must NOT
+    call walletlock when it finishes - that cuts the other unlock short
+    from under them, and their next signing call fails as if the node
+    itself were broken ('confirm token mismatch' / 'node returned an
+    error') seconds after they entered their passphrase."""
+    vault = _enable(settings)
+    mock_rpc.responses["listwallets"] = ["wallet"]
+    mock_rpc.responses["getbalances"] = {"mine": {"trusted": 5000}}
+    mock_rpc.responses["getwalletinfo"] = {"unlocked_until": time.time() + 55}
+    result = asyncio.run(reconcile(settings, mock_rpc, vault))
+    assert result["ran"] is True
+    assert result["topped_up"] == "1000.000000000"  # still does its job
+    assert not mock_rpc.called("walletlock")
+    assert not mock_rpc.called("walletpassphrase")  # doesn't shorten their window either
+
+
+def test_reconcile_still_relocks_when_it_took_the_lock_itself(client, mock_rpc, settings):
+    """The normal case (nobody else has it unlocked) is unaffected."""
+    vault = _enable(settings)
+    mock_rpc.responses["listwallets"] = ["wallet"]
+    mock_rpc.responses["getbalances"] = {"mine": {"trusted": 5000}}
+    mock_rpc.responses["getwalletinfo"] = {"unlocked_until": 0}
+    result = asyncio.run(reconcile(settings, mock_rpc, vault))
+    assert result["ran"] is True
+    assert mock_rpc.called("walletpassphrase")
+    assert mock_rpc.called("walletlock")
 
 
 def test_reconcile_respects_reserve(client, mock_rpc, settings):

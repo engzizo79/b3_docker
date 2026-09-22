@@ -106,11 +106,27 @@ async def reconcile(settings, rpc, vault, reason="startup", dry_run=False):
     result = {"ran": True, "started": False, "topped_up": None, "steps": steps}
     if dry_run:
         result["dry_run"] = True
+    # The node has ONE global lock, not a per-caller lease: if the wallet is
+    # already unlocked (a user mid-Send/Unstake, or another scheduled pass),
+    # calling walletpassphrase again is harmless, but relocking in `finally`
+    # below is NOT - it would cut that other unlock short from under them.
+    # Only take the lock/unlock bracket when we are the one closing it.
+    took_lock = False
     try:
         if not dry_run:
-            await rpc.call("walletpassphrase", passphrase, MAX_UNLOCK_SECONDS)
-            db.audit(dbp, "autostake_unlock", detail="reason=" + reason)
-            step("Wallet unlocked for up to %ds" % MAX_UNLOCK_SECONDS, True)
+            try:
+                info = await rpc.call("getwalletinfo")
+                took_lock = float(info.get("unlocked_until") or 0) <= time.time()
+            except (RPCError, RPCNotAllowed, RPCUnavailable):
+                took_lock = True  # unknown state - be the one to lock it back up
+            if took_lock:
+                await rpc.call("walletpassphrase", passphrase, MAX_UNLOCK_SECONDS)
+                db.audit(dbp, "autostake_unlock", detail="reason=" + reason)
+                step("Wallet unlocked for up to %ds" % MAX_UNLOCK_SECONDS, True)
+            else:
+                # Already unlocked by someone else - use their window as-is.
+                # Re-unlocking here would shorten (or lengthen) it under them.
+                step("Wallet already unlocked", True, "reusing the existing window")
             try:
                 await rpc.call("startstaking")
                 result["started"] = True
@@ -185,13 +201,15 @@ async def reconcile(settings, rpc, vault, reason="startup", dry_run=False):
         step("Node call", False, exc)
         result["error"] = str(exc)
     finally:
-        if not dry_run:
+        if not dry_run and took_lock:
             try:
                 await rpc.call("walletlock")
                 step("Wallet re-locked", True)
             except (RPCError, RPCNotAllowed, RPCUnavailable):
                 step("Wallet re-locked", False)
                 logger.warning("autostake: walletlock failed after reconcile")
+        elif not dry_run:
+            step("Wallet left unlocked", True, "already unlocked by someone else - not ours to lock")
     return _record(dbp, result, reason, dry_run)
 
 

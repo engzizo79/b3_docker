@@ -224,10 +224,15 @@ function friendlyError(status, data) {
     if (re.test(detail)) return msg;
   }
   if (status === 401) return 'Your session expired — sign in again.';
-  if (STATUS_FALLBACK[status]) return STATUS_FALLBACK[status];
-  // Last resort: a short, RPC-free remainder of the detail, or nothing.
+  // A short, RPC-free detail from OUR backend is worth more than a blanket
+  // status message: the generic "Your node returned an error." for every
+  // 502 once hid a specific, diagnosable node reason (e.g. a locked
+  // wallet) behind a dead end. Try it before falling back to the status
+  // text, not after — the safety filter below still blocks anything that
+  // looks like a raw RPC code, JSON blob or traceback.
   if (detail && detail.length < 120 && !/rpc|json|traceback|\bat \w+\.py/i.test(detail)) {
     return detail.charAt(0).toUpperCase() + detail.slice(1);
   }
+  if (STATUS_FALLBACK[status]) return STATUS_FALLBACK[status];
   return 'That did not work. Please try again.';
 }

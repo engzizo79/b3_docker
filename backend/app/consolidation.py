@@ -272,9 +272,25 @@ async def _pass(settings, rpc, vault, reason, dry_run):
         return {"ran": False, "reason": "node unreachable"}
     if not wallets:
         return {"ran": False, "reason": "no wallet loaded"}
+    # The node has ONE global lock, not a per-caller lease: if the wallet
+    # is already unlocked (a user mid-Send/Unstake, or another scheduled
+    # pass), relocking in `finally` below would cut that other unlock
+    # short from under them. Only take the bracket when we are the one
+    # closing it. dry_run never signs, so it never needs to unlock at all
+    # (matching autostake.reconcile's contract) - plan() below is read-only.
+    took_lock = False
     try:
-        await rpc.call("walletpassphrase", passphrase, MAX_UNLOCK_SECONDS)
-        db.audit(dbp, "consolidation_unlock", detail="reason=" + reason)
+        if not dry_run:
+            try:
+                info = await rpc.call("getwalletinfo")
+                took_lock = float(info.get("unlocked_until") or 0) <= time.time()
+            except (RPCError, RPCNotAllowed, RPCUnavailable):
+                took_lock = True  # unknown state - be the one to lock it back up
+            if took_lock:
+                await rpc.call("walletpassphrase", passphrase, MAX_UNLOCK_SECONDS)
+                db.audit(dbp, "consolidation_unlock", detail="reason=" + reason)
+            # else: already unlocked by someone else - reuse their window
+            # as-is; re-unlocking here would shorten (or lengthen) it under them.
         plan_obj = await plan(settings, rpc, settings.session_secret)
         token = hmac.new(settings.session_secret.encode(),
                         f"{CONS_RECIPE_ID}:{plan_obj['_plan_key']}".encode(),
@@ -295,10 +311,11 @@ async def _pass(settings, rpc, vault, reason, dry_run):
         db.audit(dbp, "consolidation_error", success=False, detail=str(exc))
         return {"ran": False, "reason": str(exc)}
     finally:
-        try:
-            await rpc.call("walletlock")
-        except (RPCError, RPCNotAllowed, RPCUnavailable):
-            logger.warning("consolidation: walletlock failed after sweep")
+        if not dry_run and took_lock:
+            try:
+                await rpc.call("walletlock")
+            except (RPCError, RPCNotAllowed, RPCUnavailable):
+                logger.warning("consolidation: walletlock failed after sweep")
 
 
 async def _loop(settings, rpc, vault):

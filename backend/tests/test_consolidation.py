@@ -183,3 +183,57 @@ def test_consolidation_settings_round_trip(client: TestClient):
     r = client.post("/api/staking/consolidation/settings", json=d,
                     headers=out["headers"])
     assert r.status_code == 200, r.text
+
+
+# ---------------------------------------------------------------------------
+# Scheduled sweep lock handling (unit-level, direct calls against the mock)
+# ---------------------------------------------------------------------------
+
+import asyncio
+import time
+
+from app import db
+from app.consolidation import _run_once
+from app.vault import vault_from_settings
+
+
+def _enable_sweep(settings, destination=DEST, passphrase="test-passphrase"):
+    vault = vault_from_settings(settings, settings.b3_data_dir)
+    db.set_consolidation_settings(settings.db_path, enabled=1, destination=destination)
+    db.set_staking_settings(settings.db_path, passphrase_enc=vault.encrypt(passphrase))
+    return vault
+
+
+def test_scheduled_sweep_does_not_relock_an_already_unlocked_wallet(client, mock_rpc, settings):
+    """Regression: same class of bug as autostake.reconcile - the node has
+    ONE global wallet lock. A scheduled sweep must not relock a wallet a
+    user (or another pass) already has open, or their next signing call
+    fails right after they entered their passphrase."""
+    vault = _enable_sweep(settings)
+    mock_rpc.responses["listwallets"] = ["wallet"]
+    mock_rpc.responses["getwalletinfo"] = {"unlocked_until": time.time() + 55}
+    result = asyncio.run(_run_once(settings, mock_rpc, vault, reason="scheduled"))
+    assert result["ran"] is True
+    assert not mock_rpc.called("walletlock")
+    assert not mock_rpc.called("walletpassphrase")
+
+
+def test_scheduled_sweep_still_relocks_when_it_took_the_lock_itself(client, mock_rpc, settings):
+    vault = _enable_sweep(settings)
+    mock_rpc.responses["listwallets"] = ["wallet"]
+    mock_rpc.responses["getwalletinfo"] = {"unlocked_until": 0}
+    result = asyncio.run(_run_once(settings, mock_rpc, vault, reason="scheduled"))
+    assert result["ran"] is True
+    assert mock_rpc.called("walletpassphrase")
+    assert mock_rpc.called("walletlock")
+
+
+def test_scheduled_sweep_dry_run_never_unlocks(client, mock_rpc, settings):
+    """dry_run only plans (read-only); it must never touch the real
+    passphrase or the node's lock state."""
+    vault = _enable_sweep(settings)
+    mock_rpc.responses["listwallets"] = ["wallet"]
+    result = asyncio.run(_run_once(settings, mock_rpc, vault, reason="manual-dry-run", dry_run=True))
+    assert result["ran"] is True
+    assert not mock_rpc.called("walletpassphrase")
+    assert not mock_rpc.called("walletlock")
