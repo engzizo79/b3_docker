@@ -35,7 +35,7 @@ Host data dir ───────────┘
 
 ## Container layout (single image)
 
-- One `b3hive` service in docker-compose.yml. Only the UI port is published (default 8080). The node RPC port is NEVER published and binds to `127.0.0.1` inside the container only.
+- One `b3hive` service in docker-compose.yml. The UI port is published (default 8080) and so is the node's P2P port (default 5647, `B3_P2P_PORT`) — the daemon's `listen=1` default is meaningless in Docker without a matching port publish, so publishing it is what makes "accept inbound connections" actually true, same as a native install. The node RPC port is a different matter and NEVER published, binding to `127.0.0.1` inside the container only — see [SECURITY.md](SECURITY.md).
 - Image contents: `b3coind`, `b3coin-cli`, `b3coin-wallet` binaries (built externally, copied in; tags track B3Hive releases), Python backend, prebuilt static SPA. Base: lightweight Linux (Alpine if binaries link against musl, else Debian slim).
 - Entrypoint responsibilities: generate `b3coin.conf` from env on first run (never overwrite an existing one), start `b3coind -confdir=.B3-CoinV2 -daemon=0` in the foreground, and start the backend when `RUN_UI` is not `false`. Simple process supervision keeps both alive in one container (one container, one process group — deliberate exception to one-process-per-container for pull-and-run simplicity).
 - Non-root user `b3coin` (UID 1000). Healthcheck: daemon RPC with generous start_period (~5 min startup replay) + backend health endpoint when the UI runs.

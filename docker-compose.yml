@@ -29,11 +29,25 @@ services:
       B3_LOCAL_ADDRS: ${B3_LOCAL_ADDRS:-}
       B3_TRUST_DOCKER_HOST: ${B3_TRUST_DOCKER_HOST:-true}
     ports:
-      # Only the UI port is published. The node RPC binds to 127.0.0.1
-      # inside the container and is NEVER published.
+      # The UI port. The node RPC binds to 127.0.0.1 inside the container
+      # and is NEVER published — unlike RPC, that's not a security-vs-
+      # convenience tradeoff, it is a hard rule.
       # To make the UI reachable from THIS machine only, use instead:
       #   - "127.0.0.1:${WEB_PORT:-8080}:8080"
       - "${WEB_PORT:-8080}:8080"
+      # P2P (node-to-node), published by default so this node can accept
+      # INBOUND peer connections — same as a native install's listen=1.
+      # Unlike RPC, the P2P protocol is DESIGNED to be internet-facing, so
+      # publishing it is not a security tradeoff. Harmless if unreachable
+      # (e.g. no router port-forward set up) — the node just stays
+      # outbound-only, exactly like today.
+      # Change B3_P2P_PORT in .env if your router only forwards specific
+      # ports (e.g. running several daemons, each needs its own port in
+      # the allowed range) — it must match b3coin.conf's `port=`, which
+      # the entrypoint seeds from the same variable on first run.
+      # Comment this line out entirely if you don't want this node
+      # reachable at all (it still works fine as an outbound-only client).
+      - "${B3_P2P_PORT:-5647}:${B3_P2P_PORT:-5647}"
     volumes:
       # Map a host directory (default: ~/.B3-CoinV2).
       - ${B3_DATA_DIR:-~/.B3-CoinV2}:/data

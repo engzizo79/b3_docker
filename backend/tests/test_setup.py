@@ -223,6 +223,35 @@ def test_conf_apply_validates_values(setup_client):
         assert r.status_code == 422, (k, v)
 
 
+def test_conf_apply_port_roundtrip(setup_client):
+    _login(setup_client)
+    r = setup_client.post("/api/setup/conf/apply",
+                          json={"conf": {"port": "5470"}},
+                          headers=_csrf(setup_client))
+    assert r.status_code == 200
+    assert "port" in r.json()["applied"]
+    s = setup_client.app.state.app_state.settings
+    content = (Path(s.node_datadir) / "b3coin.conf").read_text()
+    assert "port=5470" in content
+
+
+def test_conf_apply_port_rejects_out_of_range(setup_client):
+    _login(setup_client)
+    for v in ("0", "80", "70000", "not-a-number"):
+        r = setup_client.post("/api/setup/conf/apply",
+                              json={"conf": {"port": v}}, headers=_csrf(setup_client))
+        assert r.status_code == 422, v
+
+
+def test_conf_apply_port_rejects_rpc_port_collision(setup_client):
+    _login(setup_client)
+    s = setup_client.app.state.app_state.settings
+    r = setup_client.post("/api/setup/conf/apply",
+                          json={"conf": {"port": str(s.rpc_port)}},
+                          headers=_csrf(setup_client))
+    assert r.status_code == 422
+
+
 def test_conf_apply_requires_csrf(setup_client):
     _login(setup_client)
     r = setup_client.post("/api/setup/conf/apply",

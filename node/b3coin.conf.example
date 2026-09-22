@@ -9,6 +9,11 @@
 txindex=1
 listen=1
 listenonion=0
+# P2P listen port. Seeded from B3_P2P_PORT (default 5647, the chain
+# default) on first run; the matching Docker port MUST be published (see
+# docker-compose.yml) for this to actually be reachable from the internet.
+# Editable later from Settings -> Node in the UI (restart-node to apply).
+port=5647
 
 # RPC — loopback INSIDE the container only; the port is never published.
 rpcbind=127.0.0.1

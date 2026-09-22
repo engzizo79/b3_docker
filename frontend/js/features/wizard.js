@@ -174,6 +174,7 @@ export const wizardMixin = {
     return {
       txindex: 'Keep a full index of every transaction so old payments stay searchable. Uses more disk.',
       listen: 'Accept incoming connections from other nodes. Helps the network and speeds up your own sync.',
+      port: 'The port other nodes connect to you on. Must match the port published in docker-compose.yml (B3_P2P_PORT) — changing one without the other means no inbound connections.',
       maxconnections: 'How many peers to talk to at once. More peers sync faster but use more bandwidth.',
       proxy: 'Route node traffic through a proxy, for example 127.0.0.1:9050 for Tor. Leave empty to connect directly.',
       bantime: 'How long a misbehaving peer stays blocked, in seconds. 86400 is one day.',
@@ -184,6 +185,7 @@ export const wizardMixin = {
     return {
       txindex: 'Full transaction index',
       listen: 'Accept incoming connections',
+      port: 'P2P port',
       maxconnections: 'Maximum peers',
       proxy: 'Proxy',
       bantime: 'Peer ban time (seconds)',

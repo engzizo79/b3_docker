@@ -26,8 +26,14 @@ services:
       B3_LOCAL_ADDRS: ""
     volumes:
       - ${B3_DATA_DIR:-~/.B3-CoinV2}:/data
-    # No ports published — ONLY Caddy reaches the backend; the node RPC
-    # stays loopback-only inside the container.
+    # No WEB/API port published here — ONLY Caddy reaches the backend, and
+    # the node RPC stays loopback-only inside the container either way.
+    # P2P is a different matter: it's a raw TCP protocol, not HTTP, so
+    # Caddy (an HTTP/TLS proxy) cannot front it — this node publishes it
+    # directly, same as docker-compose.yml. Comment out to stay inbound-
+    # unreachable (the node still works fine outbound-only).
+    ports:
+      - "${B3_P2P_PORT:-5647}:${B3_P2P_PORT:-5647}"
     stop_grace_period: 10m
 
   caddy:

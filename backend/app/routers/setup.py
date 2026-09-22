@@ -38,6 +38,7 @@ BROWSER_UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
 WIZARD_KEYS = {
     "txindex": "Full transaction index (enables tx lookup for the explorer view)",
     "listen": "Accept incoming P2P connections",
+    "port": "P2P listen port — must match the port published in docker-compose.yml (B3_P2P_PORT) to actually be reachable",
     "maxconnections": "Maximum P2P connections",
     "proxy": "Tor/VPN proxy for P2P traffic (host:port, empty = direct)",
     "staking": None,  # documented as invalid in v1.1.4 — never written
@@ -527,6 +528,15 @@ async def apply_conf(body: ApplyConfBody, request: Request):
         raise HTTPException(422, "txindex must be 0 or 1")
     if "listen" in clean and clean["listen"] not in ("0", "1"):
         raise HTTPException(422, "listen must be 0 or 1")
+    if "port" in clean:
+        try:
+            n = int(clean["port"])
+            if not (1024 <= n <= 65535):
+                raise ValueError
+        except ValueError:
+            raise HTTPException(422, "port must be 1024-65535")
+        if n == s.settings.rpc_port:
+            raise HTTPException(422, "port must differ from the RPC port")
     if "maxconnections" in clean:
         try:
             n = int(clean["maxconnections"])

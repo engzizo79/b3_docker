@@ -60,6 +60,10 @@ ENV B3_DATA_DIR=/data \
     B3_APP_VERSION=${B3_APP_VERSION}
 
 EXPOSE 8080
+# P2P (documentation only — actual publishing is docker-compose.yml's
+# ports: list, driven by B3_P2P_PORT so it stays in sync with what
+# entrypoint.sh writes into b3coin.conf's `port=`).
+EXPOSE 5647
 
 # Node startup replay takes ~5 min at current height — generous start period.
 HEALTHCHECK --start-period=10m --interval=30s --timeout=20s --retries=5 \

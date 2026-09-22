@@ -50,6 +50,7 @@ docker run -d --name b3hive --restart unless-stopped \
 | Setting | Default | What it does |
 |---|---|---|
 | `WEB_PORT` | `8080` | Host port for the UI |
+| `B3_P2P_PORT` | `5647` | Host port for node-to-node (P2P) connections — published by default so peers can reach you inbound; see [Port forwarding](#port-forwarding-inbound-p2p) |
 | `B3_DATA_DIR` | `~/.B3-CoinV2` | Host folder for chain + wallet (compose only) |
 | `B3_IMAGE_TAG` | `latest` | Version to run (compose only). Pin e.g. `v0.8.12-beta` to stay on one release |
 | `RUN_UI` | `true` | `false` = node only, no web UI. On a fresh volume the daemon is installed automatically (see `B3_DAEMON_VERSION`) and syncs from scratch |
@@ -77,6 +78,51 @@ Internal secrets are generated automatically and stored in the data folder — l
 
 - **Tailscale** is bundled: enable it in the UI's Settings for HTTPS from anywhere, no domain needed.
 - **Your own domain:** set `B3_DOMAIN` in `.env` and run `docker compose -f docker-compose.prod.yml up -d` (automatic HTTPS via Caddy). Do the first-run setup once with the normal compose file, then switch.
+
+## Port forwarding (inbound P2P)
+
+Every B3Hive node connects OUT to peers on its own; that always works.
+Accepting connections IN from other peers is a separate thing — it's what
+makes you a well-connected node, and it's what a FlowMesh validator wants
+(better peer diversity, faster propagation, being reachable for other
+validators). It needs three things to line up:
+
+1. **`b3coin.conf` has `listen=1` and a `port=`** — already the default
+   (`port=5647`, the chain default), editable later from Settings → Node.
+2. **Docker publishes that same port** — `docker-compose.yml` does this by
+   default (`B3_P2P_PORT`, default `5647`). If you change one, change the
+   other and recreate the container (`docker compose up -d`) — they have
+   to match, or the inbound path is broken silently.
+3. **Your router forwards that port to this machine.**
+
+Running more than one daemon (including other coins) on one router that
+only forwards a limited port range — for example port-forwarding rules
+that only cover 5462–5479 — is the common case this trips up: each daemon
+needs its own port *from that allowed range*, not its chain default.
+Pick a free port in your allowed range, set it in **both** places:
+
+```bash
+# .env
+B3_P2P_PORT=5470          # pick one from your router's allowed range
+```
+
+On a **fresh** node this is enough — the entrypoint seeds `port=5470` into
+`b3coin.conf` on first run. On an **existing** node, `B3_P2P_PORT` alone
+does nothing (the conf is never overwritten after first run): set
+`port=5470` from **Settings → Node** in the UI instead, and use "Restart
+node" to apply it. Either way, `docker compose up -d` afterwards to
+republish the matching Docker port — the two have to agree.
+
+Verify it worked: `getnetworkinfo` (Settings → Node, or the console) shows
+your reachable address under `localaddresses` once a peer has connected
+back to you, and `getpeerinfo` entries show `"inbound": true` for peers
+that connected to you rather than the other way round. An online port
+checker (from outside your network) against the router's WAN IP and your
+chosen port is the fastest way to confirm the forward itself is working,
+independent of the daemon.
+
+If you don't need inbound reachability, do nothing — the node works fine
+outbound-only, exactly as before this port was published by default.
 
 ## Notifications
 

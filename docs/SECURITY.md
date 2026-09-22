@@ -24,6 +24,27 @@ The primary assets at risk are: wallet funds (via unauthorized spends), wallet k
 | 10 | No secrets in git | Env files, b3coin.conf, wallet.dat, passphrases are gitignored | Always |
 | 11 | Audit log | Every wallet-affecting action logged: who / what / when / txid | Always |
 
+## P2P port vs. RPC port
+
+`docker-compose.yml` publishes the node's P2P port (default 5647,
+`B3_P2P_PORT`) by default. This is not a weakening of the "only the UI is
+reachable" posture above — the P2P port and the RPC port are different in
+kind, not just in whether they happen to be published:
+
+- **RPC** is a trusted-control-plane protocol — anyone who can reach it can
+  move funds or exfiltrate wallet data. It stays bound to `127.0.0.1`
+  inside the container, full stop, with no env var or setting that changes
+  that.
+- **P2P** is the node-to-node gossip protocol every B3Hive/Bitcoin-derived
+  node is *designed* to expose to arbitrary internet peers — that's how
+  the network works. Publishing it makes this node behave like a normal
+  reachable node instead of a silently unreachable one; it carries the
+  same exposure as running `b3coind` outside Docker with `listen=1`
+  (the default either way), nothing more.
+
+See [GUIDE.md's Port forwarding section](GUIDE.md#port-forwarding-inbound-p2p)
+for the router/port-forwarding side of making it actually reachable.
+
 ## Localhost vs. remote auth (layer 3)
 
 The UI is designed for both local administration (same machine) and remote access (internet / LAN). The 2FA layer adapts:
