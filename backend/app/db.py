@@ -127,6 +127,19 @@ CREATE TABLE IF NOT EXISTS notification_state (
  id INTEGER PRIMARY KEY CHECK (id = 1), -- single row
  seeded INTEGER NOT NULL DEFAULT 0 -- wallet monitor has completed its no-notify seed pass
 );
+CREATE TABLE IF NOT EXISTS nodes (
+ id INTEGER PRIMARY KEY,
+ name TEXT UNIQUE NOT NULL,          -- operator-facing label, e.g. "validator-2"
+ kind TEXT NOT NULL CHECK (kind IN ('local','remote')),
+ host TEXT NOT NULL DEFAULT '127.0.0.1',
+ port INTEGER NOT NULL,
+ rpc_user_enc TEXT,                  -- Fernet blob (app/vault.py); NULL for 'local'
+ rpc_password_enc TEXT,              -- Fernet blob; NULL for 'local'
+ is_default INTEGER NOT NULL DEFAULT 0,
+ daemon_build TEXT,                  -- pinned build tag/sha, Phase 4; NULL = whatever is installed
+ created_ts REAL NOT NULL,
+ updated_ts REAL NOT NULL
+);
 """
 
 
@@ -713,3 +726,102 @@ def notification_pending_due(db_path: str, now_ts: float) -> list[dict]:
 def notification_pending_close(db_path: str, event_type: str) -> None:
     with _lock, _connect(db_path) as conn:
         conn.execute("DELETE FROM notification_pending WHERE event_type=?", (event_type,))
+
+
+# ---------------------------------------------------------------------------
+# Node registry (multi-node fleet console, docs/MULTINODE_PLAN.md Phase 1).
+# `kind='local'` is the daemon this container supervises — its credentials
+# always come from `settings` (which reads b3coin.conf), never from here;
+# only `remote` rows carry encrypted credentials (app/vault.py Fernet blobs).
+# ---------------------------------------------------------------------------
+
+def node_list(db_path: str) -> list[dict]:
+    with _lock, _connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM nodes ORDER BY is_default DESC, name COLLATE NOCASE").fetchall()
+        return [dict(r) for r in rows]
+
+
+def node_get(db_path: str, node_id: int) -> dict | None:
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute("SELECT * FROM nodes WHERE id=?", (node_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def node_get_default(db_path: str) -> dict | None:
+    """The default node, or (defensively) the first node if none is marked
+    default, or None if the registry is empty (pre-seed / not-yet-migrated
+    installs — callers fall back to the single-node client)."""
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute("SELECT * FROM nodes WHERE is_default=1").fetchone()
+        if row is None:
+            row = conn.execute("SELECT * FROM nodes ORDER BY id LIMIT 1").fetchone()
+        return dict(row) if row else None
+
+
+def node_add(db_path: str, name: str, kind: str, host: str, port: int,
+            rpc_user_enc: str | None = None, rpc_password_enc: str | None = None,
+            is_default: bool = False, daemon_build: str | None = None) -> int:
+    """Insert a node row. Raises ValueError('duplicate') for a reused name."""
+    now = time.time()
+    with _lock, _connect(db_path) as conn:
+        if is_default:
+            conn.execute("UPDATE nodes SET is_default=0")
+        try:
+            cur = conn.execute(
+                "INSERT INTO nodes (name, kind, host, port, rpc_user_enc,"
+                " rpc_password_enc, is_default, daemon_build, created_ts, updated_ts)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (name, kind, host, port, rpc_user_enc, rpc_password_enc,
+                 1 if is_default else 0, daemon_build, now, now))
+        except sqlite3.IntegrityError as exc:
+            raise ValueError("duplicate") from exc
+        return int(cur.lastrowid)
+
+
+def node_update(db_path: str, node_id: int, **fields) -> bool:
+    """Update label/host/port/credentials/daemon_build. Raises
+    ValueError('duplicate') for a name collision. True if the row existed."""
+    allowed = {"name", "host", "port", "rpc_user_enc", "rpc_password_enc", "daemon_build"}
+    clean = {k: v for k, v in fields.items() if k in allowed}
+    with _lock, _connect(db_path) as conn:
+        if not clean:
+            row = conn.execute("SELECT id FROM nodes WHERE id=?", (node_id,)).fetchone()
+            return row is not None
+        sets = ", ".join(f"{k}=?" for k in clean)
+        try:
+            cur = conn.execute(
+                f"UPDATE nodes SET {sets}, updated_ts=? WHERE id=?",
+                (*clean.values(), time.time(), node_id))
+        except sqlite3.IntegrityError as exc:
+            raise ValueError("duplicate") from exc
+        return cur.rowcount > 0
+
+
+def node_set_default(db_path: str, node_id: int) -> bool:
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute("SELECT id FROM nodes WHERE id=?", (node_id,)).fetchone()
+        if row is None:
+            return False
+        conn.execute("UPDATE nodes SET is_default=0")
+        conn.execute("UPDATE nodes SET is_default=1, updated_ts=? WHERE id=?",
+                     (time.time(), node_id))
+        return True
+
+
+def node_delete(db_path: str, node_id: int) -> bool:
+    """Refuses to delete the last remaining node, and refuses to delete the
+    default node without another being promoted first — both raise
+    ValueError with an operator-facing reason; the router maps these to a
+    400 rather than silently leaving the fleet with no reachable default."""
+    with _lock, _connect(db_path) as conn:
+        row = conn.execute("SELECT * FROM nodes WHERE id=?", (node_id,)).fetchone()
+        if row is None:
+            return False
+        count = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+        if count <= 1:
+            raise ValueError("the last node cannot be deleted")
+        if row["is_default"]:
+            raise ValueError("cannot delete the default node — set another node as default first")
+        cur = conn.execute("DELETE FROM nodes WHERE id=?", (node_id,))
+        return cur.rowcount > 0

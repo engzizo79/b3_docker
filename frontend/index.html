@@ -3605,6 +3605,17 @@
         <strong>Expert console</strong>
         <span class="sub">Run node commands directly — QT parity on trusted connections</span>
       </div>
+      <label class="row gap-2" x-show="nodes.list.length > 1">
+        <span class="t-sm muted">Node</span>
+        <template x-if="nodes.loaded">
+          <select id="console-node" class="select select-sm" x-model="nodes.selected">
+            <option value="">Default node</option>
+            <template x-for="n in nodes.list" :key="n.id">
+              <option :value="String(n.id)" x-text="n.name + (n.is_default ? ' (default)' : '')"></option>
+            </template>
+          </select>
+        </template>
+      </label>
       <div class="row gap-2">
         <button class="btn btn-sm" type="button" @click="consoleCopy()">
           <svg class="i-sm"><use href="#i-copy"/></svg><span>Copy</span>

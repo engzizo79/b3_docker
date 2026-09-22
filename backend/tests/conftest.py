@@ -223,6 +223,11 @@ def app_state(settings: Settings, mock_rpc: MockRPC) -> AppState:
                       SessionStore(settings.session_secret), username="admin")
     db.init_db(settings.db_path)
     db.ensure_user(settings.db_path, "admin", settings.ui_password)
+    # Mirrors create_app_state(): auto-seed the local node row so the
+    # multi-node registry (app/deps.py rpc_for) is populated exactly like a
+    # real boot, not just an app_state built by hand for tests.
+    from app.deps import _seed_local_node
+    _seed_local_node(settings)
     return state
 
 

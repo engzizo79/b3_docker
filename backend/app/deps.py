@@ -24,6 +24,11 @@ class AppState:
         # ECDH server key for envelope decryption (loaded by create_app_state).
         self.ecdh_priv = None
         self.ecdh_pub_b64 = ""
+        # Multi-node fleet (docs/MULTINODE_PLAN.md Phase 1): one B3RPCClient
+        # built and cached per registered 'remote' node id. The 'local' node
+        # always resolves to self.rpc, never a cached entry — its credentials
+        # live in settings, not the registry.
+        self._node_clients: dict[int, B3RPCClient] = {}
 
     # -- session helpers -------------------------------------------------
 
@@ -123,6 +128,47 @@ class AppState:
                         + " disabled for safety")
             )
 
+    # -- multi-node fleet --------------------------------------------------
+
+    def rpc_for(self, request: Request) -> B3RPCClient:
+        """Resolve the X-B3-Node header to that node's RPC client.
+
+        No header -> the default node (self.rpc, unchanged behavior for
+        every endpoint that doesn't yet pass the header). An empty registry
+        (pre-seed, or an AppState built directly by a test without going
+        through create_app_state) also falls back to self.rpc. A header
+        naming an id that doesn't resolve to a row -> 404, never a silent
+        fallback — a stale/mistyped node id must fail loudly rather than
+        quietly running against the wrong node."""
+        header = request.headers.get("x-b3-node", "").strip()
+        if not header:
+            node = db.node_get_default(self.settings.db_path)
+            if node is None:
+                return self.rpc
+        else:
+            try:
+                node_id = int(header)
+            except ValueError:
+                raise HTTPException(status_code=404, detail="unknown node")
+            node = db.node_get(self.settings.db_path, node_id)
+            if node is None:
+                raise HTTPException(status_code=404, detail="unknown node")
+        if node["kind"] == "local":
+            return self.rpc
+        client = self._node_clients.get(node["id"])
+        if client is None:
+            from app.vault import vault_from_settings
+            vault = vault_from_settings(self.settings, self.settings.b3_data_dir)
+            user = password = ""
+            if vault is not None:
+                if node["rpc_user_enc"]:
+                    user = vault.decrypt(node["rpc_user_enc"]) or ""
+                if node["rpc_password_enc"]:
+                    password = vault.decrypt(node["rpc_password_enc"]) or ""
+            client = B3RPCClient(node["host"], node["port"], user, password)
+            self._node_clients[node["id"]] = client
+        return client
+
 
 def _mount_is_persistent(data_dir: str,
                          mountinfo_path: str = "/proc/self/mountinfo") -> bool:
@@ -169,6 +215,18 @@ def _mount_is_persistent(data_dir: str,
     return True
 
 
+def _seed_local_node(settings: Settings) -> None:
+    """Auto-seed the local (managed-daemon) node row on first boot, so an
+    existing single-node install gains a registry with zero user action.
+    A no-op once any node row exists (covers upgrades and re-seeding after
+    an operator deletes/renames things — this never runs again after the
+    first row is created)."""
+    if db.node_list(settings.db_path):
+        return
+    db.node_add(settings.db_path, name="local", kind="local",
+               host=settings.rpc_host, port=settings.rpc_port, is_default=True)
+
+
 def create_app_state(settings: Settings | None = None,
                      rpc: B3RPCClient | None = None) -> AppState:
     settings = settings or Settings()
@@ -185,6 +243,7 @@ def create_app_state(settings: Settings | None = None,
     sessions = SessionStore(settings.session_secret)
     state = AppState(settings, rpc, sessions, username="admin")
     db.init_db(settings.db_path)
+    _seed_local_node(settings)
     if settings.envelope_encryption:
         priv, pub_b64 = server_keypair(settings.b3_data_dir)
         state.ecdh_priv = priv

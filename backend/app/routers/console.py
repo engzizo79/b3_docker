@@ -265,6 +265,8 @@ async def console_run(request: Request, body: ConsoleBody):
         except json.JSONDecodeError:
             params.append(tok)
 
+    rpc = state.rpc_for(request)
+
     if mode == "restricted":
         if method not in CONSOLE_READ:
             db.audit(state.settings.db_path, "console_restricted", sess.username,
@@ -272,14 +274,14 @@ async def console_run(request: Request, body: ConsoleBody):
             raise HTTPException(status_code=403,
                 detail="read-only mode from this network - full access needs "
                       "an allowlisted network or the operator's remote policy")
-        result = await _run_allowlisted(state, method, params)
+        result = await _run_allowlisted(state, rpc, method, params)
     else:
         # Full trust: QT parity. walletpassphrase keeps its scoped handler
         # (redaction, cap, session mirror) for consistency with the UI.
         if method == "walletpassphrase":
-            return await _console_unlock(state, sess, ip, params)
+            return await _console_unlock(state, rpc, sess, ip, params)
         try:
-            result = await state.rpc.call_unrestricted(method, *params)
+            result = await rpc.call_unrestricted(method, *params)
         except RPCError as exc:
             if exc.code == _WALLET_LOCKED_CODE:
                 raise HTTPException(status_code=423, detail="wallet is locked")
@@ -296,9 +298,9 @@ async def console_run(request: Request, body: ConsoleBody):
     return {"result": result}
 
 
-async def _run_allowlisted(state: AppState, method: str, params: list):
+async def _run_allowlisted(state: AppState, rpc, method: str, params: list):
     try:
-        return await state.rpc.call(method, *params)
+        return await rpc.call(method, *params)
     except RPCError as exc:
         if exc.code == _WALLET_LOCKED_CODE:
             raise HTTPException(status_code=423, detail="wallet is locked")
@@ -310,7 +312,7 @@ async def _run_allowlisted(state: AppState, method: str, params: list):
         raise HTTPException(status_code=503, detail="node unavailable (sync window?)")
 
 
-async def _console_unlock(state: AppState, sess, ip: str, params: list):
+async def _console_unlock(state: AppState, rpc, sess, ip: str, params: list):
     """walletpassphrase from the console: like POST /wallet/unlock but
     QT-style positional args. 2FA is already proven; the passphrase never
     reaches the audit log; the timeout is capped; the session unlock window
@@ -333,7 +335,7 @@ async def _console_unlock(state: AppState, sess, ip: str, params: list):
     timeout = max(1, min(timeout, _MAX_UNLOCK_S))
 
     try:
-        await state.rpc.call("walletpassphrase", passphrase, timeout)
+        await rpc.call("walletpassphrase", passphrase, timeout)
     except RPCError as exc:
         db.audit(state.settings.db_path, "wallet_unlock", sess.username,
                  detail=f"ip={ip} via console", success=False)

@@ -151,6 +151,7 @@ def create_app(state: AppState | None = None) -> FastAPI:
     from app.routers import logs
     from app.routers import contacts
     from app.routers import notifications
+    from app.routers import nodes
     app.include_router(auth.router)
     app.include_router(chain.router)
     app.include_router(wallet.router)
@@ -166,6 +167,7 @@ def create_app(state: AppState | None = None) -> FastAPI:
     app.include_router(contacts.router)
     app.include_router(setup.router)
     app.include_router(notifications.router)
+    app.include_router(nodes.router)
 
     @app.get("/api/health")
     async def health(request: Request):

@@ -89,6 +89,10 @@ def main() -> None:
     	"disablewallet=0\n")
 
     db.init_db(s.db_path)
+    # Mirrors create_app_state(): dev_server builds AppState by hand (like
+    # tests/conftest.py), so the node registry needs the same explicit seed.
+    from app.deps import _seed_local_node
+    _seed_local_node(s)
     # B3DEV_SETUP_MODE=1 boots with NO operator account: passwordless first
     # run, local-only (setup mode) — for E2E-verifying the wizard Security step.
     import os

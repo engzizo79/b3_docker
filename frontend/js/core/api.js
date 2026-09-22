@@ -24,6 +24,9 @@ export const apiMixin = {
     const m = document.cookie.match(/(?:^|; )b3_csrf=([^;]+)/);
     if (m) headers['x-csrf-token'] = m[1];
     if (opts.body) headers['Content-Type'] = 'application/json';
+    // Multi-node fleet (docs/MULTINODE_PLAN.md): scope every call to the
+    // selected node. No selection = the backend's default node.
+    if (this.nodes?.selected) headers['X-B3-Node'] = this.nodes.selected;
 
     let res;
     try {

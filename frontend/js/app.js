@@ -30,6 +30,7 @@ import { stakingMixin } from './features/staking.js';
 import { assetsMixin } from './features/assets.js';
 import { batchMixin } from './features/batch.js';
 import { nodeMixin } from './features/node.js';
+import { nodesMixin } from './features/nodes.js';
 import { alertsMixin } from './features/alerts.js';
 import { notifMixin } from './features/notifications.js';
 import { consoleMixin } from './features/console.js';
@@ -173,6 +174,15 @@ function initialState() {
     mode: null, settings: null, sform: { networks: '', remote_full_access: false }, sbusy: false, max: false,
   },
 
+    /* -------------------------------------------------------- node fleet */
+    // Multi-node control plane (docs/MULTINODE_PLAN.md): the registry of
+    // daemons this UI can talk to. `selected` (a node id, or null for the
+    // default node) drives the X-B3-Node header — see core/api.js api().
+    nodes: {
+      list: [], selected: '', loaded: false,
+      form: { name: '', host: '', port: 38647, rpc_user: '', rpc_password: '' }, busy: false,
+    },
+
     /* ---------------------------------------------------------- tailscale */
   ts: { loaded: false, available: true, joined: false, needs_login: false, rekey: false, serve_enabled: false,
     https_url: null, tailnet: null, detail: '', authkey: '', joinOpen: false,
@@ -276,6 +286,7 @@ function b3app() {
     assetsMixin,
     batchMixin,
     nodeMixin,
+    nodesMixin,
     alertsMixin,
     notifMixin,
     consoleMixin,
