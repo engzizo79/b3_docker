@@ -238,6 +238,20 @@ API: recipe CRUD (`/api/batch/recipes`), preview (plan only, no signing,
 - [ ] Deployment docs: env files, healthchecks, log rotation, upgrade runbook (stop / pull / start, wallet migration notes).
 - [ ] Verify: full stack on a VPS, HTTPS, all features, no secrets committed.
 
+### Phase 7: Multi-node fleet console
+
+Driver: FlowMesh has to be tested with several validators at once, on the same
+unpublished daemon build, with wallets holding real FN Coins. The UI manages
+one node today, so that means N tabs, N logins, and no cross-validator view.
+
+- [ ] Node registry + `AppState.rpc_for(request)` (`X-B3-Node` header; no header = default node, so nothing breaks).
+- [ ] Expert console node selector (cheapest real win — RPC to any node).
+- [ ] Fleet dashboard: height/peers/finality quorum/staking/FN balance per node, probed in parallel.
+- [ ] Per-node background monitors; node dimension on alerts + notification digests.
+- [ ] Pinned dev-build install (content-addressed; whole fleet on one binary) + auto `backupwallet` before every daemon swap.
+
+**Full plan, with schema, file-level steps and gotchas: [docs/MULTINODE_PLAN.md](docs/MULTINODE_PLAN.md).**
+
 ## Cross-Project Reuse
 
 | Source (b3_monitoring) | Reuse in b3_docker |
@@ -252,6 +266,6 @@ API: recipe CRUD (`/api/batch/recipes`), preview (plan only, no signing,
 
 - Splitting the stack into multiple containers (single all-in-one image is a deliberate requirement; RUN_UI covers the headless case).
 - Building a full block explorer (that is b3_monitoring's job — we consume its API).
-- Compiling B3Hive from source inside Docker (binaries are built externally and copied in).
+- Compiling B3Hive from source inside the **runtime** image (binaries are built externally and installed at runtime into `<data>/daemon`). Phase 7 adds an opt-in, separately-built `Dockerfile.devbuild` for unpublished validator builds — the runtime image never gains a compiler.
 - Consensus changes or node modifications (we run the stock daemon).
 - Handling B3A1 colored assets in batch actions (P2PKH only — assets are future work).
