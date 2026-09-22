@@ -73,10 +73,10 @@ class MockRPC:
 			"listreceivedbyaddress": [{"address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv", "label": "mining", "amount": 1.92, "confirmations": 500, "involvesWatchonly": False}],
             "listtransactions": [],
  "listunspent": [
- {"txid": "utxo1", "vout": 0, "address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv",
+ {"txid": "11" * 32, "vout": 0, "address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv",
  "amount": 0.42, "confirmations": 120, "spendable": True,
  "scriptPubKey": "76a914751f0b64ad7c395e05652b72101102cf0da491e888ac"},
- {"txid": "utxo2", "vout": 1, "address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv",
+ {"txid": "22" * 32, "vout": 1, "address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv",
  "amount": 1.5, "confirmations": 90, "spendable": True,
  "scriptPubKey": "76a914751f0b64ad7c395e05652b72101102cf0da491e888ac"},
  ],
@@ -85,9 +85,12 @@ class MockRPC:
             "walletlock": None,
             "createrawtransaction": "rawhex",
             "fundrawtransaction": {"hex": "fundedhex", "fee": 0.00001},
+            # Real Bitcoin Core / b3coind never returns a "txid" field here -
+            # only this mock once did, which hid a real bug (the txid
+            # fallback called the wrong RPC) from every test. Match reality.
             "signrawtransactionwithwallet": {"hex": "signedhex",
-                                             "complete": True,
-                                             "txid": "deadbeef"},
+                                             "complete": True},
+            "decoderawtransaction": {"txid": "deadbeef"},
             "testmempoolaccept": [{"allowed": True}],
             "sendrawtransaction": "deadbeef",
  "stop": "B3 Hive server stopping",

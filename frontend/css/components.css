@@ -22,6 +22,10 @@
 .card-head > :first-child { min-width: 0; }
 .card-head > .badge { flex: none; }
 .card-head-wrap { flex-wrap: wrap; }
+/* A .card-head that is itself the toggle for a collapsible section below it
+   (e.g. Send's coin control). Button defaults are already reset globally
+   (base.css); this only needs the block-level width a <div> gets for free. */
+.card-head-btn { width: 100%; text-align: left; }
 .card-head h2, .card-head h3 { font-size: var(--text-md); }
 .card-head .sub { font-size: var(--text-sm); color: var(--text-muted); font-weight: 400; }
 .card-foot {
@@ -154,6 +158,12 @@
 .check input { width: 20px; height: 20px; margin-top: 2px; flex: none; accent-color: var(--accent); }
 .check .check-body { display: flex; flex-direction: column; gap: 2px; }
 .check .check-body .help { font-size: var(--text-sm); color: var(--text-muted); }
+
+/* Coin control (Send): a scrollable checklist of spendable outputs. */
+.coin-list { max-height: 320px; overflow-y: auto; }
+.coin-list-row { padding-inline: var(--space-2); border-radius: var(--radius-sm); }
+.coin-list-row:hover { background: var(--bg-inset, rgba(255,255,255,0.03)); }
+.coin-list-row + .coin-list-row { border-top: 1px solid var(--border); }
 
 /* --- AmountInput ---------------------------------------------------------- */
 

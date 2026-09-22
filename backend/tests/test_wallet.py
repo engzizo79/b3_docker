@@ -104,6 +104,29 @@ def test_send_confirm_broadcasts(client: TestClient, mock_rpc: MockRPC):
     assert r.json()["txid"] == "deadbeef"
 
 
+def test_send_derives_txid_via_decoderawtransaction_not_getrawtransaction(
+        client: TestClient, mock_rpc: MockRPC):
+    """Regression: real Bitcoin Core / b3coind never puts 'txid' in
+    signrawtransactionwithwallet's result (only this project's own test
+    mock once did, by mistake). The fallback used to call getrawtransaction
+    with the raw TX HEX as if it were a 64-char txid, which every real
+    node rejects (RPC -8: 'parameter 1 must be of length 64') - so every
+    real send failed with a 502, while every test passed. Pin the correct
+    RPC and prove the wrong one is never called."""
+    out = login(client, headers=LOCAL)
+    unlock(client, out["headers"])
+    r = client.post("/api/wallet/send",
+                    json={"recipients": [{"address": GOOD_ADDR, "amount": "1.5"}],
+                          "confirm": False},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert r.json()["txid"] == "deadbeef"
+    assert mock_rpc.called("decoderawtransaction")
+    decode_call = [c for m, c in mock_rpc.calls if m == "decoderawtransaction"][0]
+    assert decode_call[0] == "signedhex"  # the SIGNED tx hex, not a txid
+    assert not mock_rpc.called("getrawtransaction")
+
+
 def test_send_mempool_reject_blocks_broadcast(client: TestClient,
                                                mock_rpc: MockRPC):
     out = login(client, headers=LOCAL)
@@ -116,6 +139,140 @@ def test_send_mempool_reject_blocks_broadcast(client: TestClient,
                     headers=out["headers"])
     assert r.status_code == 422
     assert not mock_rpc.called("sendrawtransaction")
+
+
+def test_send_coin_control_uses_exact_inputs(client: TestClient, mock_rpc: MockRPC):
+    out = login(client, headers=LOCAL)
+    unlock(client, out["headers"])
+    r = client.post("/api/wallet/send",
+                    json={"recipients": [{"address": GOOD_ADDR, "amount": "0.1"}],
+                          "confirm": False,
+                          "inputs": [{"txid": "1111111111111111111111111111111111111111111111111111111111111111", "vout": 0}]},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["coin_control"] == {"count": 1, "total": "0.42"}
+    craw_call = [c for m, c in mock_rpc.calls if m == "createrawtransaction"][0]
+    assert craw_call[0] == [{"txid": "1111111111111111111111111111111111111111111111111111111111111111", "vout": 0}]  # exact input, not []
+    fund_call = [c for m, c in mock_rpc.calls if m == "fundrawtransaction"][0]
+    assert fund_call[1] == {"add_inputs": False}  # no auto top-up from other coins
+
+
+def test_send_without_coin_control_uses_automatic_selection(client: TestClient, mock_rpc: MockRPC):
+    """Regression: the default (no 'inputs') path must be byte-for-byte the
+    same call shape as before coin control existed."""
+    out = login(client, headers=LOCAL)
+    unlock(client, out["headers"])
+    r = client.post("/api/wallet/send",
+                    json={"recipients": [{"address": GOOD_ADDR, "amount": "0.1"}],
+                          "confirm": False},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert r.json()["coin_control"] is None
+    craw_call = [c for m, c in mock_rpc.calls if m == "createrawtransaction"][0]
+    assert craw_call[0] == []
+    fund_call = [c for m, c in mock_rpc.calls if m == "fundrawtransaction"][0]
+    assert fund_call == ("rawhex",)  # no options arg at all — auto coin selection
+
+
+def test_send_coin_control_rejects_unknown_outpoint(client: TestClient, mock_rpc: MockRPC):
+    out = login(client, headers=LOCAL)
+    unlock(client, out["headers"])
+    r = client.post("/api/wallet/send",
+                    json={"recipients": [{"address": GOOD_ADDR, "amount": "0.1"}],
+                          "confirm": False,
+                          "inputs": [{"txid": "ab" * 32, "vout": 0}]},
+                    headers=out["headers"])
+    assert r.status_code == 409
+    assert not mock_rpc.called("createrawtransaction")
+
+
+def test_send_coin_control_rejects_unspendable_output(client: TestClient, mock_rpc: MockRPC):
+    out = login(client, headers=LOCAL)
+    unlock(client, out["headers"])
+    mock_rpc.responses["listunspent"] = mock_rpc.responses["listunspent"] + [
+        {"txid": "3333333333333333333333333333333333333333333333333333333333333333", "vout": 0, "address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv",
+         "amount": 9.0, "confirmations": 1, "spendable": False,
+         "scriptPubKey": "76a914751f0b64ad7c395e05652b72101102cf0da491e888ac"}]
+    r = client.post("/api/wallet/send",
+                    json={"recipients": [{"address": GOOD_ADDR, "amount": "0.1"}],
+                          "confirm": False,
+                          "inputs": [{"txid": "3333333333333333333333333333333333333333333333333333333333333333", "vout": 0}]},
+                    headers=out["headers"])
+    assert r.status_code == 422
+    assert "not spendable" in r.json()["detail"]
+
+
+def test_send_coin_control_rejects_carrier_output(client: TestClient, mock_rpc: MockRPC):
+    """A stake/asset/metadata output must never be spendable via a plain
+    send, even if the client explicitly names it — same rule batch tools
+    and unstake already follow."""
+    out = login(client, headers=LOCAL)
+    unlock(client, out["headers"])
+    mock_rpc.responses["listunspent"] = mock_rpc.responses["listunspent"] + [
+        {"txid": "4444444444444444444444444444444444444444444444444444444444444444", "vout": 1, "address": "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2",
+         "amount": 495.0, "confirmations": 500, "spendable": True,
+         "scriptPubKey": "4c5c42334d4300070001a77117d0"}]  # B3MC-style, not P2PKH
+    r = client.post("/api/wallet/send",
+                    json={"recipients": [{"address": GOOD_ADDR, "amount": "0.1"}],
+                          "confirm": False,
+                          "inputs": [{"txid": "4444444444444444444444444444444444444444444444444444444444444444", "vout": 1}]},
+                    headers=out["headers"])
+    assert r.status_code == 422
+    assert "P2PKH" in r.json()["detail"]
+
+
+def test_send_coin_control_rejects_bad_txid_format(client: TestClient, mock_rpc: MockRPC):
+    out = login(client, headers=LOCAL)
+    unlock(client, out["headers"])
+    r = client.post("/api/wallet/send",
+                    json={"recipients": [{"address": GOOD_ADDR, "amount": "0.1"}],
+                          "confirm": False,
+                          "inputs": [{"txid": "not-hex", "vout": 0}]},
+                    headers=out["headers"])
+    assert r.status_code == 400
+
+
+def test_send_coin_control_empty_inputs_list_rejected(client: TestClient, mock_rpc: MockRPC):
+    out = login(client, headers=LOCAL)
+    unlock(client, out["headers"])
+    r = client.post("/api/wallet/send",
+                    json={"recipients": [{"address": GOOD_ADDR, "amount": "0.1"}],
+                          "confirm": False, "inputs": []},
+                    headers=out["headers"])
+    assert r.status_code == 400
+
+
+def test_send_coin_control_too_many_inputs_rejected(client: TestClient, mock_rpc: MockRPC):
+    """The cap is HARD_MAX_INPUTS (the real per-tx weight-policy ceiling,
+    675) - not an arbitrary UI number. A wallet with thousands of small
+    reward outputs needs several transactions to sweep them all; this is
+    the most any single one can ever hold."""
+    from app.batch_engine import HARD_MAX_INPUTS
+    out = login(client, headers=LOCAL)
+    unlock(client, out["headers"])
+    inputs = [{"txid": format(i, "064x"), "vout": 0} for i in range(HARD_MAX_INPUTS + 1)]
+    r = client.post("/api/wallet/send",
+                    json={"recipients": [{"address": GOOD_ADDR, "amount": "0.1"}],
+                          "confirm": False, "inputs": inputs},
+                    headers=out["headers"])
+    assert r.status_code == 400
+    assert str(HARD_MAX_INPUTS) in r.json()["detail"]
+    assert not mock_rpc.called("listunspent")  # rejected before touching the node
+
+
+def test_send_coin_control_confirm_broadcasts(client: TestClient, mock_rpc: MockRPC):
+    out = login(client, headers=LOCAL)
+    unlock(client, out["headers"])
+    body = {"recipients": [{"address": GOOD_ADDR, "amount": "0.1"}],
+           "inputs": [{"txid": "1111111111111111111111111111111111111111111111111111111111111111", "vout": 0}]}
+    r = client.post("/api/wallet/send", json={**body, "confirm": False},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    r = client.post("/api/wallet/send", json={**body, "confirm": True},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert mock_rpc.called("sendrawtransaction")
 
 
 def test_send_invalid_address_rejected(client: TestClient):

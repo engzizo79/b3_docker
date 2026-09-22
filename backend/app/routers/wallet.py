@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app import autostake, db
+from app.batch_engine import HARD_MAX_INPUTS, P2PKH_SCRIPT_RE
 from app.deps import AppState
 from app.ratelimit import limiter
 from app.crypto_envelope import decrypt_envelope
@@ -29,9 +30,18 @@ class Recipient(BaseModel):
     amount: str  # string to preserve exact Decimal semantics
 
 
+class InputRef(BaseModel):
+    txid: str
+    vout: int
+
+
 class SendBody(BaseModel):
     recipients: list[Recipient]
     confirm: bool = False  # False = preview/dry-run; True = broadcast
+    # Coin control: spend exactly these outputs instead of letting the
+    # wallet pick. Optional; omitted/empty = automatic selection (old
+    # behavior, unchanged).
+    inputs: list[InputRef] | None = None
 
 
 def _state(request: Request) -> AppState:
@@ -183,6 +193,63 @@ async def history(request: Request, count: int = 50, skip: int = 0):
     return {"transactions": txs}
 
 
+_TXID_HEX_RE = None  # lazily compiled
+
+
+def _is_txid(s: str) -> bool:
+    global _TXID_HEX_RE
+    if _TXID_HEX_RE is None:
+        import re
+        _TXID_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+    return bool(_TXID_HEX_RE.match(s or ""))
+
+
+async def _resolve_coin_control(state: AppState, refs: list) -> list[dict]:
+    """Coin control: the client names exact outpoints to spend. NEVER trust
+    that list blindly — re-check every one against a fresh listunspent so a
+    stale/forged txid:vout can't be spent, and reject anything that isn't
+    plain P2PKH (carrier outputs — stake, asset, metadata — are never
+    spendable from a plain send, same rule batch tools and unstake follow).
+    Returns the matched listunspent entries, in the order requested."""
+    if not refs:
+        raise HTTPException(status_code=400, detail="at least one input is required")
+    # HARD_MAX_INPUTS is the real ceiling (B3's standard-tx weight policy,
+    # same number batch_engine's consolidation sweeps are built around) -
+    # not an arbitrary UI limit. A wallet with thousands of small reward
+    # UTXOs genuinely needs several transactions to sweep; this is the
+    # most any single one can ever carry.
+    if len(refs) > HARD_MAX_INPUTS:
+        raise HTTPException(status_code=400,
+                            detail=f"too many inputs selected (max {HARD_MAX_INPUTS} per transaction)")
+    for r in refs:
+        if not _is_txid(r.txid):
+            raise HTTPException(status_code=400, detail=f"invalid input txid: {r.txid}")
+        if r.vout < 0:
+            raise HTTPException(status_code=400, detail="invalid input vout")
+    try:
+        unspent = await state.rpc.call("listunspent", 0)
+    except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
+        raise _translate(exc)
+    by_key = {(u.get("txid"), u.get("vout")): u for u in (unspent or [])}
+    resolved = []
+    for r in refs:
+        u = by_key.get((r.txid, r.vout))
+        if u is None:
+            raise HTTPException(status_code=409,
+                                detail=f"selected output {r.txid[:12]}…:{r.vout} is no "
+                                        "longer in your wallet — refresh and try again")
+        if not u.get("spendable", True):
+            raise HTTPException(status_code=422,
+                                detail=f"selected output {r.txid[:12]}…:{r.vout} is not spendable")
+        if not P2PKH_SCRIPT_RE.match(str(u.get("scriptPubKey", "")).lower()):
+            raise HTTPException(status_code=422,
+                                detail=f"selected output {r.txid[:12]}…:{r.vout} is not a plain "
+                                        "P2PKH output (stake/asset/metadata outputs can't be sent "
+                                        "this way — use Unstake or the dedicated flow for those)")
+        resolved.append(u)
+    return resolved
+
+
 # ---------------------------------------------------------------------------
 # Send: preview -> confirm
 # ---------------------------------------------------------------------------
@@ -215,9 +282,17 @@ async def send(body: SendBody, request: Request):
     # B3 JSON amounts must be exact 9dp strings — never float-serialized.
     outputs = {addr: f"{amt:.9f}" for addr, amt in parsed}
 
+    coin_control = None
+    vin = []
+    if body.inputs is not None:  # [] is a deliberate "nothing selected", not "omitted"
+        coin_control = await _resolve_coin_control(state, body.inputs)
+        vin = [{"txid": u["txid"], "vout": u["vout"]} for u in coin_control]
+
     try:
-        raw = await state.rpc.call("createrawtransaction", [], outputs)
-        funded = await state.rpc.call("fundrawtransaction", raw)
+        raw = await state.rpc.call("createrawtransaction", vin, outputs)
+        fund_opts = {"add_inputs": False} if coin_control is not None else None
+        funded = (await state.rpc.call("fundrawtransaction", raw, fund_opts)
+                 if fund_opts else await state.rpc.call("fundrawtransaction", raw))
         signed = await state.rpc.call("signrawtransactionwithwallet", funded["hex"])
         if not signed.get("complete"):
             raise HTTPException(status_code=422, detail="signing incomplete — wallet may be locked")
@@ -234,7 +309,8 @@ async def send(body: SendBody, request: Request):
             fee = _fee_from_funded(funded)
             sent = sum((amt for _, amt in parsed), Decimal(0))
             db.audit(state.settings.db_path, "send_preview", sess.username,
-                     detail=f"txid={txid} recipients={len(parsed)}")
+                     detail=f"txid={txid} recipients={len(parsed)}"
+                            + (f" coin_control={len(coin_control)}inputs" if coin_control else ""))
             return {
                 "preview": True,
                 "txid": txid,
@@ -246,6 +322,10 @@ async def send(body: SendBody, request: Request):
                     {"address": a, "amount": f"{amt:.9f}", "amount_b3": str(amt)}
                     for a, amt in parsed
                 ],
+                "coin_control": None if coin_control is None else {
+                    "count": len(coin_control),
+                    "total": str(sum((Decimal(str(u["amount"])) for u in coin_control), Decimal(0))),
+                },
             }
 
         # Confirm phase: preview must have passed testmempoolaccept.
@@ -277,9 +357,14 @@ def _fee_from_funded(funded: dict) -> Decimal | None:
 
 
 async def _txid_from_hex(state: AppState, tx_hex: str) -> str:
-    """Fallback txid extraction if signrawtransactionwithwallet omits it.
-    Uses decoderawtransaction via the allowlist (added to chain_read)."""
-    dec = await state.rpc.call("getrawtransaction", tx_hex)
+    """Fallback txid extraction if signrawtransactionwithwallet omits it -
+    real Bitcoin Core / b3coind never includes one; only this project's
+    own test mock ever did, which hid this path from every test until a
+    real send hit it. decoderawtransaction takes the raw tx HEX itself
+    (any valid transaction, need not be known to the node); it is NOT
+    getrawtransaction, which takes a 64-char TXID of an already-indexed
+    transaction and rejects anything else with RPC -8."""
+    dec = await state.rpc.call("decoderawtransaction", tx_hex)
     return dec["txid"]
 
 

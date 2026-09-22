@@ -12,8 +12,20 @@
 
 import {
   isValidAddress, addressProblem, validateAmountInput, subtractAmounts,
-  compareAmounts, fmtAmount, truncAddr,
+  addAmounts, compareAmounts, isPositiveAmount, fmtAmount, truncAddr,
 } from '../core/format.js';
+
+// Mirrors HARD_MAX_INPUTS in backend/app/batch_engine.py: the real ceiling
+// for a standard P2PKH transaction under B3's policy (weight-limited), not
+// an arbitrary UI choice. A wallet with thousands of small reward UTXOs
+// genuinely needs several transactions to sweep everything — this is the
+// most any single one can ever hold.
+const COIN_CONTROL_MAX_INPUTS = 675;
+// A more usable per-click default — 675 inputs in one go is allowed, but a
+// single sweep at that size is unusual; the quick actions default lower
+// and the count is always shown so picking more is one more click, not
+// hidden.
+const COIN_CONTROL_QUICK_COUNT = 50;
 
 /** Held back from "Max" so there is always something left for the fee.
  *  A 1-in/2-out P2PKH transaction is ~226 vB; at the relay floor this is
@@ -33,6 +45,10 @@ export const sendMixin = {
       busy: false, err: '',
       preview: null, result: null,
       pickerOpen: false, pickerQuery: '', pickerTab: 'contacts',
+      // Coin control: pick exactly which outputs to spend, instead of
+      // letting the wallet choose. Off (auto) by default; `selected` is
+      // keyed by "txid:vout" so toggling is O(1) either way.
+      coinControl: { show: false, selected: {}, query: '' },
     };
   },
 
@@ -59,9 +75,13 @@ export const sendMixin = {
     return { ok: false, text: addressProblem(v) };
   },
 
-  /** Spendable = confirmed balance only. Pending and staked coins cannot
-   *  be spent, and saying so is better than an unexplained failure. */
-  spendable() { return this.wallet.balance ?? '0'; },
+  /** Spendable = confirmed balance only, or — with coin control active —
+   *  exactly the total of the coins chosen. Pending and staked coins
+   *  cannot be spent, and saying so is better than an unexplained failure. */
+  spendable() {
+    if (this.coinControlActive()) return this.coinControlTotal();
+    return this.wallet.balance ?? '0';
+  },
 
   maxSendable() {
     const s = subtractAmounts(this.spendable(), FEE_RESERVE);
@@ -94,6 +114,154 @@ export const sendMixin = {
   overSpendable() {
     if (!this.send.amount.trim()) return false;
     return compareAmounts(this.send.amount, this.spendable()) > 0;
+  },
+
+  /* ---------------------------------------------------- coin control --- */
+
+  /** Outputs a plain send may actually choose: spendable, plain P2PKH.
+   *  Stake/asset/metadata carriers never show up here — unstake them or
+   *  use the dedicated flow for those instead. */
+  coinControlEligible() {
+    return (this.utxos.list || []).filter((u) => u.p2pkh && u.spendable);
+  },
+
+  /** Eligible coins narrowed by the search box (address or label). A
+   *  wallet with thousands of reward outputs needs this to find anything;
+   *  bulk actions below always work over the FULL eligible list, not just
+   *  what search happens to be showing. */
+  coinControlFiltered() {
+    const q = (this.send.coinControl.query || '').trim().toLowerCase();
+    const all = this.coinControlEligible();
+    if (!q) return all;
+    return all.filter((u) =>
+      (u.address || '').toLowerCase().includes(q) || (u.label || '').toLowerCase().includes(q));
+  },
+
+  /** Rendering thousands of rows at once is a real cost for no benefit —
+   *  cap what's drawn; bulk actions still see every eligible coin via
+   *  coinControlEligible(), search narrows this down to find one by hand. */
+  coinControlVisible() { return this.coinControlFiltered().slice(0, 300); },
+
+  toggleCoinControlPanel() {
+    this.send.coinControl.show = !this.send.coinControl.show;
+    if (this.send.coinControl.show && !this.utxos.loaded) this.loadUtxos();
+  },
+
+  coinKey(u) { return u.txid + ':' + u.vout; },
+
+  isCoinSelected(u) { return !!this.send.coinControl.selected[this.coinKey(u)]; },
+
+  toggleCoin(u) {
+    const sel = { ...this.send.coinControl.selected };
+    const k = this.coinKey(u);
+    if (sel[k]) delete sel[k]; else sel[k] = u;
+    this.send.coinControl.selected = sel;
+    // The chosen pool just changed size — an amount that fit before may
+    // not now (or Max needs to grow); re-validate instead of leaving a
+    // stale error on screen.
+    this.send.err = '';
+  },
+
+  coinControlActive() {
+    return Object.keys(this.send.coinControl.selected).length > 0;
+  },
+
+  coinControlCount() { return Object.keys(this.send.coinControl.selected).length; },
+
+  coinControlTotal() {
+    return Object.values(this.send.coinControl.selected)
+      .reduce((acc, u) => addAmounts(acc, u.amount), '0.000000000');
+  },
+
+  clearCoinControl() { this.send.coinControl.selected = {}; },
+
+  /** True once the wallet holds more small outputs than a single
+   *  transaction can carry — the bulk-select tools exist for this case
+   *  (e.g. thousands of small staking-reward outputs across many
+   *  addresses), not for a handful of coins someone can just click. */
+  coinControlNeedsBulkTools() {
+    return this.coinControlEligible().length > COIN_CONTROL_QUICK_COUNT;
+  },
+
+  coinControlMaxInputs() { return COIN_CONTROL_MAX_INPUTS; },
+  coinControlQuickCount() { return COIN_CONTROL_QUICK_COUNT; },
+
+  /** Replace the selection with the N smallest (default) or largest
+   *  eligible coins. Smallest-first is the sweep-my-dust-rewards case;
+   *  largest-first reaches a target amount in the fewest inputs. Always
+   *  capped at COIN_CONTROL_MAX_INPUTS (the real per-transaction ceiling)
+   *  even if asked for more. */
+  selectCoinsBulk(order, count) {
+    const n = Math.max(1, Math.min(count || COIN_CONTROL_QUICK_COUNT, COIN_CONTROL_MAX_INPUTS));
+    const pool = [...this.coinControlEligible()].sort((a, b) =>
+      order === 'largest' ? compareAmounts(b.amount, a.amount) : compareAmounts(a.amount, b.amount));
+    const picked = pool.slice(0, n);
+    const sel = {};
+    for (const u of picked) sel[this.coinKey(u)] = u;
+    this.send.coinControl.selected = sel;
+    this.send.err = '';
+    if (picked.length < pool.length) {
+      this.showToast(picked.length + ' of ' + pool.length + ' coins selected ('
+        + (order === 'largest' ? 'largest' : 'smallest') + ' first)');
+    }
+  },
+
+  /** Select the fewest, largest coins that cover the typed amount plus a
+   *  small fee margin — the "just make this payment work" button, so
+   *  nobody has to hand-count outputs to reach an amount. */
+  selectCoinsForAmount() {
+    const target = (this.send.amount || '').trim();
+    if (!isPositiveAmount(target)) {
+      this.showToast('Enter an amount first', 'warning');
+      return;
+    }
+    const need = addAmounts(target, '0.000100000'); // margin; the backend computes the real fee
+    const pool = [...this.coinControlEligible()].sort((a, b) => compareAmounts(b.amount, a.amount));
+    const picked = [];
+    let total = '0.000000000';
+    for (const u of pool) {
+      if (picked.length >= COIN_CONTROL_MAX_INPUTS) break;
+      picked.push(u);
+      total = addAmounts(total, u.amount);
+      if (compareAmounts(total, need) >= 0) break;
+    }
+    const sel = {};
+    for (const u of picked) sel[this.coinKey(u)] = u;
+    this.send.coinControl.selected = sel;
+    this.send.err = '';
+    if (compareAmounts(total, need) < 0) {
+      this.showToast('Your spendable coins don’t add up to that amount', 'warning');
+    } else {
+      this.showToast(picked.length + ' coin' + (picked.length === 1 ? '' : 's') + ' selected — '
+        + fmtAmount(total, { unit: true }));
+    }
+  },
+
+  /** From the Tools > Coin control table: jump into Send with the checked
+   *  coins already selected, instead of just having displayed them. Only
+   *  `send.coinControl` survives the trip — everything else about the
+   *  flow (address, amount, any earlier preview) starts fresh. */
+  sendWithSelectedCoins() {
+    if (!this.coinControlActive()) {
+      this.showToast('Select at least one coin first', 'warning');
+      return;
+    }
+    const selected = this.send.coinControl.selected;
+    this.go('send', { keep: true });
+    this.send.step = 1;
+    this.send.to = ''; this.send.amount = ''; this.send.err = '';
+    this.send.preview = null; this.send.result = null;
+    this.send.coinControl = { show: true, selected };
+    this.$nextTick(() => document.getElementById('send-to')?.focus());
+  },
+
+  /** {txid, vout} pairs for the API call, or undefined for automatic
+   *  selection (the request omits `inputs` entirely — the backend treats
+   *  that differently from an explicit empty list). */
+  coinControlInputs() {
+    if (!this.coinControlActive()) return undefined;
+    return Object.values(this.send.coinControl.selected)
+      .map((u) => ({ txid: u.txid, vout: u.vout }));
   },
 
   /* ---------------------------------------------------------- navigation */
@@ -131,6 +299,7 @@ export const sendMixin = {
         body: JSON.stringify({
           recipients: [{ address: this.send.to.trim(), amount: this.send.amount.trim() }],
           confirm: false,
+          inputs: this.coinControlInputs(),
         }),
       });
       this.send.preview = p;
@@ -170,6 +339,9 @@ export const sendMixin = {
         { key: 'Amount', value: amountText },
         { key: 'To', value: dest, mono: true },
         ...(this.send.label ? [{ key: 'Known as', value: this.send.label }] : []),
+        ...(this.coinControlActive() ? [{ key: 'Spending',
+          value: this.coinControlCount() + ' coin(s) you chose — '
+               + fmtAmount(this.coinControlTotal(), { unit: true }) + ' total' }] : []),
       ],
       confirmLabel: 'Send now',
       danger: true,
@@ -185,6 +357,7 @@ export const sendMixin = {
         body: JSON.stringify({
           recipients: [{ address: this.send.to.trim(), amount: this.send.amount.trim() }],
           confirm: true,
+          inputs: this.coinControlInputs(),
         }),
       });
       this.send.result = r;

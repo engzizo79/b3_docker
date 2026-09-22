@@ -336,6 +336,10 @@ async def utxos(request: Request, minconf: int = 1):
             "confirmations": u.get("confirmations", 0),
             "spendable": bool(u.get("spendable", True)),
             "safe": bool(u.get("safe", True)),
+            # Coin control (Send) only offers plain P2PKH outputs - a stake
+            # (B3S1), asset (B3A1) or metadata (B3MC) carrier is never
+            # selectable there, same rule batch tools and unstake follow.
+            "p2pkh": bool(P2PKH_SCRIPT_RE.match(str(u.get("scriptPubKey", "")).lower())),
         })
     return {"utxos": out}
 

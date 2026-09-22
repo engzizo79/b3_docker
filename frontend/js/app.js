@@ -130,7 +130,7 @@ function initialState() {
       pane: null, loadName: '', backupBusy: false, backupPath: '', backupFile: '',
       create: { name: '', pw: '', pw2: '', reveal: false },
     },
-    utxos: { list: [], busy: false, loaded: false, minconf: 1 },
+    utxos: { list: [], busy: false, loaded: false, minconf: 1, query: '' },
     signv: {
       address: '', message: '', sig: '', busy: false,
       vaddress: '', vsig: '', vmessage: '', vbusy: false, verified: null,
@@ -140,7 +140,8 @@ function initialState() {
     send: {
       step: 1, to: '', amount: '', label: '',
       busy: false, err: '', preview: null, result: null,
-      pickerOpen: false, pickerQuery: '',
+      pickerOpen: false, pickerQuery: '', pickerTab: 'contacts',
+      coinControl: { show: false, selected: {}, query: '' },
     },
 
     /* --------------------------------------------------------------- node */

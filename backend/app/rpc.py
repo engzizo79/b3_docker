@@ -35,6 +35,7 @@ ALLOWED: dict[str, set[str]] = {
     "chain_read": {
         "getblockchaininfo", "getnetworkinfo", "getblock", "getblockheader",
         "getblockstats", "gettxout", "gettxoutproof", "getrawtransaction",
+        "decoderawtransaction",
         "getblockcount", "getbestblockhash", "getdifficulty",
         "getblockhash", "verifytxoutproof", "validateaddress", "help",
     },

@@ -47,6 +47,21 @@ def test_utxos_amounts_exact_9dp(client: TestClient):
     assert utxos[1]["amount"] == "1.500000000"
 
 
+def test_utxos_flags_plain_p2pkh_for_coin_control(client: TestClient, mock_rpc: MockRPC):
+    """The Send coin-control picker needs to know which outputs it may
+    offer: plain P2PKH only, never a stake/asset/metadata carrier."""
+    out = login(client, headers=LOCAL)
+    mock_rpc.responses["listunspent"] = mock_rpc.responses["listunspent"] + [
+        {"txid": "55" * 32, "vout": 0, "address": "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2",
+         "amount": 495.0, "confirmations": 500, "spendable": True,
+         "scriptPubKey": "4c5c42334d4300070001a77117d0"}]  # B3MC-style, not P2PKH
+    r = client.get("/api/wallet/utxos", headers=out["headers"])
+    assert r.status_code == 200
+    by_txid = {u["txid"]: u for u in r.json()["utxos"]}
+    assert by_txid["11" * 32]["p2pkh"] is True
+    assert by_txid["55" * 32]["p2pkh"] is False
+
+
 def test_utxos_requires_session(client: TestClient):
     r = client.get("/api/wallet/utxos", headers=LOCAL)
     assert r.status_code == 401

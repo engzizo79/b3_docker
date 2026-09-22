@@ -1207,6 +1207,96 @@
                   </span>
                 </div>
               </div>
+
+              <!-- Coin control: pick exactly which outputs fund this send,
+                   instead of letting the wallet choose. -->
+              <div class="card mt-3">
+                <button class="card-head card-head-btn" type="button"
+                        @click="toggleCoinControlPanel()"
+                        :aria-expanded="send.coinControl.show">
+                  <div>
+                    <strong>Coin control</strong>
+                    <span class="sub" x-show="!coinControlActive()">Optional — let the wallet
+                      choose, or pick specific coins</span>
+                    <span class="sub" x-show="coinControlActive()">
+                      <span x-text="coinControlCount()"></span> coin<span x-show="coinControlCount() !== 1">s</span> chosen ·
+                      <span x-text="fmtAmount(coinControlTotal(), { unit: true, maxDecimals: 4 })"></span>
+                    </span>
+                  </div>
+                  <svg class="i-sm" :style="send.coinControl.show && 'transform:rotate(180deg)'">
+                    <use href="#i-chevron-down"/></svg>
+                </button>
+                <div class="card-pad" x-show="send.coinControl.show">
+                  <div class="row gap-3" x-show="utxos.busy">
+                    <span class="spinner"></span><span class="muted t-sm">Loading your coins…</span>
+                  </div>
+                  <div class="empty empty--tight" x-show="!utxos.busy && utxos.loaded && !coinControlEligible().length">
+                    <p class="t-sm">No plain spendable outputs to choose from — staked or asset
+                      outputs don't count here.</p>
+                  </div>
+                  <template x-if="!utxos.busy && coinControlEligible().length">
+                    <div>
+                      <!-- Bulk tools: built for a wallet with far more small
+                           outputs (e.g. staking rewards) than fit in one
+                           checklist — see coinControlEligible().length. -->
+                      <div class="mb-3" x-show="coinControlNeedsBulkTools()">
+                        <p class="help mb-2">
+                          <span x-text="coinControlEligible().length"></span> coins to choose from —
+                          use these instead of finding them one by one. A transaction can carry at
+                          most <span x-text="coinControlMaxInputs()"></span>; sweep the rest in another.
+                        </p>
+                        <div class="btn-row">
+                          <button class="btn btn-secondary btn-sm" type="button"
+                                  @click="selectCoinsForAmount()" x-show="send.amount">
+                            Enough for <span x-text="fmtAmount(send.amount, { unit: true, maxDecimals: 4 })"></span>
+                          </button>
+                          <button class="btn btn-secondary btn-sm" type="button"
+                                  @click="selectCoinsBulk('smallest', coinControlQuickCount())">
+                            Smallest <span x-text="Math.min(coinControlQuickCount(), coinControlEligible().length)"></span>
+                          </button>
+                          <button class="btn btn-secondary btn-sm" type="button"
+                                  @click="selectCoinsBulk('largest', coinControlQuickCount())">
+                            Largest <span x-text="Math.min(coinControlQuickCount(), coinControlEligible().length)"></span>
+                          </button>
+                          <button class="btn btn-secondary btn-sm" type="button"
+                                  @click="selectCoinsBulk('smallest', coinControlMaxInputs())">
+                            All up to the limit
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="field mb-2" x-show="coinControlEligible().length > 10">
+                        <label class="sr-only" for="coin-control-q">Search your coins</label>
+                        <input id="coin-control-q" class="input" x-model="send.coinControl.query"
+                               placeholder="Search by address or label">
+                      </div>
+
+                      <div class="coin-list">
+                        <template x-for="u in coinControlVisible()" :key="u.txid + ':' + u.vout">
+                          <label class="check coin-list-row">
+                            <input type="checkbox" :checked="isCoinSelected(u)" @change="toggleCoin(u)">
+                            <span class="check-body">
+                              <span class="row gap-2" style="justify-content:space-between">
+                                <span class="mono t-sm" x-text="truncAddr(u.address || '')"></span>
+                                <span class="mono t-sm" x-text="fmtAmount(u.amount, { maxDecimals: 9 })"></span>
+                              </span>
+                              <span class="help" x-text="truncAddr(u.txid, 8, 4) + ':' + u.vout + ' · ' + fmtInt(u.confirmations) + ' confirmations'"></span>
+                            </span>
+                          </label>
+                        </template>
+                      </div>
+                      <p class="help mt-2" x-show="coinControlFiltered().length > coinControlVisible().length">
+                        Showing the first <span x-text="coinControlVisible().length"></span> of
+                        <span x-text="coinControlFiltered().length"></span> matches — search narrows this down.
+                      </p>
+                      <button class="btn btn-ghost btn-sm mt-2" type="button"
+                              @click="clearCoinControl()" x-show="coinControlActive()">
+                        Clear — let the wallet choose automatically
+                      </button>
+                    </div>
+                  </template>
+                </div>
+              </div>
             </div>
 
             <!-- ---- Step 3: review ---- -->
@@ -1234,6 +1324,8 @@
                         <span class="dval" x-text="fmtAmount(send.preview.fee, { unit: true, maxDecimals: 9 })"></span></div>
                       <div class="drow" x-show="send.preview.total != null"><span class="dkey">Total leaving your wallet</span>
                         <span class="dval bold" x-text="fmtAmount(send.preview.total, { unit: true, maxDecimals: 9 })"></span></div>
+                      <div class="drow" x-show="send.preview.coin_control"><span class="dkey">Coins used</span>
+                        <span class="dval" x-text="send.preview.coin_control && (send.preview.coin_control.count + ' you chose — ' + fmtAmount(send.preview.coin_control.total, { unit: true, maxDecimals: 9 }))"></span></div>
                       <div class="drow"><span class="dkey">Transaction id</span>
                         <span class="dval is-mono" x-text="truncHash(send.preview.txid)"></span></div>
                       <div class="drow"><span class="dkey">Network will accept it</span>
@@ -3394,21 +3486,55 @@
           </div>
           <div class="card-pad" x-show="!utxos.loaded">
             <p class="muted t-sm">Your balance is really a pile of separate outputs. Loading them
-              shows exactly how your coins are split up — useful before consolidating.</p>
+              shows exactly how your coins are split up — check the ones you want and send from
+              exactly those, or use this before consolidating.</p>
           </div>
           <div class="empty empty--tight" x-show="utxos.loaded && !utxos.list.length">
             <h3>No outputs</h3>
             <p>This wallet holds no spendable outputs at the moment.</p>
           </div>
+          <div class="card-pad" x-show="utxos.list.length && coinControlEligible().length > coinControlQuickCount()">
+            <p class="help mb-2">
+              <span x-text="coinControlEligible().length"></span> spendable plain outputs — pick
+              a batch instead of finding them one by one. A transaction can carry at most
+              <span x-text="coinControlMaxInputs()"></span>; sweep the rest in another.
+            </p>
+            <div class="btn-row">
+              <button class="btn btn-secondary btn-sm" type="button"
+                      @click="selectCoinsBulk('smallest', coinControlQuickCount())">
+                Smallest <span x-text="Math.min(coinControlQuickCount(), coinControlEligible().length)"></span>
+              </button>
+              <button class="btn btn-secondary btn-sm" type="button"
+                      @click="selectCoinsBulk('largest', coinControlQuickCount())">
+                Largest <span x-text="Math.min(coinControlQuickCount(), coinControlEligible().length)"></span>
+              </button>
+              <button class="btn btn-secondary btn-sm" type="button"
+                      @click="selectCoinsBulk('smallest', coinControlMaxInputs())">
+                All up to the limit
+              </button>
+            </div>
+          </div>
+          <div class="card-pad" x-show="utxos.list.length > 10">
+            <label class="sr-only" for="utxo-q">Search your coins</label>
+            <input id="utxo-q" class="input" x-model="utxos.query"
+                   placeholder="Search by address or label">
+          </div>
           <div class="table-wrap" x-show="utxos.list.length">
             <table class="tbl">
               <thead><tr>
+                <th class="sr-only">Select</th>
                 <th>Output</th><th>Address</th><th>Label</th>
                 <th class="num">Amount</th><th class="num">Confirmations</th><th>Spendable</th>
               </tr></thead>
               <tbody>
-                <template x-for="u in utxos.list" :key="u.txid + ':' + u.vout">
+                <template x-for="u in utxosVisible()" :key="u.txid + ':' + u.vout">
                   <tr>
+                    <td>
+                      <input type="checkbox" :checked="isCoinSelected(u)" @change="toggleCoin(u)"
+                             :disabled="!u.p2pkh || !u.spendable"
+                             :aria-label="'Select ' + truncAddr(u.txid, 8, 4) + ':' + u.vout"
+                             :data-tip="!u.p2pkh ? 'Locked in a stake/asset — not a plain send input' : (!u.spendable ? 'Not spendable' : '')">
+                    </td>
                     <td class="mono t-sm" x-text="truncAddr(u.txid, 8, 4) + ':' + u.vout"></td>
                     <td class="mono t-sm" x-text="truncAddr(u.address || '')"></td>
                     <td class="t-sm muted" x-text="u.label || '—'"></td>
@@ -3422,6 +3548,23 @@
                 </template>
               </tbody>
             </table>
+            <p class="help card-pad" x-show="utxosFiltered().length > utxosVisible().length">
+              Showing the first <span x-text="utxosVisible().length"></span> of
+              <span x-text="utxosFiltered().length"></span> matches — search narrows this down.
+            </p>
+          </div>
+          <div class="card-pad row gap-3" style="justify-content:space-between"
+               x-show="coinControlActive()">
+            <span class="t-sm">
+              <span x-text="coinControlCount()"></span> coin<span x-show="coinControlCount() !== 1">s</span> selected ·
+              <span x-text="fmtAmount(coinControlTotal(), { unit: true })"></span>
+            </span>
+            <div class="row gap-2">
+              <button class="btn btn-ghost btn-sm" type="button" @click="clearCoinControl()">Clear</button>
+              <button class="btn btn-primary btn-sm" type="button" @click="sendWithSelectedCoins()">
+                <svg class="i-sm"><use href="#i-arrow-up"/></svg><span>Send these coins</span>
+              </button>
+            </div>
           </div>
         </div>
       </section>

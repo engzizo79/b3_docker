@@ -407,6 +407,20 @@ export const walletMixin = {
     };
   },
 
+  /** The Coin control table, narrowed by its own search box. A wallet with
+   *  thousands of outputs (e.g. staking rewards across many addresses)
+   *  needs this to find anything by hand at all. */
+  utxosFiltered() {
+    const q = (this.utxos.query || '').trim().toLowerCase();
+    const list = this.utxos.list || [];
+    if (!q) return list;
+    return list.filter((u) =>
+      (u.address || '').toLowerCase().includes(q) || (u.label || '').toLowerCase().includes(q));
+  },
+
+  /** Rendering thousands of table rows is a real cost for no benefit. */
+  utxosVisible() { return this.utxosFiltered().slice(0, 300); },
+
   /* ---------------------------------------------------------- sign/verify */
 
   async signMessage() {

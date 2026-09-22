@@ -169,6 +169,21 @@ export function subtractAmounts(a, b) {
   return (neg ? '-' : '') + out;
 }
 
+/** Add b to a exactly (both non-negative, 9dp). Used for the coin-control
+ *  selected-total display — never for building transactions, which the
+ *  backend always computes itself. */
+export function addAmounts(a, b) {
+  const pa = amountParts(a), pb = amountParts(b);
+  if (!pa || !pb) return null;
+  const toUnits = (p) => BigInt(p.int + p.frac) * (p.neg ? -1n : 1n);
+  const units = toUnits(pa) + toUnits(pb);
+  const neg = units < 0n;
+  const abs = neg ? -units : units;
+  const s = abs.toString().padStart(10, '0');
+  const out = s.slice(0, -9) + '.' + s.slice(-9);
+  return (neg ? '-' : '') + out;
+}
+
 /* -------------------------------------------------------------- addresses -- */
 
 /** B3 legacy P2PKH: version byte 0x3F, "S" prefix.
