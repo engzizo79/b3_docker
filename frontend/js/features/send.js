@@ -208,8 +208,9 @@ export const sendMixin = {
 
   /* ------------------------------------------------------ address picker */
 
-  pickerResults() {
-    const q = this.send.pickerQuery.trim().toLowerCase();
+  /** Shared by the Send picker and the unstake destination picker. */
+  filterAddressBook(query) {
+    const q = (query || '').trim().toLowerCase();
     let list = (this.book.addresses || []);
     if (q) {
       list = list.filter((a) =>
@@ -217,6 +218,8 @@ export const sendMixin = {
     }
     return list.slice(0, 40);
   },
+
+  pickerResults() { return this.filterAddressBook(this.send.pickerQuery); },
 
   pickAddress(entry) {
     this.send.to = entry.address;

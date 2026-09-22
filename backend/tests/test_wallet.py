@@ -188,3 +188,24 @@ def test_staking_stop_calls_stopstaking(client: TestClient, mock_rpc: MockRPC):
     assert r.status_code == 200, r.text
     assert mock_rpc.called("stopstaking")
     assert r.json()["staking"] is False
+    assert r.json()["autostake_disabled"] is False  # wasn't on
+
+
+def test_staking_stop_disables_autostake_when_it_was_on(client: TestClient, mock_rpc: MockRPC, settings):
+    """Regression: stopping staking manually must not leave autostake free
+    to call startstaking again on its next background pass, silently
+    reverting the user's own action."""
+    from app import db
+    from app.vault import vault_from_settings
+    vault = vault_from_settings(settings, settings.b3_data_dir)
+    db.set_staking_settings(settings.db_path, autostake_enabled=1,
+                            passphrase_enc=vault.encrypt("test-passphrase"))
+    out = login(client, headers=LOCAL)
+    r = client.post("/api/wallet/staking/stop", headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert r.json()["autostake_disabled"] is True
+    assert db.get_staking_settings(settings.db_path)["autostake_enabled"] is False
+    actions = [a["action"] for a in db.audit_list(settings.db_path, 50)]
+    assert "autostake_disabled_by_manual_action" in actions
+    alerts = db.alert_list(settings.db_path)
+    assert any("Autostake was turned off" in a["message"] for a in alerts)

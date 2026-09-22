@@ -267,6 +267,30 @@ def test_unstake_confirm_broadcasts(client, mock_rpc, settings):
     assert r.status_code == 200, r.text
     assert mock_rpc.called("sendrawtransaction")
     assert r.json()["txid"] == "deadbeef"
+    assert r.json()["autostake_disabled"] is False  # wasn't on
+
+
+def test_unstake_confirm_disables_autostake_when_it_was_on(client, mock_rpc, settings):
+    """Regression: unstaking manually must not leave autostake free to top
+    the stake back up toward the old target on its next background pass,
+    silently reverting the user's own unstake."""
+    vault = _enable(settings)
+    mock_rpc.responses["listwallets"] = ["wallet"]
+    mock_rpc.responses["getbalances"] = {"mine": {"trusted": 5000}}
+    out = login(client)
+    unlock(client, out["headers"])
+    prev = client.post("/api/staking/unstake",
+                       json={"txid": STAKE_TXID, "vout": 0, "confirm": False},
+                       headers=out["headers"]).json()
+    r = client.post("/api/staking/unstake",
+                    json={"txid": STAKE_TXID, "vout": 0, "confirm": True,
+                          "confirm_token": prev["confirm_token"]},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert r.json()["autostake_disabled"] is True
+    assert db.get_staking_settings(settings.db_path)["autostake_enabled"] is False
+    actions = [a["action"] for a in db.audit_list(settings.db_path, 50)]
+    assert "autostake_disabled_by_manual_action" in actions
 
 
 def test_unstake_confirm_token_mismatch(client, mock_rpc, settings):
@@ -469,11 +493,91 @@ def test_unstake_default_destination_is_owner_address(client, mock_rpc, settings
  headers=out["headers"])
  assert r.status_code == 200, r.text
  d = r.json()
- # No client destination -> backend defaults to the stake's owner_address
+ # No client destination, and no resolvable funding source (the mock's
+ # fabricated txid isn't a real transaction) -> falls back to owner_address
  assert d["destination"] == "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"
+ assert d["destination_source"] == "owner"
  sendall_call = [c for m, c in mock_rpc.calls if m == "sendall"][0]
  assert sendall_call[0] == ["SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"]
  assert mock_rpc.called("validateaddress")
+
+
+def test_unstake_defaults_to_funding_source_when_resolvable(client, mock_rpc, settings):
+ """Where the coins actually came from beats the stake's own dedicated
+ owner_address, which the user often does not recognize."""
+ out = login(client)
+ unlock(client, out["headers"])
+ funding_addr = "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"
+ prev_txid = "cc" * 32
+ orig = mock_rpc.call
+ async def call(method, *params):
+     if method == "getrawtransaction" and params and params[0] == STAKE_TXID:
+         return {"vin": [{"txid": prev_txid, "vout": 0}]}
+     if method == "getrawtransaction" and params and params[0] == prev_txid:
+         return {"vout": [{"scriptPubKey": {"address": funding_addr}}]}
+     return await orig(method, *params)
+ mock_rpc.call = call
+ r = client.post("/api/staking/unstake",
+ json={"txid": STAKE_TXID, "vout": 0, "confirm": False},
+ headers=out["headers"])
+ assert r.status_code == 200, r.text
+ d = r.json()
+ assert d["destination"] == funding_addr
+ assert d["destination_source"] == "funding"
+ sendall_call = [c for m, c in mock_rpc.calls if m == "sendall"][0]
+ assert sendall_call[0] == [funding_addr]
+
+
+def test_unstake_falls_back_to_owner_when_funding_source_ambiguous(client, mock_rpc, settings):
+ """Multiple distinct source addresses -> don't guess, use owner_address."""
+ out = login(client)
+ unlock(client, out["headers"])
+ prev_a, prev_b = "cc" * 32, "dd" * 32
+ orig = mock_rpc.call
+ async def call(method, *params):
+     if method == "getrawtransaction" and params and params[0] == STAKE_TXID:
+         return {"vin": [{"txid": prev_a, "vout": 0}, {"txid": prev_b, "vout": 0}]}
+     if method == "getrawtransaction" and params and params[0] == prev_a:
+         return {"vout": [{"scriptPubKey": {"address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"}}]}
+     if method == "getrawtransaction" and params and params[0] == prev_b:
+         return {"vout": [{"scriptPubKey": {"address": "SeLxbTthMTY1iMFbbBU4Du52BMR9BNSfu6"}}]}
+     return await orig(method, *params)
+ mock_rpc.call = call
+ r = client.post("/api/staking/unstake",
+ json={"txid": STAKE_TXID, "vout": 0, "confirm": False},
+ headers=out["headers"])
+ assert r.status_code == 200, r.text
+ d = r.json()
+ assert d["destination"] == "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2"
+ assert d["destination_source"] == "owner"
+
+
+def test_unstake_falls_back_to_wallet_first_address_before_owner(client, mock_rpc, settings):
+ """No resolvable funding source, but the wallet's first-ever address
+ (descriptor index 0) IS resolvable -> prefer that over owner_address,
+ since it's a stand-in for "my main address" and the user recognizes
+ it, unlike the stake's own dedicated owner_address."""
+ out = login(client)
+ unlock(client, out["headers"])
+ first_addr = "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv"
+ desc = "pkh([aa/44h/0h/0h]xpub000/0/*)#chk0000"
+ mock_rpc.responses["listdescriptors"] = {"descriptors": [
+     {"desc": "pkh([aa/44h/0h/0h]xpub000/1/*)#chk1111", "active": True, "internal": True},
+     {"desc": desc, "active": True, "internal": False},
+ ]}
+ orig = mock_rpc.call
+ async def call(method, *params):
+     if method == "deriveaddresses" and params and params[0] == desc:
+         return [first_addr]
+     return await orig(method, *params)
+ mock_rpc.call = call
+ r = client.post("/api/staking/unstake",
+ json={"txid": STAKE_TXID, "vout": 0, "confirm": False},
+ headers=out["headers"])
+ assert r.status_code == 200, r.text
+ d = r.json()
+ assert d["destination"] == first_addr
+ assert d["destination_source"] == "wallet"
 
 
 def test_unstake_client_destination_honored_across_phases(client, mock_rpc, settings):
@@ -485,6 +589,7 @@ def test_unstake_client_destination_honored_across_phases(client, mock_rpc, sett
  "destination": custom},
  headers=out["headers"]).json()
  assert prev["destination"] == custom
+ assert prev["destination_source"] == "custom"
  r = client.post("/api/staking/unstake",
  json={"txid": STAKE_TXID, "vout": 0, "confirm": True,
  "destination": custom,

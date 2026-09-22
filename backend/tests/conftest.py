@@ -68,6 +68,7 @@ class MockRPC:
             "getbalances": {"mine": {"trusted": 1.0}},
             "getaddressesbylabel": {},
             "listlabels": ["*"],
+            "listdescriptors": {"descriptors": []},  # no active pkh() by default
  "listaddressgroupings": [[{"address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv", "label": "mining", "amount": 1.92}]],
 			"listreceivedbyaddress": [{"address": "SXyHHJ81ZbFJBzxvMNsjQgQwvKvQEucKSv", "label": "mining", "amount": 1.92, "confirmations": 500, "involvesWatchonly": False}],
             "listtransactions": [],
@@ -106,6 +107,11 @@ class MockRPC:
         self.calls.append((method, params))
         if method in self.fail_methods:
             raise RPCError(-14, "wallet passphrase entered was incorrect")
+        if method == "getrawtransaction" and method not in self.responses:
+            # Real node: an unknown/fabricated txid (as every test's fake
+            # stake txid is) is a normal RPCError, not a crash - exercise
+            # that path by default so callers' fallback logic is real.
+            raise RPCError(-5, "No such transaction")
         if method not in self.responses:
             raise AssertionError(f"unexpected RPC: {method}")
         if method == "validateaddress":

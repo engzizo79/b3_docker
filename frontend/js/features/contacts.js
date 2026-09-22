@@ -32,13 +32,16 @@ export const contactsMixin = {
       && !(this.book.addresses || []).some((a) => a.address === v);
   },
 
-  contactResults() {
-    const q = (this.send.pickerQuery || '').trim().toLowerCase();
+  /** Shared by the Send picker and the unstake destination picker. */
+  filterContacts(query) {
+    const q = (query || '').trim().toLowerCase();
     const list = this.contacts.list || [];
     if (!q) return list;
     return list.filter((c) =>
       c.label.toLowerCase().includes(q) || c.address.toLowerCase().includes(q));
   },
+
+  contactResults() { return this.filterContacts(this.send.pickerQuery); },
 
   async addContact(label, address) {
     const name = (label || '').trim();

@@ -38,6 +38,28 @@ def _dec(value):
 status: dict = {"last_run_ts": None, "last_reason": None, "last_result": None}
 
 
+def disable_for_manual_action(dbp, username, action: str, human: str) -> bool:
+    """Turn autostake off because the user just made a manual change that
+    it would otherwise silently undo on its next pass (stopped staking,
+    or unstaked). A user who deliberately pulls a stake back is very
+    unlikely to expect an hourly background job to quietly restart
+    staking or top it back up to the old target — so autostake stands
+    down instead, and says why, rather than fighting the user's own
+    action. Returns True if it was enabled (and is now off), False if it
+    was already off (nothing to report)."""
+    cfg = db.get_staking_settings(dbp)
+    if not cfg["autostake_enabled"]:
+        return False
+    db.set_staking_settings(dbp, autostake_enabled=0)
+    db.audit(dbp, "autostake_disabled_by_manual_action", username,
+             detail=f"action={action}")
+    db.alert_add(dbp, "warning",
+                 "Autostake was turned off because you " + human + ". "
+                 "It won't restart staking or top your stake back up until "
+                 "you re-enable it in Automation.")
+    return True
+
+
 def _record(dbp, result, reason, dry_run):
     """Every pass leaves one audit line (skips included) plus a status entry."""
     if not dry_run:

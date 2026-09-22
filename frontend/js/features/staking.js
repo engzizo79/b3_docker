@@ -326,10 +326,12 @@ export const stakingMixin = {
       run: async () => {
         this.staking.working = true;
         try {
-          await this.api('/api/wallet/staking/stop', { method: 'POST' });
+          const r = await this.api('/api/wallet/staking/stop', { method: 'POST' });
           await this.loadStakingSnapshot();
           await this.loadValidator();
-          this.showToast('Staking stopped');
+          this.showToast(r.autostake_disabled
+            ? 'Staking stopped — autostake was turned off too, so it won’t restart it for you'
+            : 'Staking stopped');
           const v = this.staking.validator;
           if (v && v.bound && !v.revoked) {
             this.$nextTick(() => {
@@ -358,20 +360,22 @@ export const stakingMixin = {
   async previewUnstake(stake) {
   this.unstake = {
     target: stake, preview: null, busy: true,
-    dest: stake.owner_address || '', destErr: '',
+    dest: '', destErr: '',
+    pickerOpen: false, pickerQuery: '', pickerTab: 'contacts',
   };
   try {
+    // No destination on this first call: let the backend pick one — where
+    // the coins were originally staked from, else the wallet's own first
+    // address, else the stake's dedicated owner_address (see
+    // _build_unstake). Pre-filling dest here would always force "custom"
+    // and skip that resolution entirely.
     this.unstake.preview = await this.api('/api/staking/unstake', {
       method: 'POST',
-      body: JSON.stringify({
-        txid: stake.txid, vout: stake.vout,
-        destination: this.unstake.dest, confirm: false,
-      }),
+      body: JSON.stringify({ txid: stake.txid, vout: stake.vout, confirm: false }),
     });
-    // Show the backend's resolved destination (defaults to owner_address).
     if (this.unstake.preview.destination) this.unstake.dest = this.unstake.preview.destination;
   } catch (e) {
-    this.unstake = { target: null, preview: null, busy: false, dest: '', destErr: '' };
+    this.cancelUnstake();
     this.reportError(e);
     return;
   }
@@ -398,7 +402,37 @@ export const stakingMixin = {
     this.unstake.busy = false;
   },
 
-  cancelUnstake() { this.unstake = { target: null, preview: null, busy: false, dest: '', destErr: '' }; },
+  cancelUnstake() {
+    this.unstake = { target: null, preview: null, busy: false, dest: '', destErr: '',
+                     pickerOpen: false, pickerQuery: '', pickerTab: 'contacts' };
+  },
+
+  /** Why the shown destination was chosen — mirrors the backend's
+   *  funding -> wallet -> owner fallback order (_build_unstake). */
+  unstakeDestHint() {
+    const src = this.unstake.preview?.destination_source;
+    if (src === 'funding') return 'These coins were originally staked from this address.';
+    if (src === 'wallet') return 'Your wallet’s first address — paste a different one, or choose from your address book, to send elsewhere.';
+    if (src === 'owner') return 'This stake’s own address — paste a different one, or choose from your address book, to send elsewhere.';
+    return 'Paste an address, or choose from your address book, to send the coins elsewhere.';
+  },
+
+  /* ------------------------------------------------ unstake dest picker */
+
+  unstakePickerResults() { return this.filterAddressBook(this.unstake.pickerQuery); },
+  unstakeContactResults() { return this.filterContacts(this.unstake.pickerQuery); },
+
+  pickUnstakeAddress(entry) {
+    this.unstake.dest = entry.address;
+    this.unstake.pickerOpen = false;
+    this.repreviewUnstakeDest();
+  },
+
+  pickUnstakeContact(entry) {
+    this.unstake.dest = entry.address;
+    this.unstake.pickerOpen = false;
+    this.repreviewUnstakeDest();
+  },
 
 confirmUnstake() {
     const p = this.unstake.preview;
@@ -432,8 +466,11 @@ confirmUnstake() {
               confirm_token: p.confirm_token, destination: this.unstake.dest,
             }),
           });
-          this.showToast('Unstaked — ' + amountText + ' is on its way back');
-          this.unstake = { target: null, preview: null, busy: false };
+          this.showToast(r.autostake_disabled
+            ? 'Unstaked — ' + amountText + ' is on its way back. Autostake was '
+              + 'turned off too, so it won’t top the stake back up for you.'
+            : 'Unstaked — ' + amountText + ' is on its way back');
+          this.cancelUnstake();
           await Promise.allSettled([this.loadStakingSnapshot(), this.loadBalances(), this.loadHistory()]);
           if (r.txid) this.lastTxid = r.txid;
         } catch (e) { this.reportError(e); }

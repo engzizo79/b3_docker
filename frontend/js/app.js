@@ -183,7 +183,8 @@ function initialState() {
     },
  startFlow: { show: false, amount: "", err: "", busy: false, confirming: false },
  addStake: { show: false, amount: "", err: "", busy: false },
-    unstake: { target: null, preview: null, busy: false },
+    unstake: { target: null, preview: null, busy: false,
+              pickerOpen: false, pickerQuery: '', pickerTab: 'contacts' },
     autostake: {
       settings: null, form: { enabled: false, target: '', reserve: '' },
       passphrase: '', ack: false, busy: false,

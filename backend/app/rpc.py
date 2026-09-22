@@ -47,6 +47,10 @@ ALLOWED: dict[str, set[str]] = {
         "getwalletinfo", "listunspent", "getaddressesbylabel",
         "listaddressgroupings", "listreceivedbyaddress", "listtransactions", "getbalance", "getbalances",
         "getnewaddress", "getaccountaddress", "listlabels",
+        # listdescriptors defaults to private=false (xpubs only, no keys —
+        # the API layer never passes private=true); deriveaddresses is a
+        # pure math utility. Both read-only, no unlock needed.
+        "listdescriptors", "deriveaddresses",
     },
     "wallet_write": {  # gated: require unlocked wallet in the API layer
         "walletpassphrase", "walletlock", "createrawtransaction",

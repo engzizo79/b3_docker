@@ -14,7 +14,7 @@ from decimal import Decimal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app import db
+from app import autostake, db
 from app.deps import AppState
 from app.ratelimit import limiter
 from app.crypto_envelope import decrypt_envelope
@@ -306,7 +306,11 @@ async def staking_stop(request: Request):
     """Stop staking. Needs NO unlocked wallet: the staker copied its own
     signing material at Start (same reason staking survives re-lock), so
     stopping works while locked. Session + 2FA + CSRF, then audit-log it.
-    Moving staked coins back (unstake) is the step that needs unlocking."""
+    Moving staked coins back (unstake) is the step that needs unlocking.
+
+    If autostake is on, it gets turned off here too: otherwise its next
+    background pass would silently call startstaking again, undoing the
+    user's own action without them expecting it."""
     state = _state(request)
     sess = state.require_session(request)
     try:
@@ -314,4 +318,7 @@ async def staking_stop(request: Request):
     except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
         raise _translate(exc)
     db.audit(state.settings.db_path, "staking_stop", sess.username)
-    return {"ok": True, "staking": False}
+    disabled = autostake.disable_for_manual_action(
+        state.settings.db_path, sess.username, "stop_staking",
+        "manually stopped staking")
+    return {"ok": True, "staking": False, "autostake_disabled": disabled}

@@ -4198,7 +4198,11 @@
                          spellcheck="false" autocomplete="off"
                          aria-label="Destination address" />
                   <p class="err t-sm mt-1" x-show="unstake.destErr" x-text="unstake.destErr"></p>
-                  <p class="muted t-sm mt-1">Your own address by default — paste any address to send the coins elsewhere.</p>
+                  <p class="muted t-sm mt-1" x-text="unstakeDestHint()"></p>
+                  <button class="btn btn-secondary btn-sm mt-2" type="button"
+                          @click="unstake.pickerOpen = true; if (!book.addresses.length) loadAddressBook()">
+                    <svg class="i-sm"><use href="#i-book"/></svg><span>Choose from address book</span>
+                  </button>
                 </span></div>
               <div class="drow"><span class="dkey">Status</span>
                 <span class="dval">
@@ -4236,6 +4240,67 @@
           <span class="spinner" x-show="unstake.busy"></span>
           <span>Unstake</span>
         </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- Unstake destination picker: same Contacts / My addresses picker as Send. -->
+<template x-if="unstake.pickerOpen">
+  <div class="backdrop backdrop--top sheet" @click="backdropClose($event, () => unstake.pickerOpen = false)"
+       x-init="trapFocus($el, () => unstake.pickerOpen = false)">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Choose a destination address">
+      <div class="sheet-grab"></div>
+      <div class="modal-head">
+        <div><h2>Choose an address</h2></div>
+        <button class="btn btn-ghost btn-icon" type="button" @click="unstake.pickerOpen = false"
+                aria-label="Close">
+          <svg class="i"><use href="#i-close"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="tabs mb-3" role="tablist" aria-label="Address source">
+          <button class="tab" role="tab" type="button" @click="unstake.pickerTab = 'contacts'"
+                  :aria-selected="unstake.pickerTab === 'contacts'">Contacts</button>
+          <button class="tab" role="tab" type="button" @click="unstake.pickerTab = 'mine'"
+                  :aria-selected="unstake.pickerTab === 'mine'">My addresses</button>
+        </div>
+        <div class="field">
+          <label class="sr-only" for="unstake-picker-q">Search</label>
+          <input id="unstake-picker-q" class="input" x-model="unstake.pickerQuery"
+                 placeholder="Search by label or address" autofocus>
+        </div>
+        <div class="mt-3" x-show="unstake.pickerTab === 'contacts'">
+          <div class="empty empty--tight" x-show="!unstakeContactResults().length">
+            <p class="t-sm" x-show="!contacts.list.length">No contacts yet. Add one from the
+              Addresses page.</p>
+            <p class="t-sm" x-show="contacts.list.length">No contacts match that.</p>
+          </div>
+          <template x-for="c in unstakeContactResults()" :key="c.id">
+            <button class="list-row clickable px-0" type="button" @click="pickUnstakeContact(c)">
+              <span class="lead"><svg class="i-sm"><use href="#i-users"/></svg></span>
+              <span class="body">
+                <strong class="t-sm" x-text="c.label"></strong>
+                <span class="meta mono" x-text="truncAddr(c.address, 10, 8)"></span>
+              </span>
+            </button>
+          </template>
+        </div>
+        <div class="mt-3" x-show="unstake.pickerTab === 'mine'">
+          <div class="empty empty--tight" x-show="!unstakePickerResults().length">
+            <p class="t-sm">No addresses match that.</p>
+          </div>
+          <template x-for="a in unstakePickerResults()" :key="a.address">
+            <button class="list-row clickable px-0" type="button" @click="pickUnstakeAddress(a)">
+              <span class="lead"><svg class="i-sm"><use href="#i-book"/></svg></span>
+              <span class="body">
+                <strong class="t-sm" x-text="a.label || 'No label'"></strong>
+                <span class="meta mono" x-text="truncAddr(a.address, 10, 8)"></span>
+              </span>
+              <span class="trail t-sm muted" x-text="bookBalText(a)"></span>
+            </button>
+          </template>
+        </div>
       </div>
     </div>
   </div>

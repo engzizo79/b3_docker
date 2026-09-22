@@ -18,6 +18,7 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app import autostake as autostake_mod
 from app import db
 from app.autostake import reconcile as reconcile_pass
 from app.deps import AppState
@@ -176,6 +177,77 @@ async def manual_reconcile(request: Request, dry_run: bool = False):
     return result
 
 
+def _addr_of(script_pub_key: dict) -> str | None:
+    if not isinstance(script_pub_key, dict):
+        return None
+    return script_pub_key.get("address") or next(
+        iter(script_pub_key.get("addresses") or []), None)
+
+
+async def _stake_funding_address(state, stake) -> str | None:
+    """Best-effort: the single address that funded this stake's creation,
+    by walking its own transaction's inputs back to what they spent. This
+    is WHERE THE COINS CAME FROM, which is what unstake should default to
+    returning them to — not owner_address, which is often a dedicated
+    staking address the wallet generated and the user never recognizes.
+    Needs txindex (on by default in the generated b3coin.conf) to look up
+    already-spent prevouts. Returns None (never guesses) on anything
+    ambiguous: multiple distinct source addresses, a coinbase input, or an
+    RPC that fails — the caller falls back to owner_address."""
+    txid = stake.get("txid")
+    if not txid:
+        return None
+    try:
+        tx = await state.rpc.call("getrawtransaction", txid, True)
+    except (RPCError, RPCNotAllowed, RPCUnavailable):
+        return None
+    addrs: set[str] = set()
+    for vin in tx.get("vin") or []:
+        prev_txid, prev_vout = vin.get("txid"), vin.get("vout")
+        if not prev_txid or prev_vout is None:
+            return None  # coinbase or malformed — don't guess
+        try:
+            prev_tx = await state.rpc.call("getrawtransaction", prev_txid, True)
+        except (RPCError, RPCNotAllowed, RPCUnavailable):
+            return None
+        try:
+            addr = _addr_of(prev_tx["vout"][prev_vout]["scriptPubKey"])
+        except (KeyError, IndexError, TypeError):
+            return None
+        if not addr:
+            return None
+        addrs.add(addr)
+    return next(iter(addrs)) if len(addrs) == 1 else None
+
+
+async def _wallet_first_address(state) -> str | None:
+    """The wallet's own first-ever receiving address: derivation index 0
+    of its active, external (non-change), legacy P2PKH descriptor. A
+    stable, node-derivable stand-in for "my main address" that works
+    whether or not the user has actually labeled one "Main" — labels are
+    free text the user may never have set, or may have put on a totally
+    different address. Public descriptor info only (xpubs, never private
+    keys; listdescriptors here never requests private=true). None on
+    anything unsupported (legacy non-descriptor wallet, RPC unavailable)."""
+    try:
+        descs = await state.rpc.call("listdescriptors")
+    except (RPCError, RPCNotAllowed, RPCUnavailable):
+        return None
+    receive_desc = None
+    for d in (descs or {}).get("descriptors") or []:
+        desc_str = d.get("desc") or ""
+        if d.get("active") and not d.get("internal") and desc_str.startswith("pkh("):
+            receive_desc = desc_str
+            break
+    if not receive_desc:
+        return None
+    try:
+        addrs = await state.rpc.call("deriveaddresses", receive_desc, [0, 0])
+    except (RPCError, RPCNotAllowed, RPCUnavailable):
+        return None
+    return addrs[0] if addrs else None
+
+
 async def _build_unstake(state, txid, vout, destination=None):
     # Verify the stake exists in getstakinginfo (never trust client input
     # for what to spend), then build the signed-not-broadcast sendall spend
@@ -183,10 +255,16 @@ async def _build_unstake(state, txid, vout, destination=None):
     #
     # CRITICAL: the destination MUST be deterministic across the two phases
     # (preview + confirm). The CLIENT sends the destination in both phases,
-    # so they match. If the client omits it, we default to the stake's
-    # owner_address (the wallet's own address that owns the stake) — NOT
-    # getnewaddress(), which returns a different address every call on a
-    # real node and breaks the HMAC token binding.
+    # so they match. If the client omits it, default in this order:
+    #   1. WHERE THE COINS CAME FROM (the stake's own funding address —
+    #      see _stake_funding_address), when that's unambiguous.
+    #   2. the wallet's first-ever address (_wallet_first_address) — a
+    #      stand-in for "my main address" that doesn't depend on the user
+    #      having labeled one "Main".
+    #   3. the stake's own owner_address (the wallet's dedicated staking
+    #      address) as the last resort.
+    # NEVER getnewaddress(), which returns a different address every call
+    # on a real node and would break the HMAC token binding.
     try:
         info = await state.rpc.call("getstakinginfo")
     except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
@@ -198,9 +276,17 @@ async def _build_unstake(state, txid, vout, destination=None):
             break
     if stake is None:
         raise HTTPException(status_code=404, detail="stake not found")
-    # Use the client's chosen destination, or default to the stake's own
-    # owner_address — deterministic, and the wallet's own address.
-    dest = (destination or "").strip() or stake.get("owner_address")
+    dest = (destination or "").strip()
+    dest_source = "custom" if dest else None
+    if not dest:
+        dest = await _stake_funding_address(state, stake)
+        dest_source = "funding" if dest else None
+    if not dest:
+        dest = await _wallet_first_address(state)
+        dest_source = "wallet" if dest else None
+    if not dest:
+        dest = stake.get("owner_address")
+        dest_source = "owner" if dest else None
     if not dest:
         raise HTTPException(status_code=422,
                             detail="no destination address available")
@@ -229,7 +315,7 @@ async def _build_unstake(state, txid, vout, destination=None):
     tx_hex = built.get("hex")
     if not tx_hex:
         raise HTTPException(status_code=422, detail="node returned no signed tx")
-    return stake, dest, tx_hex
+    return stake, dest, tx_hex, dest_source
 
 
 @router.post("/unstake")
@@ -252,7 +338,8 @@ async def unstake(body: dict, request: Request):
         raise HTTPException(status_code=400, detail="invalid txid")
     confirm = bool(body.get("confirm"))
 
-    stake, dest, tx_hex = await _build_unstake(state, txid, vout, body.get("destination"))
+    stake, dest, tx_hex, dest_source = await _build_unstake(
+        state, txid, vout, body.get("destination"))
     preview_id = _txid_from_hex(tx_hex)
     token = _unstake_token(state.settings.session_secret, txid, vout, dest)
 
@@ -271,6 +358,7 @@ async def unstake(body: dict, request: Request):
                       "amount": stake.get("amount"),
                       "status": stake.get("status")},
             "destination": dest,
+            "destination_source": dest_source,  # "funding" | "wallet" | "owner" | "custom"
             "preview_txid": preview_id,
             "confirm_token": token,
             "mempool_ok": ok,
@@ -297,8 +385,15 @@ async def unstake(body: dict, request: Request):
         raise HTTPException(status_code=422, detail=f"broadcast failed: {exc}")
     db.audit(state.settings.db_path, "unstake_broadcast", sess.username,
              detail=f"stake={txid}:{vout} dest={dest} txid={sent}")
+    # If autostake is on, turn it off here too: otherwise its next
+    # background pass would top the stake back up toward the old target,
+    # silently undoing the unstake the user just deliberately did.
+    amt = stake.get("amount")
+    autostake_disabled = autostake_mod.disable_for_manual_action(
+        state.settings.db_path, sess.username, "unstake",
+        "unstaked " + (f"{amt} B3" if amt else "a stake"))
     return {"preview": False, "txid": sent, "destination": dest,
-            "mempool_ok": True}
+            "mempool_ok": True, "autostake_disabled": autostake_disabled}
 
 
 # ---------------------------------------------------------------------------
