@@ -451,6 +451,9 @@ confirmUnstake() {
         { key: 'Amount', value: amountText },
         { key: 'Returns to', value: p.destination, mono: true },
         { key: 'Stake', value: truncAddr(p.stake.txid, 10, 4) + ':' + p.stake.vout, mono: true },
+        // See docs/MULTINODE_PLAN.md 2.3 — name the node, not just a
+        // switcher elsewhere on the page.
+        ...(this.nodes.list.length > 1 ? [{ key: 'Node', value: this.currentNodeLabel() }] : []),
       ],
       confirmLabel: 'Unstake now',
       danger: true,
@@ -642,6 +645,7 @@ confirmUnstake() {
         { key: 'Total fee', value: fmtAmount(p.total_fee, { unit: true }) },
         { key: 'You receive', value: fmtAmount(p.total_output, { unit: true }) },
         { key: 'Into', value: p.destination, mono: true },
+        ...(this.nodes.list.length > 1 ? [{ key: 'Node', value: this.currentNodeLabel() }] : []),
       ],
       confirmLabel: 'Consolidate now',
       danger: true,

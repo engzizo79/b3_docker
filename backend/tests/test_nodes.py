@@ -1,6 +1,6 @@
-"""Node registry (multi-node fleet console, docs/MULTINODE_PLAN.md Phase 1):
-CRUD auth/CSRF, credentials never returned, X-B3-Node header resolution,
-and the delete guards."""
+"""Node registry (multi-node fleet console, docs/MULTINODE_PLAN.md Phases
+1-2): CRUD auth/CSRF, credentials never returned, X-B3-Node header
+resolution, the delete guards, and the fleet status endpoint."""
 
 from fastapi.testclient import TestClient
 
@@ -211,3 +211,98 @@ def test_console_run_uses_selected_node(client: TestClient, mock_rpc, monkeypatc
     r = client.post("/api/console/run", json={"command": "getblockchaininfo"},
                      headers=headers)
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: GET /api/nodes/fleet
+# ---------------------------------------------------------------------------
+
+_FLEET_RESPONSES = {
+    "getblockchaininfo": {"blocks": 822000, "chain": "test"},
+    "getnetworkinfo": {"connections": 5},
+    "getstakinginfo": {"staking": {"running": True, "blocks_produced": 7},
+                        "active": "10.000000000"},
+    "getfinalityinfo": {"binding": {"bound": True, "revoked": False},
+                        "validator_set": {"member": True, "weight": 100, "total_weight": 500}},
+    "getwalletassets": {"assets": [{"kind": "fn", "spendable": 1200}]},
+}
+
+
+def _fake_fleet_post(monkeypatch, dead_port_marker=":59999"):
+    """Every node answers RPC normally except one whose URL carries the
+    dead-port marker, which fails at the transport level (connection
+    refused) — exactly what an unreachable validator looks like."""
+    import app.rpc as rpc_mod
+
+    async def fake_post(self, url, json=None, **kw):
+        if dead_port_marker in url:
+            raise rpc_mod.httpx.ConnectError("refused")
+
+        class R:
+            status_code = 200
+
+            def json(self_r):
+                return {"result": _FLEET_RESPONSES.get(json["method"])}
+        return R()
+
+    monkeypatch.setattr(rpc_mod.httpx.AsyncClient, "post", fake_post)
+
+
+def test_fleet_status_degrades_one_bad_node(client: TestClient, monkeypatch):
+    _fake_fleet_post(monkeypatch)
+    out = login(client, headers=LOCAL)
+
+    r = client.post("/api/nodes", json={
+        "name": "validator-2", "host": "10.0.0.5", "port": 40000,
+    }, headers=out["headers"])
+    assert r.status_code == 200, r.text
+
+    from app import db
+    dbp = client.app.state.app_state.settings.db_path
+    # Deliberately wrong port, added directly (the add-time connectivity
+    # check would itself refuse to save a dead node — see the other test).
+    db.node_add(dbp, name="dead", kind="remote", host="10.0.0.9", port=59999,
+               rpc_user_enc=None, rpc_password_enc=None)
+
+    r = client.get("/api/nodes/fleet", headers=out["headers"])
+    assert r.status_code == 200, r.text
+    body = r.json()
+    rows = {row["name"]: row for row in body["nodes"]}
+    assert len(rows) == 3
+
+    assert rows["local"]["reachable"] is True
+    assert rows["local"]["blocks"] == 822000
+    assert rows["local"]["peers"] == 5
+    assert rows["local"]["staking"]["running"] is True
+    assert rows["local"]["finality"]["bound"] is True
+    assert rows["local"]["fn_balance"] == 1200
+    assert rows["local"]["height_delta"] == 0
+
+    assert rows["validator-2"]["reachable"] is True
+
+    assert rows["dead"]["reachable"] is False
+    assert "error" in rows["dead"]
+    assert rows["dead"]["height_delta"] is None
+    # A dead node never even attempted the wallet-scoped calls that would
+    # need a real "staking"/"finality" shape.
+    assert "staking" not in rows["dead"]
+
+    assert body["top_height"] == 822000
+
+
+def test_fleet_status_requires_session(client: TestClient):
+    r = client.get("/api/nodes/fleet")
+    assert r.status_code == 401
+
+
+def test_fleet_status_single_node(client: TestClient, monkeypatch):
+    """No extra nodes registered: the fleet endpoint still works and reports
+    the auto-seeded local node."""
+    _fake_fleet_post(monkeypatch)
+    out = login(client, headers=LOCAL)
+    r = client.get("/api/nodes/fleet", headers=out["headers"])
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["nodes"]) == 1
+    assert body["nodes"][0]["name"] == "local"
+    assert body["nodes"][0]["reachable"] is True

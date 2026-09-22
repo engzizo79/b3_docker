@@ -100,6 +100,9 @@ const env = await seal(this.loginPw, 'b3hive-login');
     this.initRouter();
     this._applyHash?.();
     this.onEnterView(this.view);
+    // The node switcher lives in the shared page-head, above every view —
+    // load it once here rather than per-view, like alerts/sysMode.
+    this.loadNodes();
     this.startPolling();
     await this.pollNow();
   },

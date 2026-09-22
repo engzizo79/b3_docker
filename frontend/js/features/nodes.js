@@ -24,6 +24,19 @@ export const nodesMixin = {
     return n ? n.name : null;
   },
 
+  /** The node a wallet-affecting action would run against right now, for
+   *  confirm dialogs (docs/MULTINODE_PLAN.md 2.3 — name the node in every
+   *  such confirmation, not just in a switcher elsewhere on the page).
+   *  Sending from the wrong validator's wallet is the failure mode that
+   *  costs real coins, so this reads the SAME selection api() uses. */
+  currentNodeLabel() {
+    if (this.nodes.selected) {
+      return this.nodeName(this.nodes.selected) || 'selected node';
+    }
+    const def = this.nodes.list.find((n) => n.is_default);
+    return def ? def.name + ' (default)' : 'default node';
+  },
+
   async addNode(form) {
     const body = {
       name: form.name, host: form.host || '127.0.0.1', port: Number(form.port),
@@ -43,5 +56,56 @@ export const nodesMixin = {
   async setDefaultNode(id) {
     await this.api('/api/nodes/' + id + '/default', { method: 'POST' });
     await this.loadNodes();
+  },
+
+  /* --------------------------------------------------------- fleet view */
+
+  async loadFleet() {
+    this.fleet.busy = true;
+    try {
+      const r = await this.api('/api/nodes/fleet');
+      this.fleet.rows = r.nodes;
+      this.fleet.top_height = r.top_height;
+      this.fleet.loaded = true;
+    } catch (e) { this.reportError(e); }
+    this.fleet.busy = false;
+  },
+
+  /** One compact sentence of everything the fleet row has for this node —
+   *  keeps the markup a single x-text instead of a wall of nested x-show. */
+  fleetRowMeta(row) {
+    if (!row.reachable) return row.error || 'Unreachable';
+    const parts = [];
+    if (row.blocks != null) {
+      parts.push(this.fmtInt(row.blocks) + ' blocks'
+        + (row.height_delta ? ' (−' + this.fmtInt(row.height_delta) + ')' : ''));
+    }
+    if (row.peers != null) parts.push(this.fmtInt(row.peers) + ' peers');
+    if (row.staking) {
+      parts.push('Staking ' + (row.staking.running ? 'running' : 'stopped')
+        + (row.staking.blocks_produced != null
+          ? ' (' + this.fmtInt(row.staking.blocks_produced) + ' produced)' : ''));
+    }
+    if (row.finality) {
+      parts.push((row.finality.bound ? 'Bound' : 'Not bound')
+        + (row.finality.member ? ', member' : '')
+        + (row.finality.weight != null && row.finality.total_weight != null
+          ? ' (' + this.fmtInt(row.finality.weight) + '/' + this.fmtInt(row.finality.total_weight) + ')'
+          : ''));
+    }
+    if (row.fn_balance != null) parts.push('FN ' + this.fmtInt(row.fn_balance));
+    return parts.join(' · ') || 'No wallet loaded on this node';
+  },
+
+  fleetBadgeClass(row) {
+    if (!row.reachable) return 'badge-danger';
+    if (row.staking && row.staking.running) return 'badge-success';
+    return 'badge-neutral';
+  },
+
+  fleetBadgeText(row) {
+    if (!row.reachable) return 'Unreachable';
+    if (row.staking && row.staking.running) return 'Staking';
+    return 'Online';
   },
 };

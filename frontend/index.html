@@ -257,6 +257,41 @@
         <p class="page-sub t-sm" x-text="currentView().sub"></p>
       </div>
       <div class="page-actions">
+        <!-- Node switcher: scopes every view below it (wallet, send, staking,
+             console, …) via the X-B3-Node header api() injects — see
+             docs/MULTINODE_PLAN.md Phase 2. Hidden until a second node is
+             registered, so single-node installs see nothing new. -->
+        <div class="dd-anchor" x-show="nodes.list.length > 1"
+             @click.outside="showNodeSwitch=false" @keydown.escape="showNodeSwitch=false">
+          <button class="btn btn-secondary btn-sm" type="button" @click="showNodeSwitch = !showNodeSwitch"
+                  :aria-expanded="showNodeSwitch" aria-haspopup="true" aria-label="Switch node">
+            <svg class="i-sm"><use href="#i-server"/></svg>
+            <span x-text="currentNodeLabel()"></span>
+            <svg class="i-sm"><use href="#i-chevron-down"/></svg>
+          </button>
+          <div class="dd" x-show="showNodeSwitch" x-transition.opacity role="menu">
+            <div class="card-head" style="border-radius:0">
+              <strong>Switch node</strong>
+            </div>
+            <div class="dd-scroll">
+              <template x-for="n in nodes.list" :key="n.id">
+                <button class="list-row clickable px-0" type="button" role="menuitem"
+                        @click="selectNode(n.id); showNodeSwitch=false">
+                  <span class="body">
+                    <strong class="t-sm" x-text="n.name"></strong>
+                    <span class="meta" x-text="n.kind === 'local' ? 'This container' : (n.host + ':' + n.port)"></span>
+                  </span>
+                  <span class="trail row gap-1">
+                    <span class="badge badge-neutral" x-show="n.is_default">Default</span>
+                    <svg class="i-sm accent" x-show="String(nodes.selected) === String(n.id)">
+                      <use href="#i-check"/>
+                    </svg>
+                  </span>
+                </button>
+              </template>
+            </div>
+          </div>
+        </div>
         <button class="search-pill" type="button" @click="openPalette()">
           <svg class="i-sm"><use href="#i-search"/></svg>
           <span>Search</span>
@@ -3116,6 +3151,49 @@
               <h3 x-text="node.logs.length ? 'Nothing at that level' : 'No log loaded'"></h3>
               <p x-text="node.logNote || (node.logs.length ? 'Try a different level.' : 'Press Load to read the latest lines from your node.')"></p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================== FLEET ===== -->
+      <section x-show="view === 'fleet'" class="stack">
+        <div class="card">
+          <div class="card-head card-head-wrap">
+            <div>
+              <strong>Node fleet</strong>
+              <span class="sub">Every registered node, side by side — divergence is the signal that matters</span>
+            </div>
+            <button class="btn btn-sm" type="button" @click="loadFleet()" :disabled="fleet.busy">
+              <span class="spinner" x-show="fleet.busy"></span>
+              <svg class="i-sm" x-show="!fleet.busy"><use href="#i-refresh"/></svg>
+              <span>Refresh</span>
+            </button>
+          </div>
+
+          <div class="empty" x-show="fleet.loaded && !fleet.rows.length">
+            <span class="empty-icon"><svg class="i-lg"><use href="#i-users"/></svg></span>
+            <h3>No nodes registered</h3>
+            <p>Register another node from the Console view to see it here alongside this one.</p>
+          </div>
+
+          <div x-show="fleet.rows.length">
+            <template x-for="row in fleet.rows" :key="row.id">
+              <div class="list-row items-start">
+                <span class="lead" :class="!row.reachable ? 'out' : (row.staking && row.staking.running ? 'in' : '')">
+                  <svg class="i-sm"><use href="#i-server"/></svg>
+                </span>
+                <span class="body">
+                  <strong class="t-sm">
+                    <span x-text="row.name"></span>
+                    <span class="badge badge-neutral" x-show="row.is_default" style="margin-left:6px">Default</span>
+                  </strong>
+                  <span class="meta" x-text="fleetRowMeta(row)"></span>
+                </span>
+                <span class="trail">
+                  <span class="badge" :class="fleetBadgeClass(row)" x-text="fleetBadgeText(row)"></span>
+                </span>
+              </div>
+            </template>
           </div>
         </div>
       </section>

@@ -232,6 +232,7 @@ export const batchMixin = {
         { key: 'Total fee', value: fmtAmount(p.total_fee, { unit: true }) },
         { key: 'Total output', value: fmtAmount(p.total_output, { unit: true }) },
         { key: 'Destination', value: p.destination, mono: true },
+        ...(this.nodes.list.length > 1 ? [{ key: 'Node', value: this.currentNodeLabel() }] : []),
       ],
       confirmLabel: 'Run now',
       danger: true,

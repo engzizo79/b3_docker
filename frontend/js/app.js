@@ -100,6 +100,7 @@ function initialState() {
     showMore: false,
     navCollapsed: {},
     showPalette: false,
+    showNodeSwitch: false,
     paletteQuery: '',
     paletteIndex: 0,
     toasts: [],
@@ -182,6 +183,7 @@ function initialState() {
       list: [], selected: '', loaded: false,
       form: { name: '', host: '', port: 38647, rpc_user: '', rpc_password: '' }, busy: false,
     },
+    fleet: { rows: [], top_height: null, loaded: false, busy: false },
 
     /* ---------------------------------------------------------- tailscale */
   ts: { loaded: false, available: true, joined: false, needs_login: false, rekey: false, serve_enabled: false,

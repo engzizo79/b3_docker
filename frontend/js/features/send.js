@@ -342,6 +342,10 @@ export const sendMixin = {
         ...(this.coinControlActive() ? [{ key: 'Spending',
           value: this.coinControlCount() + ' coin(s) you chose — '
                + fmtAmount(this.coinControlTotal(), { unit: true }) + ' total' }] : []),
+        // Sending from the wrong validator's wallet is the failure mode
+        // that costs real coins (docs/MULTINODE_PLAN.md 2.3) — only worth
+        // the extra row once more than one node is actually registered.
+        ...(this.nodes.list.length > 1 ? [{ key: 'Node', value: this.currentNodeLabel() }] : []),
       ],
       confirmLabel: 'Send now',
       danger: true,

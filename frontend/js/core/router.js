@@ -57,6 +57,11 @@ export const VIEWS = {
     title: 'Node', sub: 'Health, peers, configuration and logs',
     keywords: 'chain peers logs config finality bridge supply restart sync',
   },
+  fleet: {
+    label: 'Fleet', icon: 'users', width: 'data', advanced: true,
+    title: 'Node fleet', sub: 'Every registered node, side by side',
+    keywords: 'nodes fleet validators multi-node cluster flowmesh quorum',
+  },
   tools: {
     label: 'Tools', icon: 'tool', width: 'data', advanced: true,
     title: 'Tools', sub: 'Batch actions, message signing and coin control',
@@ -80,7 +85,7 @@ export const NAV_GROUPS = [
   { id: 'money',  label: 'Money',   views: ['send', 'receive', 'activity', 'addresses'] },
   { id: 'earn',   label: 'Earn',    views: ['staking', 'automation'] },
   { id: 'assets', label: 'Assets',  views: ['assets'] },
-  { id: 'system', label: 'System',  views: ['wallet', 'node', 'tools', 'console', 'settings'] },
+  { id: 'system', label: 'System',  views: ['wallet', 'node', 'fleet', 'tools', 'console', 'settings'] },
 ];
 
 /** Mobile thumb-zone bar. Send and Receive are the two money verbs, so they
@@ -93,7 +98,7 @@ export const MORE_GROUPS = [
   { label: 'Money',  views: ['activity', 'addresses'] },
   { label: 'Earn',   views: ['automation'] },
   { label: 'Assets', views: ['assets'] },
-  { label: 'System', views: ['wallet', 'node', 'tools', 'console', 'settings'] },
+  { label: 'System', views: ['wallet', 'node', 'fleet', 'tools', 'console', 'settings'] },
 ];
 
 const DEFAULT_VIEW = 'home';
@@ -141,6 +146,7 @@ export const routerMixin = {
       case 'tools':      this.loadRecipes(); break;
       case 'console': this.consoleLoad(); this.loadNodes(); break;
       case 'node':       this.loadSystemInfo(); this.loadNodeExtras(); break;
+      case 'fleet':      this.loadFleet(); break;
       case 'settings': this.loadSystemInfo(); this.loadTailscale(); this.loadNotificationPrefs(); break;
       case 'send':       this.resetSend(opts.keep); this.loadAddressBook(); this.loadContacts(); break;
     }

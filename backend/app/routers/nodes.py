@@ -10,15 +10,22 @@ rows are created/edited through this API, and their credentials are
 Fernet-encrypted at rest (app/vault.py) and never returned, not even
 encrypted."""
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app import db
 from app.deps import AppState
-from app.rpc import B3RPCClient, RPCError, RPCUnavailable
+from app.rpc import B3RPCClient, RPCError, RPCNotAllowed, RPCUnavailable
 from app.vault import vault_from_settings
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
+
+# The fleet dashboard polls every registered node in parallel; a hung node
+# must never stall the whole response, so probes use a short timeout of
+# their own instead of B3RPCClient's normal 30s default.
+_FLEET_PROBE_TIMEOUT = 8.0
 
 
 def _state(request: Request) -> AppState:
@@ -85,6 +92,107 @@ async def list_nodes(request: Request):
     state = _state(request)
     state.require_2fa(request)
     return {"nodes": [_public(n) for n in db.node_list(state.settings.db_path)]}
+
+
+def _probe_client(state: AppState, node: dict) -> B3RPCClient:
+    """A short-timeout, uncached client for fleet probing — never the
+    request-scoped rpc_for() client, whose (longer) timeout would let one
+    hung node stall the whole dashboard."""
+    if node["kind"] == "local":
+        s = state.settings
+        return B3RPCClient(s.rpc_host, s.rpc_port, s.rpc_user, s.rpc_password,
+                           timeout=_FLEET_PROBE_TIMEOUT)
+    vault = vault_from_settings(state.settings, state.settings.b3_data_dir)
+    user = password = ""
+    if vault is not None:
+        if node["rpc_user_enc"]:
+            user = vault.decrypt(node["rpc_user_enc"]) or ""
+        if node["rpc_password_enc"]:
+            password = vault.decrypt(node["rpc_password_enc"]) or ""
+    return B3RPCClient(node["host"], node["port"], user, password,
+                       timeout=_FLEET_PROBE_TIMEOUT)
+
+
+async def _probe(state: AppState, node: dict) -> dict:
+    """Everything the fleet dashboard shows for one node. Only
+    getblockchaininfo failing marks the node unreachable — the other calls
+    are wallet-scoped (getstakinginfo, getfinalityinfo, getwalletassets)
+    and simply come back None if no wallet is loaded on that node, so one
+    missing wallet never hides the rest of a reachable node's row."""
+    out = {"id": node["id"], "name": node["name"], "kind": node["kind"],
+          "is_default": bool(node["is_default"]), "reachable": False}
+    client = _probe_client(state, node)
+    try:
+        info = await client.call("getblockchaininfo")
+    except (RPCError, RPCUnavailable, RPCNotAllowed) as exc:
+        out["error"] = str(exc)
+        return out
+    out["reachable"] = True
+    out["blocks"] = info.get("blocks")
+    out["chain"] = info.get("chain")
+
+    try:
+        net = await client.call("getnetworkinfo")
+        out["peers"] = net.get("connections")
+    except (RPCError, RPCUnavailable, RPCNotAllowed):
+        out["peers"] = None
+
+    try:
+        stk = await client.call("getstakinginfo")
+        loop = stk.get("staking") or {}
+        out["staking"] = {
+            "running": bool(loop.get("running")),
+            "active": stk.get("active"),
+            "blocks_produced": loop.get("blocks_produced"),
+        }
+    except (RPCError, RPCUnavailable, RPCNotAllowed):
+        out["staking"] = None
+
+    try:
+        fin = await client.call("getfinalityinfo")
+        binding = fin.get("binding") or {}
+        vset = fin.get("validator_set") or {}
+        out["finality"] = {
+            "bound": bool(binding.get("bound")) and not bool(binding.get("revoked")),
+            "member": bool(vset.get("member")),
+            "weight": vset.get("weight"),
+            "total_weight": vset.get("total_weight"),
+        }
+    except (RPCError, RPCUnavailable, RPCNotAllowed):
+        out["finality"] = None
+
+    try:
+        assets = await client.call("getwalletassets")
+        fn = next((a for a in (assets.get("assets") or []) if a.get("kind") == "fn"), None)
+        out["fn_balance"] = fn.get("spendable") if fn else None
+    except (RPCError, RPCUnavailable, RPCNotAllowed):
+        out["fn_balance"] = None
+
+    return out
+
+
+@router.get("/fleet")
+async def fleet_status(request: Request):
+    """One round trip covering every registered node, in parallel. One
+    unreachable/erroring node never fails the whole response — see _probe."""
+    state = _state(request)
+    state.require_2fa(request)
+    nodes = db.node_list(state.settings.db_path)
+    results = await asyncio.gather(*(_probe(state, n) for n in nodes), return_exceptions=True)
+    rows = []
+    for n, r in zip(nodes, results):
+        if isinstance(r, BaseException):
+            rows.append({"id": n["id"], "name": n["name"], "kind": n["kind"],
+                        "is_default": bool(n["is_default"]), "reachable": False,
+                        "error": str(r)})
+        else:
+            rows.append(r)
+    heights = [r["blocks"] for r in rows if r.get("reachable") and r.get("blocks") is not None]
+    top = max(heights) if heights else None
+    for r in rows:
+        r["height_delta"] = (top - r["blocks"]) if (
+            top is not None and r.get("blocks") is not None) else None
+    return {"nodes": rows, "top_height": top}
 
 
 @router.post("")
