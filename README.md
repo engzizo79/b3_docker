@@ -64,7 +64,7 @@ With plain `docker run`, use `docker logs -f b3hive`, `docker stop b3hive`, and 
 
 ### Versions: `latest` or pinned
 
-The default tag is `latest`, which always points at the newest release, so updating is just pull and up. This is a beta: if you would rather choose when to change, pin a version with `B3_IMAGE_TAG=v0.8.7-beta` in `.env` (or on the command line) and change it deliberately. Available versions are listed under the repository's tags. To build from source instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
+The default tag is `latest`, which always points at the newest release, so updating is just pull and up. This is a beta: if you would rather choose when to change, pin a version with `B3_IMAGE_TAG=v0.8.8-beta` in `.env` (or on the command line) and change it deliberately. Available versions are listed under the repository's tags. To build from source instead: `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
 
 ### First run and other devices
 
