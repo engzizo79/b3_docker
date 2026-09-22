@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app import db
 from app.autostake import reconcile
+from app.rpc import RPCError
 from app.vault import vault_from_settings
 from tests.conftest import LOCAL, MockRPC, login, unlock
 
@@ -545,3 +546,19 @@ def test_logs_endpoint_filters(client, settings):
 
 def test_logs_require_auth(client):
     assert client.get("/api/logs").status_code in (401, 403)
+
+
+def test_unstake_build_failure_shows_node_reason(client, mock_rpc, settings):
+    out = login(client)
+    unlock(client, out["headers"])
+    orig = mock_rpc.call
+    async def call(method, *params):
+        if method == "sendall":
+            raise RPCError(-4, "stake output is in use by the staker")
+        return await orig(method, *params)
+    mock_rpc.call = call
+    r = client.post("/api/staking/unstake",
+                    json={"txid": STAKE_TXID, "vout": 0, "confirm": False},
+                    headers=out["headers"])
+    assert r.status_code == 422
+    assert "stake output is in use by the staker" in r.json()["detail"]

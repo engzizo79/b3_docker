@@ -200,7 +200,7 @@ async def _build_unstake(state, txid, vout, destination=None):
                             detail="no destination address available")
     # Validate the address via the node (rejects non-P2PKH, wrong network).
     try:
-        vinfo = await state.rpc.call("validateaddress", [dest])
+        vinfo = await state.rpc.call("validateaddress", dest)
         if not vinfo.get("isvalid"):
             raise HTTPException(status_code=400, detail="invalid destination address")
     except RPCError as exc:
@@ -212,9 +212,14 @@ async def _build_unstake(state, txid, vout, destination=None):
             "sendall", [dest], None, "unset", None,
             {"inputs": [{"txid": txid, "vout": vout}],
              "add_to_wallet": False})
-    except (RPCError, RPCNotAllowed, RPCUnavailable):
+    except RPCError as exc:
+        # Show the node's own reason (locked wallet, stake still in use...)
+        # instead of a guess.
         raise HTTPException(status_code=422,
-                            detail="unstake build failed (is the wallet unlocked?)")
+                            detail=f"unstake build failed: {exc.message}")
+    except (RPCNotAllowed, RPCUnavailable):
+        raise HTTPException(status_code=422,
+                            detail="unstake build failed (node unavailable)")
     tx_hex = built.get("hex")
     if not tx_hex:
         raise HTTPException(status_code=422, detail="node returned no signed tx")

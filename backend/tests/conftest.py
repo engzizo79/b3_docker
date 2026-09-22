@@ -108,6 +108,11 @@ class MockRPC:
             raise RPCError(-14, "wallet passphrase entered was incorrect")
         if method not in self.responses:
             raise AssertionError(f"unexpected RPC: {method}")
+        if method == "validateaddress":
+            # Real node: a non-string argument (e.g. a list) is simply
+            # "invalid" - this once hid a bug that broke every unstake.
+            if not params or not isinstance(params[0], str):
+                return {"isvalid": False, "error": "Invalid or unsupported encoding."}
         return self.responses[method]
 
     async def call_optional(self, method: str, *params):
