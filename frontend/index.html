@@ -3178,6 +3178,23 @@
             <p>Register another node from the Console view to see it here alongside this one.</p>
           </div>
 
+          <!-- docs/MULTINODE_PLAN.md Phase 4.3: an unpublished dev build's
+               risk is wallet-format/consensus, not an untrusted binary (the
+               operator compiled it) — so the standing guidance is about
+               where the FUNDS live, not the binary. -->
+          <div class="card-pad" x-show="fleet.rows.some(r => r.daemon_build)">
+            <div class="callout callout-warning">
+              <div class="callout-title">
+                <svg class="i-sm"><use href="#i-alert"/></svg>
+                <span>Pinned builds in this fleet</span>
+              </div>
+              <p class="t-sm">An unreleased build can write a wallet.dat an official release won't
+                read, or fork a validator off the network. Every daemon swap backs the wallet up
+                automatically and refuses to proceed if that backup fails — but validator stakes
+                should still be segregated from your main holdings, not run from the same wallet.</p>
+            </div>
+          </div>
+
           <div x-show="fleet.rows.length">
             <template x-for="row in fleet.rows" :key="row.id">
               <div class="list-row items-start">

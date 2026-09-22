@@ -11,6 +11,7 @@ Fernet-encrypted at rest (app/vault.py) and never returned, not even
 encrypted."""
 
 import asyncio
+import re
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -46,6 +47,12 @@ class NodeUpdateBody(BaseModel):
     port: int | None = None
     rpc_user: str | None = None
     rpc_password: str | None = None
+    # Phase 4.2 (docs/MULTINODE_PLAN.md): the build this node is PINNED to
+    # (a tag or a dev-build label, e.g. "flowmesh-abc123") — purely a
+    # record the operator sets after installing a build, compared against
+    # what's actually running (fleet's getnetworkinfo().subversion) to
+    # surface drift. "" clears the pin.
+    daemon_build: str | None = None
 
 
 def _clean_name(raw: str) -> str:
@@ -94,6 +101,18 @@ async def list_nodes(request: Request):
     return {"nodes": [_public(n) for n in db.node_list(state.settings.db_path)]}
 
 
+def _build_mismatch(pin: str | None, subversion: str | None) -> bool | None:
+    """True/False only for a released-style pin (vX.Y.Z); None ("not
+    verifiable from RPC alone") for anything else — see the call site's
+    comment for why a free-text dev-build label can't be checked this way."""
+    if not pin:
+        return None
+    m = re.match(r"v?(\d+\.\d+\.\d+)", pin.strip(), re.IGNORECASE)
+    if not m:
+        return None
+    return m.group(1) not in (subversion or "")
+
+
 def _probe_client(state: AppState, node: dict) -> B3RPCClient:
     """A short-timeout, uncached client for fleet probing — never the
     request-scoped rpc_for() client, whose (longer) timeout would let one
@@ -120,7 +139,8 @@ async def _probe(state: AppState, node: dict) -> dict:
     and simply come back None if no wallet is loaded on that node, so one
     missing wallet never hides the rest of a reachable node's row."""
     out = {"id": node["id"], "name": node["name"], "kind": node["kind"],
-          "is_default": bool(node["is_default"]), "reachable": False}
+          "is_default": bool(node["is_default"]), "reachable": False,
+          "daemon_build": node["daemon_build"]}
     # Per-node background monitor status (Phase 3 done-when: "visible in
     # the fleet view") — read straight from the in-process registry, no
     # extra RPC, and included regardless of whether THIS probe reaches the
@@ -148,8 +168,18 @@ async def _probe(state: AppState, node: dict) -> dict:
     try:
         net = await client.call("getnetworkinfo")
         out["peers"] = net.get("connections")
+        out["subversion"] = net.get("subversion")
     except (RPCError, RPCUnavailable, RPCNotAllowed):
         out["peers"] = None
+        out["subversion"] = None
+    # Phase 4.2 (docs/MULTINODE_PLAN.md): "surface a mismatch loudly".
+    # Only checkable for a released-style pin (vX.Y.Z) — getnetworkinfo's
+    # subversion reflects CLIENT_VERSION baked in at COMPILE time, not an
+    # install-time label, so a free-text dev-build pin (e.g.
+    # "flowmesh-abc123") genuinely can't be confirmed or denied from RPC
+    # alone: build_mismatch stays None ("not verifiable this way") rather
+    # than a false positive/negative.
+    out["build_mismatch"] = _build_mismatch(node["daemon_build"], out.get("subversion"))
 
     try:
         stk = await client.call("getstakinginfo")
@@ -247,6 +277,10 @@ async def update_node(node_id: int, body: NodeUpdateBody, request: Request):
     fields: dict = {}
     if body.name is not None:
         fields["name"] = _clean_name(body.name)
+    if body.daemon_build is not None:
+        # Applies to either kind — pinning is a fleet-management record,
+        # not a connection detail.
+        fields["daemon_build"] = body.daemon_build.strip()[:80]
     if node["kind"] == "local":
         # The local row's connection comes from Settings (b3coin.conf), never
         # this API — only its display name can be edited here.

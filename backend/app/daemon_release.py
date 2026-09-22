@@ -32,6 +32,12 @@ class ReleaseInfo:
     sha256_url: str
     prerelease: bool
     published: str
+    # Phase 4 (docs/MULTINODE_PLAN.md): a directly-known digest for a dev
+    # build (docker/Dockerfile.devbuild's output), bypassing the
+    # GitHub-style "fetch a SHA256SUMS file from sha256_url" path entirely
+    # — see _expected_sha256 and release_from_url. Empty for every GitHub
+    # release, which still verifies via sha256_url exactly as before.
+    sha256: str = ""
 
 
 def _parse_version(v: str) -> tuple[int, int, int]:
@@ -213,7 +219,28 @@ def install_version(release: ReleaseInfo, daemon_dir: str,
         shutil.rmtree(staging, ignore_errors=True)
 
 
+def release_from_url(url: str, sha256: str, label: str = "dev") -> ReleaseInfo:
+    """Build a ReleaseInfo for an explicit {url, sha256} pair rather than a
+    GitHub lookup (docs/MULTINODE_PLAN.md Phase 4.1) — e.g. the output of
+    scripts/build_devbuild.sh, served over a LAN HTTP file server.
+    install_version() needs nothing further: it already only cares about
+    .url (what to fetch) and the sha256 _expected_sha256 resolves, which
+    this ReleaseInfo makes a direct value instead of a second fetch.
+
+    sha256 is REQUIRED (unlike a GitHub release with no sha256_url, which
+    silently skips verification) — a plain-HTTP local fetch with no other
+    integrity check has nothing else standing between "fetched some bytes"
+    and "installed some bytes" on a node holding real funds."""
+    digest = sha256.lower().strip()
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ValueError("sha256 must be a 64-character hex digest")
+    return ReleaseInfo(tag=label, version=label, url=url, sha256_url="",
+                       prerelease=True, published="", sha256=digest)
+
+
 def _expected_sha256(release: ReleaseInfo, timeout: int = 15) -> str:
+    if release.sha256:
+        return release.sha256.lower()
     if not release.sha256_url:
         return ""
     try:

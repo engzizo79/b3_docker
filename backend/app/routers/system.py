@@ -148,9 +148,22 @@ async def system_upgrade(request: Request, body: dict | None = None):
     """Trigger a daemon upgrade (managed mode only).
 
     Writes an upgrade command file that the entrypoint polls and executes:
-    download -> SHA256 verify -> stop -> swap -> start. The entrypoint owns
-    process control; the backend never touches the daemon process.
-    Returns 202 Accepted with the command id; UI polls /mode for status.
+    backup wallet -> stop -> download -> SHA256 verify -> swap -> start.
+    The entrypoint owns process control; the backend never touches the
+    daemon process. Returns 202 Accepted with the command id; UI polls
+    /mode for status.
+
+    Two shapes (docs/MULTINODE_PLAN.md Phase 4):
+    - {"tag": "v1.1.5"} — the normal path: looked up against GitHub
+      releases, gated on min_daemon_version, exactly as before Phase 4.
+    - {"url": "...", "sha256": "...", "tag": "flowmesh-abc123"} — an
+      explicit unpublished dev build (e.g. scripts/build_devbuild.sh's
+      output served over a LAN HTTP file server). No GitHub lookup, no
+      minimum-version gate: the trust boundary is "the operator compiled
+      this themselves" (Phase 4.3), not a version number. `tag` here is
+      just a free-text label for the fleet's daemon_build pin
+      (routers/nodes.py) and the audit log — sha256 is what's actually
+      verified.
     """
     state = _state(request)
     sess = state.require_csrf(request)
@@ -161,18 +174,35 @@ async def system_upgrade(request: Request, body: dict | None = None):
             detail="daemon upgrade is only available in managed mode")
     body = body or {}
     tag = str(body.get("tag") or "")
-    if not tag:
-        raise HTTPException(status_code=400, detail="tag required")
-    # Validate against min version
-    version = tag.lstrip("vV")
-    if not daemon_release.meets_minimum(version, s.min_daemon_version):
-        raise HTTPException(
-            status_code=400,
-            detail=f"version {tag} is below minimum {s.min_daemon_version}")
+    url = str(body.get("url") or "").strip()
+    sha256 = str(body.get("sha256") or "").strip()
+
+    if url:
+        if not tag:
+            raise HTTPException(status_code=400,
+                detail="tag (a label for this dev build) is required alongside url")
+        try:
+            daemon_release.release_from_url(url, sha256, tag)  # validates sha256 shape
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        if not url.startswith(("http://", "https://")):
+            raise HTTPException(status_code=400, detail="url must be http(s)")
+    else:
+        if not tag:
+            raise HTTPException(status_code=400, detail="tag required")
+        version = tag.lstrip("vV")
+        if not daemon_release.meets_minimum(version, s.min_daemon_version):
+            raise HTTPException(
+                status_code=400,
+                detail=f"version {tag} is below minimum {s.min_daemon_version}")
+
     import json as _json
     import secrets as _secrets
     cmd_id = _secrets.token_hex(8)
     cmd = {"id": cmd_id, "tag": tag, "action": "upgrade"}
+    if url:
+        cmd["url"] = url
+        cmd["sha256"] = sha256
     cmd_file = str(__import__("pathlib").Path(s.b3_data_dir) / "upgrade.cmd")
     try:
         with open(cmd_file + ".tmp", "w") as fh:
@@ -183,6 +213,6 @@ async def system_upgrade(request: Request, body: dict | None = None):
         raise HTTPException(status_code=500, detail=f"write failed: {exc}")
     from app import db
     db.audit(s.db_path, "daemon_upgrade_start", sess.username,
-             detail=f"tag={tag} cmd_id={cmd_id}")
+             detail=f"tag={tag} cmd_id={cmd_id}" + (" dev_build=1" if url else ""))
     return {"accepted": True, "cmd_id": cmd_id, "tag": tag}
 

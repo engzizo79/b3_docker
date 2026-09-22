@@ -76,6 +76,15 @@ export const nodesMixin = {
   fleetRowMeta(row) {
     if (!row.reachable) return row.error || 'Unreachable';
     const parts = [];
+    // Phase 4.2: the pin, and — loudly — a confirmed drift from it.
+    // build_mismatch === null means "pin is a dev-build label, not
+    // verifiable from RPC alone" (see backend routers/nodes.py
+    // _build_mismatch); that case shows the pin but no claim either way.
+    if (row.daemon_build) {
+      parts.push(row.build_mismatch
+        ? '⚠ pinned ' + row.daemon_build + ' but running ' + (row.subversion || 'something else')
+        : 'pinned ' + row.daemon_build);
+    }
     if (row.blocks != null) {
       parts.push(this.fmtInt(row.blocks) + ' blocks'
         + (row.height_delta ? ' (−' + this.fmtInt(row.height_delta) + ')' : ''));
@@ -106,6 +115,7 @@ export const nodesMixin = {
 
   fleetBadgeClass(row) {
     if (!row.reachable) return 'badge-danger';
+    if (row.build_mismatch) return 'badge-danger';
     if (row.monitor && row.monitor.stall_count > 0) return 'badge-warning';
     if (row.staking && row.staking.running) return 'badge-success';
     return 'badge-neutral';
@@ -113,6 +123,10 @@ export const nodesMixin = {
 
   fleetBadgeText(row) {
     if (!row.reachable) return 'Unreachable';
+    // A build drift from the pin outranks a stall/staking badge — a
+    // validator running the wrong binary is the bigger risk to a
+    // FlowMesh test's results (docs/MULTINODE_PLAN.md Phase 4.2).
+    if (row.build_mismatch) return 'Wrong build';
     if (row.monitor && row.monitor.stall_count > 0) return 'Stalled';
     if (row.staking && row.staking.running) return 'Staking';
     return 'Online';

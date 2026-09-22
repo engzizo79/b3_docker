@@ -512,30 +512,72 @@ PY
 run_upgrade() {
     CMD_JSON="$1"; log "upgrade command received"
     TAG="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('tag',''))" "$CMD_JSON")"
-    [ -z "${TAG}" ] && { log "upgrade: no tag"; return 0; }
-    [ -n "${DAEMON_PID}" ] && { kill -TERM "${DAEMON_PID}" 2>/dev/null || true; wait "${DAEMON_PID}" 2>/dev/null || true; DAEMON_PID=""; }
+    # Phase 4 (docs/MULTINODE_PLAN.md): an explicit {url, sha256} pair —
+    # an unpublished dev build — bypasses the GitHub lookup entirely.
+    URL="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('url',''))" "$CMD_JSON")"
+    SHA256="$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('sha256',''))" "$CMD_JSON")"
+    if [ -z "${TAG}" ] && [ -z "${URL}" ]; then log "upgrade: no tag or url"; return 0; fi
+
+    # Phase 4.3: back up the wallet BEFORE touching anything else. No
+    # exceptions — a failed (or unverifiable, e.g. daemon not running)
+    # backup cancels the swap outright. The destination lives OUTSIDE
+    # daemon_dir (which install_version() replaces below), so it survives
+    # the swap regardless of outcome.
+    if [ -z "${DAEMON_PID}" ]; then
+        log "upgrade: daemon is not running — cannot verify a wallet backup, refusing to swap (no exceptions)"
+        return 0
+    fi
+    BACKUP_DIR="${B3_DATA_DIR}/wallet_backups"
+    mkdir -p "${BACKUP_DIR}"
+    BACKUP_FILE="${BACKUP_DIR}/pre-upgrade-$(date -u +%Y%m%dT%H%M%SZ).dat"
+    log "upgrade: backing up wallet to ${BACKUP_FILE} before swap"
+    BACKUP_RESP="$(curl -s --max-time 30 \
+        -u "${RPC_USER}:${RPC_PASSWORD}" -H 'Content-Type: application/json' \
+        -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"backupwallet\",\"params\":[\"${BACKUP_FILE}\"]}" \
+        "http://127.0.0.1:${RPC_PORT}/" 2>/dev/null || true)"
+    if ! printf '%s' "${BACKUP_RESP}" | grep -q '"error":null' || [ ! -f "${BACKUP_FILE}" ]; then
+        log "upgrade: wallet backup FAILED (${BACKUP_RESP}) — refusing to swap the daemon"
+        return 0
+    fi
+    log "upgrade: wallet backup confirmed (${BACKUP_FILE})"
+
+    # DAEMON_PID is known non-empty here (checked above, before the backup).
+    kill -TERM "${DAEMON_PID}" 2>/dev/null || true
+    wait "${DAEMON_PID}" 2>/dev/null || true
+    DAEMON_PID=""
     # The env assignments must prefix the python3 command (continuation), and
     # a failure must not trip `set -e` — it would kill the whole container.
     UPGRADE_RC=0
-    CHOSEN_VERSION="${TAG}" DAEMON_DIR="${DAEMON_DIR}" DAEMON_VERSION_FILE="${DAEMON_VERSION_FILE}" \
+    CHOSEN_VERSION="${TAG}" CHOSEN_URL="${URL}" CHOSEN_SHA256="${SHA256}" \
+    DAEMON_DIR="${DAEMON_DIR}" DAEMON_VERSION_FILE="${DAEMON_VERSION_FILE}" \
     MIN_DAEMON_VERSION="${MIN_DAEMON_VERSION:-1.1.4}" python3 - <<'UPGRADEPY' || UPGRADE_RC=$?
 import os, sys
 sys.path.insert(0, "/app")
 from app import daemon_release
 tag = os.environ.get("CHOSEN_VERSION", "")
+url = os.environ.get("CHOSEN_URL", "")
+sha256 = os.environ.get("CHOSEN_SHA256", "")
 daemon_dir = os.environ["DAEMON_DIR"]
 version_file = os.environ["DAEMON_VERSION_FILE"]
 minimum = os.environ.get("MIN_DAEMON_VERSION", "1.1.4")
-version = tag.lstrip("vV")
-if not daemon_release.meets_minimum(version, minimum):
-    print(f"ERROR: {tag} below minimum {minimum}", file=sys.stderr); sys.exit(1)
-try:
-    rels = daemon_release.list_releases(include_prerelease=False, timeout=30)
-except Exception as exc:
-    print(f"ERROR: {exc}", file=sys.stderr); sys.exit(1)
-release = next((r for r in rels if r.tag == tag or r.version == version), None)
-if release is None:
-    print(f"ERROR: {tag} not found", file=sys.stderr); sys.exit(1)
+if url:
+    # Dev build: no GitHub lookup, no minimum-version gate — tag is a
+    # free-text label, sha256 is what's actually verified.
+    try:
+        release = daemon_release.release_from_url(url, sha256, tag or "dev")
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr); sys.exit(1)
+else:
+    version = tag.lstrip("vV")
+    if not daemon_release.meets_minimum(version, minimum):
+        print(f"ERROR: {tag} below minimum {minimum}", file=sys.stderr); sys.exit(1)
+    try:
+        rels = daemon_release.list_releases(include_prerelease=False, timeout=30)
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr); sys.exit(1)
+    release = next((r for r in rels if r.tag == tag or r.version == version), None)
+    if release is None:
+        print(f"ERROR: {tag} not found", file=sys.stderr); sys.exit(1)
 try:
     daemon_release.install_version(release, daemon_dir, version_file, timeout=300)
     print(f"Upgraded to {release.tag}")

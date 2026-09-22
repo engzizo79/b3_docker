@@ -316,3 +316,68 @@ def test_fleet_status_single_node(client: TestClient, monkeypatch):
     assert len(body["nodes"]) == 1
     assert body["nodes"][0]["name"] == "local"
     assert body["nodes"][0]["reachable"] is True
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.2: pinning a node to a build + fleet mismatch detection
+# ---------------------------------------------------------------------------
+
+def test_pin_daemon_build_on_local_node(client: TestClient):
+    """Pinning is allowed on the local node even though its connection
+    fields aren't editable — it's a fleet-management record, not a
+    connection detail."""
+    out = login(client, headers=LOCAL)
+    from app import db
+    local = db.node_list(client.app.state.app_state.settings.db_path)[0]
+    r = client.put(f"/api/nodes/{local['id']}", json={"daemon_build": "v1.1.5"},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert r.json()["node"]["daemon_build"] == "v1.1.5"
+
+
+def test_pin_daemon_build_dev_label(client: TestClient, monkeypatch):
+    _fake_rpc_post(monkeypatch)
+    out = login(client, headers=LOCAL)
+    r = client.post("/api/nodes", json={
+        "name": "v2", "host": "10.0.0.5", "port": 38647,
+    }, headers=out["headers"])
+    node_id = r.json()["node"]["id"]
+    r = client.put(f"/api/nodes/{node_id}", json={"daemon_build": "flowmesh-abc123"},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert r.json()["node"]["daemon_build"] == "flowmesh-abc123"
+
+
+def test_fleet_reports_build_mismatch_for_released_pin(client: TestClient, monkeypatch):
+    _fake_fleet_post(monkeypatch)
+    from app import db
+    dbp = client.app.state.app_state.settings.db_path
+    local = db.node_list(dbp)[0]
+    db.node_update(dbp, local["id"], daemon_build="v1.1.4")
+
+    out = login(client, headers=LOCAL)
+    r = client.get("/api/nodes/fleet", headers=out["headers"])
+    assert r.status_code == 200
+    row = r.json()["nodes"][0]
+    assert row["daemon_build"] == "v1.1.4"
+    # MockRPC's getnetworkinfo has no "subversion" field at all -> the pin
+    # (a real version-shaped tag) cannot be confirmed -> loudly True, not
+    # silently ignored.
+    assert row["build_mismatch"] is True
+
+
+def test_fleet_build_mismatch_not_verifiable_for_dev_label(client: TestClient, monkeypatch):
+    """A free-text dev-build label can never be confirmed or denied from
+    RPC alone (getnetworkinfo().subversion reflects compile-time
+    CLIENT_VERSION, not an install-time label) — must be None, not a false
+    positive."""
+    _fake_fleet_post(monkeypatch)
+    from app import db
+    dbp = client.app.state.app_state.settings.db_path
+    local = db.node_list(dbp)[0]
+    db.node_update(dbp, local["id"], daemon_build="flowmesh-abc123")
+
+    out = login(client, headers=LOCAL)
+    r = client.get("/api/nodes/fleet", headers=out["headers"])
+    row = r.json()["nodes"][0]
+    assert row["build_mismatch"] is None
