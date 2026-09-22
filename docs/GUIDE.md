@@ -52,7 +52,7 @@ docker run -d --name b3hive --restart unless-stopped \
 | `WEB_PORT` | `8080` | Host port for the UI |
 | `B3_P2P_PORT` | `5647` | Host port for node-to-node (P2P) connections — published by default so peers can reach you inbound; see [Port forwarding](#port-forwarding-inbound-p2p) |
 | `B3_DATA_DIR` | `~/.B3-CoinV2` | Host folder for chain + wallet (compose only) |
-| `B3_IMAGE_TAG` | `latest` | Version to run (compose only). Pin e.g. `v0.8.12-beta` to stay on one release |
+| `B3_IMAGE_TAG` | `latest` | Version to run (compose only). Pin e.g. `v0.8.13-beta` to stay on one release |
 | `RUN_UI` | `true` | `false` = node only, no web UI. On a fresh volume the daemon is installed automatically (see `B3_DAEMON_VERSION`) and syncs from scratch |
 | `B3_DAEMON_VERSION` | latest stable | Headless only: daemon release to install on first run, e.g. `v1.1.4` |
 | `B3_DAEMON_MODE` | `managed` | `external` = UI only, talk to a node running elsewhere; also set `EXT_RPC_HOST`, `EXT_RPC_PORT`, `EXT_RPC_USER`, `EXT_RPC_PASSWORD` (or choose it in the wizard) |
