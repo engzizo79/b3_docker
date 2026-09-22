@@ -61,8 +61,14 @@ def _txid_from_hex(tx_hex):
     return hashlib.sha256(hashlib.sha256(raw).digest()).digest()[::-1].hex()
 
 
-def _unstake_token(secret, txid, vout, dest, preview_id):
-    msg = f"unstake:{txid}:{vout}:{dest}:{preview_id}"
+def _unstake_token(secret, txid, vout, dest):
+    # Bound to WHAT the user confirmed (spend this stake to this address),
+    # not to the literal transaction bytes: sendall's fee comes from
+    # estimatesmartfee, which can change between preview and confirm even
+    # seconds apart, giving a different fee and therefore a different
+    # preview_id on every call. Pinning the token to that made the confirm
+    # step fail near-permanently ("run the preview again" in a loop).
+    msg = f"unstake:{txid}:{vout}:{dest}"
     return hmac_mod.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
 
 
@@ -229,10 +235,11 @@ async def _build_unstake(state, txid, vout, destination=None):
 @router.post("/unstake")
 async def unstake(body: dict, request: Request):
     # Two-phase unstake. Phase 1 (confirm=False): build + sign the spend of
-    # exactly the chosen stake outpoint to a server-derived fresh address,
-    # dry-run testmempoolaccept, return the HMAC token bound to the exact
-    # construction. Phase 2 (confirm=True): re-derive, verify the token,
-    # re-check mempool, broadcast. Never broadcasts from a preview.
+    # exactly the chosen stake outpoint, dry-run testmempoolaccept, return an
+    # HMAC token bound to WHAT was confirmed (stake + destination) — not to
+    # the signed bytes, whose fee (estimatesmartfee) can drift between calls.
+    # Phase 2 (confirm=True): rebuild (fresh fee), verify the token, re-check
+    # mempool, broadcast that freshly built tx. Never broadcasts from a preview.
     state = _state(request)
     sess = state.require_wallet_unlocked(request)
     body = body or {}
@@ -247,8 +254,7 @@ async def unstake(body: dict, request: Request):
 
     stake, dest, tx_hex = await _build_unstake(state, txid, vout, body.get("destination"))
     preview_id = _txid_from_hex(tx_hex)
-    token = _unstake_token(state.settings.session_secret, txid, vout,
-                           dest, preview_id)
+    token = _unstake_token(state.settings.session_secret, txid, vout, dest)
 
     try:
         accepted = await state.rpc.call("testmempoolaccept", [tx_hex])

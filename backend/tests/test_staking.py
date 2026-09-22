@@ -562,3 +562,30 @@ def test_unstake_build_failure_shows_node_reason(client, mock_rpc, settings):
                     headers=out["headers"])
     assert r.status_code == 422
     assert "stake output is in use by the staker" in r.json()["detail"]
+
+
+def test_unstake_confirm_succeeds_when_fee_reestimate_changes_the_tx(client, mock_rpc, settings):
+    """Regression: sendall's fee comes from estimatesmartfee, which can
+    return a different fee (and so different signed bytes) between the
+    preview call and the confirm call, even for the identical stake and
+    destination. The confirm token must survive that - it must NOT be
+    bound to the literal tx bytes, or confirm fails near-permanently
+    with 'confirm token mismatch' ('run the preview again' in the UI)."""
+    out = login(client)
+    unlock(client, out["headers"])
+    orig = mock_rpc.call
+    hexes = iter(["aa" * 40, "bb" * 40])  # a different fee -> different bytes
+    async def call(method, *params):
+        if method == "sendall":
+            return {"complete": True, "hex": next(hexes)}
+        return await orig(method, *params)
+    mock_rpc.call = call
+    prev = client.post("/api/staking/unstake",
+                       json={"txid": STAKE_TXID, "vout": 0, "confirm": False},
+                       headers=out["headers"]).json()
+    r = client.post("/api/staking/unstake",
+                    json={"txid": STAKE_TXID, "vout": 0, "confirm": True,
+                          "confirm_token": prev["confirm_token"]},
+                    headers=out["headers"])
+    assert r.status_code == 200, r.text
+    assert r.json()["txid"] == "deadbeef"
