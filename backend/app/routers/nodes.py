@@ -52,6 +52,16 @@ class NodeUpdateBody(BaseModel):
     # record the operator sets after installing a build, compared against
     # what's actually running (fleet's getnetworkinfo().subversion) to
     # surface drift. "" clears the pin.
+    #
+    # Not validated against version-like shapes here on purpose: a
+    # verified-live devbuild (see docs/MULTINODE_PLAN.md commit history)
+    # reports the SAME subversion an official release of that number would
+    # (e.g. FlowMesh's own build answers "/B3Hive:1.1.4/"), so pinning it
+    # with a version-shaped label like "v1.1.4" instead of a distinct one
+    # ("flowmesh-<commit>") makes _build_mismatch() below wrongly report
+    # "no mismatch". Deliberately left to operator judgment rather than
+    # enforced here — building from source is never accidental, and an
+    # operator doing it is expected to know to label it distinctly.
     daemon_build: str | None = None
 
 
