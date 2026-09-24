@@ -93,7 +93,7 @@ def _named(settings, title: str, body: str, node_name: str) -> tuple[str, str]:
     if not node_name:
         return title, body
     try:
-        multi = len(db.node_list(settings.db_path)) > 1
+        multi = len(db.node_list_active(settings.db_path, settings.fleet_mode)) > 1
     except Exception:
         multi = bool(node_name)
     if not multi:

@@ -26,7 +26,7 @@ export const apiMixin = {
     if (opts.body) headers['Content-Type'] = 'application/json';
     // Multi-node fleet (docs/MULTINODE_PLAN.md): scope every call to the
     // selected node. No selection = the backend's default node.
-    if (this.nodes?.selected) headers['X-B3-Node'] = this.nodes.selected;
+    if (this.sysMode?.fleet && this.nodes?.selected) headers['X-B3-Node'] = this.nodes.selected;
 
     let res;
     try {

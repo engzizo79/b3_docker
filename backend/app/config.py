@@ -111,6 +111,13 @@ class Settings:
         # Set to true ONLY for testing — never in production with real funds.
         self.allow_ephemeral_data: bool = os.environ.get(
             "ALLOW_EPHEMERAL_DATA", "false").strip().lower() == "true"
+        # Advanced operator features (docs/MULTINODE_PLAN.md): the multi-node
+        # fleet console and installing a daemon built from source. Off by
+        # default so a normal single-node install shows none of it; when off
+        # the node registry collapses to the local node and the related API
+        # endpoints refuse.
+        self.fleet_mode: bool = os.environ.get(
+            "FLEET_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
         # UI/backend version — injected at Docker build time from `git describe`
         # (Dockerfile ARG B3_APP_VERSION). "dev" outside a build.
         self.app_version: str = os.environ.get("B3_APP_VERSION", "dev")

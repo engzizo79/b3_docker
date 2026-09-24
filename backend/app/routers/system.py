@@ -100,6 +100,10 @@ async def system_mode(request: Request):
         "daemon_logs": managed,
         "daemon_upgrade": managed,
         "backup_download": managed,
+        # Advanced operator features (FLEET_MODE): the fleet view, node
+        # registry and dev-build install. Hidden entirely when off.
+        "fleet": s.fleet_mode,
+        "dev_build_install": s.fleet_mode and managed,
         "wallet_operations": True,  # both modes
         "console": True,
         "staking": True,
@@ -163,7 +167,7 @@ async def system_upgrade(request: Request, body: dict | None = None):
       this themselves" (Phase 4.3), not a version number. `tag` here is
       just a free-text label for the fleet's daemon_build pin
       (routers/nodes.py) and the audit log — sha256 is what's actually
-      verified.
+      verified. Only accepted with FLEET_MODE on (Settings.fleet_mode).
     """
     state = _state(request)
     sess = state.require_csrf(request)
@@ -177,6 +181,11 @@ async def system_upgrade(request: Request, body: dict | None = None):
     url = str(body.get("url") or "").strip()
     sha256 = str(body.get("sha256") or "").strip()
 
+    if url and not s.fleet_mode:
+        raise HTTPException(
+            status_code=403,
+            detail="installing a build from source needs fleet mode "
+                   "(set FLEET_MODE=true on the container)")
     if url:
         if not tag:
             raise HTTPException(status_code=400,

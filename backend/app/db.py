@@ -794,6 +794,15 @@ def node_list(db_path: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def node_list_active(db_path: str, fleet_mode: bool) -> list[dict]:
+    """The nodes this install actually manages. With FLEET_MODE off only the
+    local row counts, even if remote rows were registered while it was on —
+    they stay in the table (turning the flag back on restores them) but get
+    no monitors, no routing and no UI."""
+    rows = node_list(db_path)
+    return rows if fleet_mode else [r for r in rows if r["kind"] == "local"]
+
+
 def node_get(db_path: str, node_id: int) -> dict | None:
     with _lock, _connect(db_path) as conn:
         row = conn.execute("SELECT * FROM nodes WHERE id=?", (node_id,)).fetchone()

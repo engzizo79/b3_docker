@@ -174,7 +174,7 @@ def start_monitors(settings: Settings, state) -> None:
     client (state.client_for_node — cached, normal timeout, unlike the
     fleet dashboard's throwaway probes)."""
     from app import db
-    for node in db.node_list(settings.db_path):
+    for node in db.node_list_active(settings.db_path, settings.fleet_mode):
         mon = ChainMonitor(settings, state.client_for_node(node),
                            node_id=node["id"], node_name=node["name"])
         mon.start()

@@ -171,7 +171,7 @@ def start_wallet_monitors(settings, state) -> None:
     client (state.client_for_node — cached, normal timeout, unlike the
     fleet dashboard's throwaway probes)."""
     from app import db as _db
-    for node in _db.node_list(settings.db_path):
+    for node in _db.node_list_active(settings.db_path, settings.fleet_mode):
         wm = WalletMonitor(settings, state.client_for_node(node),
                            node_id=node["id"], node_name=node["name"])
         wm.start()

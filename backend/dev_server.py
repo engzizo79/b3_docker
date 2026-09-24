@@ -71,6 +71,7 @@ def main() -> None:
     s.wizard_marker_file = str(tmp / ".wizard_complete")
     s.bootstrap_manifest_url = "https://explorer.b3hive.io/bootstraps/manifest.json"
     s.allow_ephemeral_data = os.environ.get('ALLOW_EPHEMERAL_DATA', 'true').lower() == 'true'  # dev server uses temp dir (not a mount)
+    s.fleet_mode = os.environ.get('FLEET_MODE', 'false').lower() in ('1', 'true', 'yes', 'on')
 
     # Dev-only sample node conf so the wizard config view has content.
     # v0.6.0 layout: the node datadir is <data>/node, so the conf lives there

@@ -110,7 +110,7 @@ function initialState() {
 
     /* ------------------------------------------------------------ session */
     session: { authenticated: false, wallet_unlocked: false, totp_configured: false },
- sysMode: { checked: false, mode: 'managed', managed: true, node_restart: true, bootstrap: true, daemon_logs: true, daemon_upgrade: true, backup_download: true },
+ sysMode: { checked: false, mode: 'managed', managed: true, node_restart: true, bootstrap: true, daemon_logs: true, daemon_upgrade: true, backup_download: true, fleet: false, dev_build_install: false },
   nodeConn: { loaded: false, choice: null, open: false, busy: false, error: '', done: false, restart: false, form: { mode: 'managed', version: '', extHost: '', extPort: 38647, extUser: '', extPassword: '' } },
     loginPw: '', loginStep2: false, loginBusy: false, loginErr: '', totpCode: '',
     unlockPrompt: { show: false, pw: '', busy: false, err: '', reveal: false, retry: null },
@@ -182,7 +182,11 @@ function initialState() {
     nodes: {
       list: [], selected: '', loaded: false,
       form: { name: '', host: '', port: 38647, rpc_user: '', rpc_password: '' }, busy: false,
+      addOpen: false, pinId: null, pinValue: '',
     },
+    // Install a daemon built from source (scripts/build_devbuild.sh output,
+    // served over plain HTTP) on THIS container. FLEET_MODE only.
+    devbuild: { url: '', sha256: '', label: '', busy: false },
     fleet: { rows: [], top_height: null, loaded: false, busy: false },
 
     /* ---------------------------------------------------------- tailscale */

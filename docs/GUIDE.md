@@ -71,6 +71,7 @@ docker run -d --name b3hive --restart unless-stopped \
 | `EXPLORER_URL` | explorer.b3hive.io | Used to compare your sync height; empty disables |
 | `RPC_USER` / `RPC_PASSWORD` / `RPC_PORT` | random / random / `32647` | Seed `b3coin.conf` on first run only |
 | `B3_DOMAIN` | empty | Domain for HTTPS (`docker-compose.prod.yml`) |
+| `FLEET_MODE` | `false` | Advanced: `true` turns on the Fleet view (manage several nodes from one UI) and installing a daemon you built from source. Hidden entirely when off. See `docs/MULTINODE_PLAN.md` |
 
 Internal secrets are generated automatically and stored in the data folder — leave the secret lines in `.env.example` commented out.
 

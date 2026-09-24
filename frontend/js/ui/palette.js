@@ -32,6 +32,7 @@ export const paletteMixin = {
 
     /* --- Go to ----------------------------------------------------------- */
     for (const [id, v] of Object.entries(VIEWS)) {
+      if (!this.viewAllowed(id)) continue;
       cmds.push({
         key: 'go:' + id,
         group: 'Go to',

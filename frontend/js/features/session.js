@@ -97,12 +97,16 @@ const env = await seal(this.loginPw, 'b3hive-login');
       this.loadWizard();
       return;
     }
+    // Capability flags gate which views exist (e.g. Fleet needs FLEET_MODE),
+    // so they must be known before the first route is applied.
+    await this.fetchSysMode();
     this.initRouter();
     this._applyHash?.();
+    if (!this.viewAllowed(this.view)) this.view = 'home';
     this.onEnterView(this.view);
     // The node switcher lives in the shared page-head, above every view —
     // load it once here rather than per-view, like alerts/sysMode.
-    this.loadNodes();
+    if (this.sysMode.fleet) this.loadNodes();
     this.startPolling();
     await this.pollNow();
   },

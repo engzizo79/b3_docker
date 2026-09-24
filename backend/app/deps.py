@@ -162,9 +162,16 @@ class AppState:
         through create_app_state) also falls back to self.rpc. A header
         naming an id that doesn't resolve to a row -> 404, never a silent
         fallback — a stale/mistyped node id must fail loudly rather than
-        quietly running against the wrong node."""
+        quietly running against the wrong node.
+
+        FLEET_MODE off: only the local node exists as far as requests are
+        concerned — no header means self.rpc even if a remote row is still
+        marked default, and a header naming a remote row is refused."""
         header = request.headers.get("x-b3-node", "").strip()
+        fleet = self.settings.fleet_mode
         if not header:
+            if not fleet:
+                return self.rpc
             node = db.node_get_default(self.settings.db_path)
             if node is None:
                 return self.rpc
@@ -174,7 +181,7 @@ class AppState:
             except ValueError:
                 raise HTTPException(status_code=404, detail="unknown node")
             node = db.node_get(self.settings.db_path, node_id)
-            if node is None:
+            if node is None or (not fleet and node["kind"] != "local"):
                 raise HTTPException(status_code=404, detail="unknown node")
         return self.client_for_node(node)
 

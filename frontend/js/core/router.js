@@ -58,7 +58,9 @@ export const VIEWS = {
     keywords: 'chain peers logs config finality bridge supply restart sync',
   },
   fleet: {
-    label: 'Fleet', icon: 'users', width: 'data', advanced: true,
+    // `requires`: a /api/system/mode capability flag that must be true for
+    // the view to exist at all (FLEET_MODE, an operator env var).
+    label: 'Fleet', icon: 'users', width: 'data', advanced: true, requires: 'fleet',
     title: 'Node fleet', sub: 'Every registered node, side by side',
     keywords: 'nodes fleet validators multi-node cluster flowmesh quorum',
   },
@@ -108,7 +110,7 @@ export const routerMixin = {
   /** Navigate. Blocked while first-run setup owns the screen. */
   go(view, opts = {}) {
     if (this.setupActive()) return;
-    if (!VIEWS[view]) view = DEFAULT_VIEW;
+    if (!this.viewAllowed(view)) view = DEFAULT_VIEW;
 
     // Reaching an Advanced-only view by palette or deep link turns Advanced
     // on rather than silently refusing — no dead ends.
@@ -144,9 +146,9 @@ export const routerMixin = {
       case 'staking':    this.loadStaking(); this.loadValidator(); break;
       case 'automation': this.loadStakingSettings(); this.loadConsolidation(); this.loadAutoLog(); break;
       case 'tools':      this.loadRecipes(); break;
-      case 'console': this.consoleLoad(); this.loadNodes(); break;
+      case 'console': this.consoleLoad(); if (this.sysMode.fleet) this.loadNodes(); break;
       case 'node':       this.loadSystemInfo(); this.loadNodeExtras(); break;
-      case 'fleet':      this.loadFleet(); break;
+      case 'fleet':      this.loadFleet(); this.loadNodes(); break;
       case 'settings': this.loadSystemInfo(); this.loadTailscale(); this.loadNotificationPrefs(); break;
       case 'send':       this.resetSend(opts.keep); this.loadAddressBook(); this.loadContacts(); break;
     }
@@ -159,10 +161,18 @@ export const routerMixin = {
     return w === 'flow' ? 'view--flow' : (w === 'data' ? 'view--data' : '');
   },
 
+  /** The view exists on this install (switched on by the operator where
+   *  it needs to be). Unlike the Advanced toggle, nothing here can turn a
+   *  missing capability on — a gated view just isn't there. */
+  viewAllowed(id) {
+    const v = VIEWS[id];
+    return !!v && (!v.requires || !!this.sysMode[v.requires]);
+  },
+
   /** Hidden only when the feature genuinely has no meaning on this node. */
   navVisible(id) {
     const v = VIEWS[id];
-    if (!v) return false;
+    if (!this.viewAllowed(id)) return false;
     if (v.advanced && this.mode !== 'advanced') return false;
     return true;
   },
@@ -211,12 +221,12 @@ export const routerMixin = {
     const apply = () => {
       const want = location.hash.slice(1);
       if (this.setupActive()) return;
-      if (VIEWS[want]) {
+      if (this.viewAllowed(want)) {
         if (want !== this.view) {
           this.view = want;
           this.onEnterView(want);
         }
-      } else if (!VIEWS[this.view]) {
+      } else if (!this.viewAllowed(this.view)) {
         this.view = DEFAULT_VIEW;
       }
     };

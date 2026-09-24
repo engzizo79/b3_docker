@@ -13,7 +13,7 @@ encrypted."""
 import asyncio
 import re
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app import db
@@ -21,7 +21,18 @@ from app.deps import AppState
 from app.rpc import B3RPCClient, RPCError, RPCNotAllowed, RPCUnavailable
 from app.vault import vault_from_settings
 
-router = APIRouter(prefix="/api/nodes", tags=["nodes"])
+
+def _require_fleet_mode(request: Request) -> None:
+    """The whole registry is an advanced feature, opt-in via FLEET_MODE
+    (see Settings.fleet_mode). Off -> every endpoint here is refused."""
+    if not request.app.state.app_state.settings.fleet_mode:
+        raise HTTPException(
+            status_code=403,
+            detail="fleet mode is off (set FLEET_MODE=true on the container to enable it)")
+
+
+router = APIRouter(prefix="/api/nodes", tags=["nodes"],
+                   dependencies=[Depends(_require_fleet_mode)])
 
 # The fleet dashboard polls every registered node in parallel; a hung node
 # must never stall the whole response, so probes use a short timeout of

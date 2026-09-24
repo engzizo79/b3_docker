@@ -21,6 +21,16 @@ second-class and would rot; built as "the UI manages N nodes" it is also
 useful in production (a validator plus a spare, or a watch-only node), and
 the question of forking the project into a separate dev variant disappears.
 
+**Opt-in (added after Phase 4):** the whole feature — Fleet view, node
+switcher, node registry API, dev-build install — is an advanced operator
+feature, off unless the container runs with `FLEET_MODE=true`. Off, the
+registry collapses to the local node (`db.node_list_active`), `/api/nodes/*`
+and `{url, sha256}` upgrades return 403, `AppState.rpc_for()` ignores remote
+rows, and the SPA hides every trace of it (`/api/system/mode` → `fleet`,
+`dev_build_install`). Rows registered while it was on are kept, unused.
+The Fleet view is where nodes are added, removed, made default and pinned,
+and where this container's dev build is installed.
+
 ## Deployment shape (no new concepts needed)
 
 - Each validator is a **daemon-only container**: the existing `RUN_UI=false`

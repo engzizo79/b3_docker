@@ -1009,3 +1009,16 @@ input.select-sm, .input.select-sm { min-height: var(--min-target-sm); }
 /* Contacts add form: name + address + button; stacks on phones. */
 .contact-form { display: grid; gap: var(--space-2); grid-template-columns: minmax(0, 1fr); align-items: start; }
 @media (min-width: 900px) { .contact-form { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; } }
+
+/* Fleet (FLEET_MODE): a node row plus its management actions, divided as
+   one unit — the inner list-row gives up its own divider. Actions indent
+   to the row's text column on wider screens. */
+.fleet-row { border-bottom: 1px solid var(--border); }
+.fleet-row:last-child { border-bottom: 0; }
+.fleet-row > .list-row { border-bottom: 0; padding-bottom: var(--space-1); }
+.fleet-actions { padding: 0 var(--space-4) var(--space-3); }
+@media (min-width: 640px) {
+  .fleet-actions { padding-left: calc(var(--space-4) + 36px + var(--space-3)); }
+}
+.fleet-actions .fleet-remove { color: var(--danger); }
+.fleet-pin { width: auto; flex: 1 1 14rem; min-height: var(--min-target-sm); }

@@ -37,25 +37,117 @@ export const nodesMixin = {
     return def ? def.name + ' (default)' : 'default node';
   },
 
-  async addNode(form) {
-    const body = {
-      name: form.name, host: form.host || '127.0.0.1', port: Number(form.port),
-      rpc_user: form.rpc_user || '', rpc_password: form.rpc_password || '',
-    };
-    const d = await this.api('/api/nodes', { method: 'POST', body: JSON.stringify(body) });
-    await this.loadNodes();
-    return d;
+  /* ------------------------------------------- registry management (Fleet view) */
+
+  async submitAddNode() {
+    const f = this.nodes.form;
+    if (!f.name.trim()) { this.showToast('Give the node a name', 'error'); return; }
+    const port = Number(f.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      this.showToast('Port must be between 1 and 65535', 'error'); return;
+    }
+    this.nodes.busy = true;
+    try {
+      // The backend checks the node answers RPC with these credentials
+      // before saving, so a typo fails here rather than later in the fleet.
+      await this.api('/api/nodes', { method: 'POST', body: JSON.stringify({
+        name: f.name.trim(), host: f.host.trim() || '127.0.0.1', port,
+        rpc_user: f.rpc_user, rpc_password: f.rpc_password,
+      }) });
+      this.nodes.form = { name: '', host: '', port: 38647, rpc_user: '', rpc_password: '' };
+      this.nodes.addOpen = false;
+      this.showToast('Node added');
+      await Promise.all([this.loadNodes(), this.loadFleet()]);
+    } catch (e) { this.reportError(e); }
+    this.nodes.busy = false;
   },
 
-  async removeNode(id) {
-    await this.api('/api/nodes/' + id, { method: 'DELETE' });
-    if (String(this.nodes.selected) === String(id)) this.nodes.selected = '';
-    await this.loadNodes();
+  askRemoveNode(row) {
+    this.confirm({
+      title: 'Remove ' + row.name + '?',
+      body: 'This only forgets the connection here — the node itself, its wallet and '
+          + 'its coins are not touched. You can add it again later.',
+      detail: [{ key: 'Node', value: row.name }],
+      confirmLabel: 'Remove node',
+      danger: true,
+      run: async () => {
+        try {
+          await this.api('/api/nodes/' + row.id, { method: 'DELETE' });
+          if (String(this.nodes.selected) === String(row.id)) this.nodes.selected = '';
+          this.showToast(row.name + ' removed');
+          await Promise.all([this.loadNodes(), this.loadFleet()]);
+        } catch (e) { this.reportError(e); }
+      },
+    });
   },
 
-  async setDefaultNode(id) {
-    await this.api('/api/nodes/' + id + '/default', { method: 'POST' });
-    await this.loadNodes();
+  askDefaultNode(row) {
+    this.confirm({
+      title: 'Make ' + row.name + ' the default?',
+      body: 'Every screen uses the default node unless you pick another one in the node '
+          + 'switcher — including wallet actions like sending and staking.',
+      detail: [{ key: 'Node', value: row.name }],
+      confirmLabel: 'Make default',
+      run: async () => {
+        try {
+          await this.api('/api/nodes/' + row.id + '/default', { method: 'POST' });
+          this.showToast(row.name + ' is now the default node');
+          await Promise.all([this.loadNodes(), this.loadFleet()]);
+        } catch (e) { this.reportError(e); }
+      },
+    });
+  },
+
+  startPin(row) {
+    this.nodes.pinId = row.id;
+    this.nodes.pinValue = row.daemon_build || '';
+  },
+
+  async savePin(row) {
+    try {
+      await this.api('/api/nodes/' + row.id, {
+        method: 'PUT', body: JSON.stringify({ daemon_build: this.nodes.pinValue.trim() }),
+      });
+      this.nodes.pinId = null;
+      this.showToast(this.nodes.pinValue.trim() ? 'Build pinned' : 'Pin cleared');
+      await this.loadFleet();
+    } catch (e) { this.reportError(e); }
+  },
+
+  /* ---------------------------------------------- dev build (from source) */
+
+  askInstallDevBuild() {
+    const d = this.devbuild;
+    const url = d.url.trim(), sha = d.sha256.trim().toLowerCase(), label = d.label.trim();
+    if (!/^https?:\/\//.test(url)) { this.showToast('The URL must start with http:// or https://', 'error'); return; }
+    if (!/^[0-9a-f]{64}$/.test(sha)) { this.showToast('SHA-256 must be 64 hex characters', 'error'); return; }
+    if (!label) { this.showToast('Give the build a label, e.g. flowmesh-abc123', 'error'); return; }
+    this.confirm({
+      title: 'Install build ' + label + ' on this container?',
+      body: 'The wallet is backed up first and the install refuses to continue if that '
+          + 'backup fails. Then the node stops, the build is downloaded and checked '
+          + 'against the SHA-256, swapped in, and the node restarts — expect a few '
+          + 'minutes offline. An unreleased build can write a wallet an official '
+          + 'release cannot read.',
+      detail: [
+        { key: 'Label', value: label },
+        { key: 'From', value: url, mono: true },
+        { key: 'SHA-256', value: sha, mono: true },
+      ],
+      confirmLabel: 'Install build',
+      danger: true,
+      run: async () => {
+        d.busy = true;
+        try {
+          await this.api('/api/system/upgrade', {
+            method: 'POST', body: JSON.stringify({ url, sha256: sha, tag: label }),
+          });
+          this.devbuild = { url: '', sha256: '', label: '', busy: false };
+          this.showToast('Install queued — follow it in Node → Logs');
+        } catch (e) { this.reportError(e); }
+        d.busy = false;
+      },
+    });
   },
 
   /* --------------------------------------------------------- fleet view */

@@ -261,7 +261,7 @@
              console, …) via the X-B3-Node header api() injects — see
              docs/MULTINODE_PLAN.md Phase 2. Hidden until a second node is
              registered, so single-node installs see nothing new. -->
-        <div class="dd-anchor" x-show="nodes.list.length > 1"
+        <div class="dd-anchor" x-show="sysMode.fleet && nodes.list.length > 1"
              @click.outside="showNodeSwitch=false" @keydown.escape="showNodeSwitch=false">
           <button class="btn btn-secondary btn-sm" type="button" @click="showNodeSwitch = !showNodeSwitch"
                   :aria-expanded="showNodeSwitch" aria-haspopup="true" aria-label="Switch node">
@@ -3165,17 +3165,61 @@
               <strong>Node fleet</strong>
               <span class="sub">Every registered node, side by side — divergence is the signal that matters</span>
             </div>
-            <button class="btn btn-sm" type="button" @click="loadFleet()" :disabled="fleet.busy">
-              <span class="spinner" x-show="fleet.busy"></span>
-              <svg class="i-sm" x-show="!fleet.busy"><use href="#i-refresh"/></svg>
-              <span>Refresh</span>
-            </button>
+            <div class="row gap-2">
+              <button class="btn btn-sm" type="button" @click="loadFleet()" :disabled="fleet.busy">
+                <span class="spinner" x-show="fleet.busy"></span>
+                <svg class="i-sm" x-show="!fleet.busy"><use href="#i-refresh"/></svg>
+                <span>Refresh</span>
+              </button>
+              <button class="btn btn-primary btn-sm" type="button" @click="nodes.addOpen = !nodes.addOpen"
+                      :aria-expanded="nodes.addOpen">
+                <svg class="i-sm"><use href="#i-plus"/></svg><span>Add node</span>
+              </button>
+            </div>
           </div>
 
-          <div class="empty" x-show="fleet.loaded && !fleet.rows.length">
+          <!-- Register another daemon (typically a RUN_UI=false container).
+               The backend checks it answers RPC before saving; credentials
+               are encrypted at rest and never sent back. -->
+          <div class="card-pad" x-show="nodes.addOpen" x-transition.opacity>
+            <div class="form-grid grid-2">
+              <label class="field">
+                <span class="field-label">Name</span>
+                <input class="input" type="text" x-model="nodes.form.name" placeholder="validator-2" spellcheck="false">
+              </label>
+              <label class="field">
+                <span class="field-label">Host</span>
+                <input class="input input-mono" type="text" x-model="nodes.form.host" placeholder="127.0.0.1" spellcheck="false">
+                <span class="help">Where this container can reach the node's RPC port.</span>
+              </label>
+              <label class="field">
+                <span class="field-label">RPC port</span>
+                <input class="input input-mono" type="number" min="1" max="65535" x-model="nodes.form.port">
+              </label>
+              <label class="field">
+                <span class="field-label">RPC user</span>
+                <input class="input" type="text" x-model="nodes.form.rpc_user" autocomplete="off" spellcheck="false">
+              </label>
+              <label class="field">
+                <span class="field-label">RPC password</span>
+                <input class="input" type="password" x-model="nodes.form.rpc_password" autocomplete="new-password">
+                <span class="help">From that node's b3coin.conf. Stored encrypted.</span>
+              </label>
+            </div>
+            <div class="btn-row mt-3">
+              <button class="btn btn-primary" type="button" @click="submitAddNode()"
+                      :disabled="nodes.busy || !nodes.form.name.trim() || !nodes.form.port">
+                <span class="spinner" x-show="nodes.busy"></span>
+                <span>Check and add</span>
+              </button>
+              <button class="btn btn-secondary" type="button" @click="nodes.addOpen = false">Cancel</button>
+            </div>
+          </div>
+
+          <div class="empty" x-show="fleet.loaded && fleet.rows.length < 2 && !nodes.addOpen">
             <span class="empty-icon"><svg class="i-lg"><use href="#i-users"/></svg></span>
-            <h3>No nodes registered</h3>
-            <p>Register another node from the Console view to see it here alongside this one.</p>
+            <h3>Only this node so far</h3>
+            <p>Use <strong>Add node</strong> to register another daemon and watch them side by side.</p>
           </div>
 
           <!-- docs/MULTINODE_PLAN.md Phase 4.3: an unpublished dev build's
@@ -3197,6 +3241,7 @@
 
           <div x-show="fleet.rows.length">
             <template x-for="row in fleet.rows" :key="row.id">
+              <div class="fleet-row">
               <div class="list-row items-start">
                 <span class="lead" :class="!row.reachable ? 'out' : (row.staking && row.staking.running ? 'in' : '')">
                   <svg class="i-sm"><use href="#i-server"/></svg>
@@ -3212,7 +3257,73 @@
                   <span class="badge" :class="fleetBadgeClass(row)" x-text="fleetBadgeText(row)"></span>
                 </span>
               </div>
+              <div class="fleet-actions">
+                <template x-if="nodes.pinId !== row.id">
+                  <div class="row gap-2 wrap">
+                    <button class="btn btn-ghost btn-sm" type="button" @click="startPin(row)"
+                            x-text="row.daemon_build ? 'Change pinned build' : 'Pin build'"></button>
+                    <button class="btn btn-ghost btn-sm" type="button" x-show="!row.is_default"
+                            @click="askDefaultNode(row)">Make default</button>
+                    <button class="btn btn-ghost btn-sm fleet-remove" type="button" x-show="row.kind !== 'local'"
+                            @click="askRemoveNode(row)">Remove</button>
+                  </div>
+                </template>
+                <template x-if="nodes.pinId === row.id">
+                  <div class="row gap-2 wrap">
+                    <input class="input input-mono fleet-pin" type="text" x-model="nodes.pinValue"
+                           placeholder="v1.1.5 or flowmesh-abc123" spellcheck="false"
+                           x-init="$nextTick(() => $el.focus())"
+                           @keydown.enter="savePin(row)" @keydown.escape="nodes.pinId = null"
+                           aria-label="Build this node should be running">
+                    <button class="btn btn-primary btn-sm" type="button" @click="savePin(row)">Save</button>
+                    <button class="btn btn-secondary btn-sm" type="button" @click="nodes.pinId = null">Cancel</button>
+                  </div>
+                </template>
+              </div>
+              </div>
             </template>
+          </div>
+        </div>
+
+        <!-- Install a daemon built from source (scripts/build_devbuild.sh
+             --serve prints the URL and SHA-256) on THIS container. Same
+             backup-first swap as a release upgrade (entrypoint run_upgrade). -->
+        <div class="card" x-show="sysMode.dev_build_install">
+          <div class="card-head">
+            <div>
+              <strong>Install a build from source</strong>
+              <span class="sub">Swap this container's daemon for one you compiled</span>
+            </div>
+          </div>
+          <div class="card-pad">
+            <p class="t-sm muted">Build it on the host with <code>scripts/build_devbuild.sh --src &lt;B3-CoinV2 checkout&gt; --serve</code>,
+              then paste the tarball URL and its SHA-256 here. Other nodes install their own builds from their own UI.</p>
+            <div class="form-grid mt-3">
+              <label class="field">
+                <span class="field-label">Tarball URL</span>
+                <input class="input input-mono" type="url" x-model="devbuild.url"
+                       placeholder="http://192.168.1.105:8765/b3-hive-flowmesh-abc123.tar.gz" spellcheck="false">
+              </label>
+              <label class="field">
+                <span class="field-label">SHA-256</span>
+                <input class="input input-mono" type="text" x-model="devbuild.sha256" spellcheck="false"
+                       placeholder="64 hex characters">
+              </label>
+              <label class="field">
+                <span class="field-label">Label</span>
+                <input class="input input-mono" type="text" x-model="devbuild.label" spellcheck="false"
+                       placeholder="flowmesh-abc123">
+                <span class="help">Use a distinct name, not a release number — a dev build reports the same
+                  version string as the release it's based on. Pin the same label on this node above.</span>
+              </label>
+            </div>
+            <div class="btn-row mt-3">
+              <button class="btn btn-danger" type="button" @click="askInstallDevBuild()"
+                      :disabled="devbuild.busy || !devbuild.url || !devbuild.sha256 || !devbuild.label">
+                <span class="spinner" x-show="devbuild.busy"></span>
+                <span>Install build…</span>
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -3702,7 +3813,7 @@
         <strong>Expert console</strong>
         <span class="sub">Run node commands directly — QT parity on trusted connections</span>
       </div>
-      <label class="row gap-2" x-show="nodes.list.length > 1">
+      <label class="row gap-2" x-show="sysMode.fleet && nodes.list.length > 1">
         <span class="t-sm muted">Node</span>
         <template x-if="nodes.loaded">
           <select id="console-node" class="select select-sm" x-model="nodes.selected">

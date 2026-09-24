@@ -208,6 +208,9 @@ def settings(tmp_path: Path) -> Settings:
     (tmp_path / ".daemon_deferred").touch()
     s.wallet_vault_key = ""
     s.allow_ephemeral_data = True  # tests use tmp_path (not a mount)
+    # On here so the multi-node suites exercise the registry; the default-off
+    # behavior has its own tests (test_fleet_mode.py) that flip it.
+    s.fleet_mode = True
     # Transport security (v0.5.0): mirror Settings.__init__ defaults
     if not hasattr(s, "require_secure_transport"):
         s.require_secure_transport = "warn"
