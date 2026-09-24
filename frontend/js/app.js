@@ -122,7 +122,7 @@ function initialState() {
     // `checked:false` means "we do not know yet" — distinct from "no wallet",
     // so the UI never flashes an incorrect empty state on first paint.
     walletStatus: { checked: false, reachable: false, loaded: [] },
-    wallet: { name: null, balance: null, pending: null, immature: null, info: null },
+    wallet: { name: null, balance: null, pending: null, immature: null, spendable: null, staked: null, info: null },
     history: { txs: [], count: 100, filter: 'all', busy: false, loaded: false },
     txDetail: null,
     receive: { label: '', busy: false, generated: null },

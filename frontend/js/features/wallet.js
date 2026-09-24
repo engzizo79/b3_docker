@@ -38,12 +38,18 @@ export const walletMixin = {
       this.wallet.balance = mine.trusted ?? null;
       this.wallet.pending = mine.untrusted_pending ?? null;
       this.wallet.immature = mine.immature ?? null;
+      // `trusted` above counts stake carriers too; a send can only use
+      // plain coins, so Send's Max comes from spend.spendable instead.
+      this.wallet.spendable = d.spend?.spendable ?? null;
+      this.wallet.staked = d.spend?.staked ?? null;
       this.wallet.info = d.wallet || null;
     } catch {
       // No wallet loaded is an expected state, not an error to shout about.
       this.wallet.balance = null;
       this.wallet.pending = null;
       this.wallet.immature = null;
+      this.wallet.spendable = null;
+      this.wallet.staked = null;
     }
   },
 

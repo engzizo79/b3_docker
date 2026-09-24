@@ -1244,6 +1244,13 @@
                   <span class="help" x-show="!send.amount">
                     Spendable now: <span x-text="fmtAmount(spendable(), { unit: true, maxDecimals: 4 })"></span>
                   </span>
+                  <!-- Staked coins are in the balance but locked: advise, don't
+                       offer to unstake here — that stays a deliberate step. -->
+                  <span class="help" x-show="stakedNotSpendable()">
+                    Another <span x-text="fmtAmount(stakedNotSpendable(), { unit: true, maxDecimals: 4 })"></span>
+                    is staked and can't be sent until you unstake it on the
+                    <button class="link" type="button" @click="go('staking')">Staking</button> page.
+                  </span>
                 </div>
               </div>
 

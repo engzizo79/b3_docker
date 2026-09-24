@@ -1022,3 +1022,9 @@ input.select-sm, .input.select-sm { min-height: var(--min-target-sm); }
 }
 .fleet-actions .fleet-remove { color: var(--danger); }
 .fleet-pin { width: auto; flex: 1 1 14rem; min-height: var(--min-target-sm); }
+
+/* Inline text link inside helper text (e.g. Send's "unstake on Staking"). */
+.field .help .link {
+  color: var(--accent-text); background: none; border: 0; padding: 0;
+  font: inherit; cursor: pointer; text-decoration: underline;
+}

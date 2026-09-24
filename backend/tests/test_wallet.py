@@ -366,3 +366,34 @@ def test_staking_stop_disables_autostake_when_it_was_on(client: TestClient, mock
     assert "autostake_disabled_by_manual_action" in actions
     alerts = db.alert_list(settings.db_path)
     assert any("Autostake was turned off" in a["message"] for a in alerts)
+
+
+def test_wallet_info_spendable_excludes_stake_carriers(client: TestClient, mock_rpc: MockRPC):
+    """Max on Send must never offer staked coins: trusted counts the stake
+    carrier, but only plain P2PKH outputs are spendable."""
+    mock_rpc.responses["getbalances"] = {"mine": {"trusted": 1001.92}}
+    mock_rpc.responses["listunspent"] = mock_rpc.responses["listunspent"] + [
+        # A B3S1 stake carrier (non-P2PKH script) — held, not spendable by a send.
+        {"txid": "ab" * 32, "vout": 0, "address": "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2",
+         "amount": 1000.0, "confirmations": 500, "spendable": True,
+         "scriptPubKey": "2642335331a77117d0c4446fc288c5"},
+        # Watch-only / unspendable P2PKH never counts either.
+        {"txid": "cd" * 32, "vout": 0, "address": "SbtSJiDgE7kN4LetizjCLESg6acgubtMj2",
+         "amount": 5.0, "confirmations": 10, "spendable": False,
+         "scriptPubKey": "76a914751f0b64ad7c395e05652b72101102cf0da491e888ac"},
+    ]
+    out = login(client, headers=LOCAL)
+    r = client.get("/api/wallet/info", headers=out["headers"])
+    assert r.status_code == 200
+    spend = r.json()["spend"]
+    assert spend["spendable"] == "1.920000000"   # 0.42 + 1.5 only
+    assert spend["staked"] == "1000.000000000"
+    assert ("listunspent", (1,)) in mock_rpc.calls  # confirmed coins only
+
+
+def test_wallet_info_spend_unknown_when_node_cannot_say(client: TestClient, mock_rpc: MockRPC):
+    mock_rpc.fail_methods.update({"listunspent", "getstakinginfo"})
+    out = login(client, headers=LOCAL)
+    r = client.get("/api/wallet/info", headers=out["headers"])
+    assert r.status_code == 200
+    assert r.json()["spend"] == {"spendable": None, "staked": None}

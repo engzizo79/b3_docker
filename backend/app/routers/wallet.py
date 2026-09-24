@@ -152,7 +152,48 @@ async def wallet_info(request: Request):
         balances = await state.rpc.call("getbalances")
     except (RPCError, RPCNotAllowed, RPCUnavailable) as exc:
         raise _translate(exc)
-    return {"wallet": info, "balances": balances}
+    return {"wallet": info, "balances": balances, "spend": await _spend_summary(state)}
+
+
+async def _spend_summary(state: AppState) -> dict:
+    """What a plain send can actually use, next to what is staked.
+
+    getbalances().mine.trusted counts stake carriers (B3S1) and other
+    carrier outputs as confirmed balance, but a send can only spend plain
+    P2PKH outputs — the same rule coin control and the batch tools follow.
+    So "Max" must come from here, not from trusted. Each part is None (not
+    0) when the node cannot say, so the UI never presents a guess."""
+    spendable: str | None
+    try:
+        total = Decimal(0)
+        for u in await state.rpc.call("listunspent", 1) or []:
+            if not u.get("spendable", True):
+                continue
+            if not P2PKH_SCRIPT_RE.match(str(u.get("scriptPubKey", "")).lower()):
+                continue
+            try:
+                total += parse_amount(str(u.get("amount", "0")))
+            except (ValueError, ArithmeticError):
+                continue
+        spendable = format(total, f".{B3_DECIMALS}f")
+    except (RPCError, RPCNotAllowed, RPCUnavailable):
+        spendable = None
+    staked: str | None
+    try:
+        sinfo = await state.rpc.call_optional("getstakinginfo")
+        if sinfo is None:
+            staked = None
+        else:
+            total = Decimal(0)
+            for s in sinfo.get("stakes") or []:
+                try:
+                    total += parse_amount(str(s.get("amount", "0")))
+                except (ValueError, ArithmeticError):
+                    continue
+            staked = format(total, f".{B3_DECIMALS}f")
+    except (RPCError, RPCNotAllowed, RPCUnavailable):
+        staked = None
+    return {"spendable": spendable, "staked": staked}
 
 
 @router.get("/addresses")

@@ -123,6 +123,10 @@
 /* ======================================================= Staking ========= */
 
 .stake-row .stake-out { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted); }
+/* Status badge and Unstake sit side by side, centred on the row — the
+   generic .list-row .trail is a right-aligned column, which stacked the
+   narrow badge over the wider button with mismatched edges. */
+.stake-row .trail { flex-direction: row; align-items: center; gap: var(--space-2); }
 
 /* Weight bar: this wallet's share of total network stake weight. */
 .weight-bar {

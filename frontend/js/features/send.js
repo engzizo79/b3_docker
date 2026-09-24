@@ -75,12 +75,21 @@ export const sendMixin = {
     return { ok: false, text: addressProblem(v) };
   },
 
-  /** Spendable = confirmed balance only, or — with coin control active —
-   *  exactly the total of the coins chosen. Pending and staked coins
-   *  cannot be spent, and saying so is better than an unexplained failure. */
+  /** Spendable = confirmed plain coins only, or — with coin control
+   *  active — exactly the total of the coins chosen. Staked coins sit in
+   *  the confirmed balance but cannot be sent until unstaked, so this uses
+   *  the backend's spend.spendable, falling back to the confirmed balance
+   *  only if the node could not say. */
   spendable() {
     if (this.coinControlActive()) return this.coinControlTotal();
-    return this.wallet.balance ?? '0';
+    return this.wallet.spendable ?? this.wallet.balance ?? '0';
+  },
+
+  /** Staked coins the user could spend after unstaking them — advice
+   *  only; unstaking stays a deliberate step on the Staking page. */
+  stakedNotSpendable() {
+    if (this.coinControlActive()) return null;
+    return isPositiveAmount(this.wallet.staked) ? this.wallet.staked : null;
   },
 
   maxSendable() {
