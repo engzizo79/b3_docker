@@ -30,7 +30,7 @@
    the exact b3coin-cli command instead of a dead button. `fnCreateSupported`
    probes for the endpoint so this lights up automatically if it is added. */
 
-import { fmtAmount, fmtInt, truncAddr } from '../core/format.js';
+import { fmtAmount, fmtInt, truncAddr, isPositiveAmount } from '../core/format.js';
 
 const FN_TIERS = [
   { upTo: 500,      cost: '15000.000000000', tier: 1 },
@@ -137,12 +137,18 @@ export const assetsMixin = {
     if (this.fnRemaining() === 0) return 'The lifetime FN Coin limit has been reached. No more can ever be created.';
     if (this.walletState() === 'no-wallet') return 'You need a wallet loaded first.';
     if (!this.synced()) return 'Wait until your node is fully synced — creation depends on the current block.';
+    // Only plain coins can be destroyed: the confirmed balance also counts
+    // staked coins, so check against spend.spendable (same rule as Send's
+    // Max), falling back to the confirmed balance if the node couldn't say.
     const cost = this.fnCost();
-    if (cost && this.wallet.balance != null
-        && this.compareAmounts(this.wallet.balance, cost) < 0) {
+    const have = this.wallet.spendable ?? this.wallet.balance;
+    if (cost && have != null && this.compareAmounts(have, cost) < 0) {
+      const staked = isPositiveAmount(this.wallet.staked) ? this.wallet.staked : null;
       return 'You need ' + fmtAmount(cost, { unit: true, maxDecimals: 0 })
-           + ' of confirmed B3 to destroy, and you have '
-           + fmtAmount(this.wallet.balance, { unit: true, maxDecimals: 2 }) + '.';
+           + ' in spendable coins to destroy, and you have '
+           + fmtAmount(have, { unit: true, maxDecimals: 2 }) + '.'
+           + (staked ? ' Another ' + fmtAmount(staked, { unit: true, maxDecimals: 2 })
+               + ' is staked — unstake it on the Staking page first to use it.' : '');
     }
     return null;
   },
