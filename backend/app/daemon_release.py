@@ -78,6 +78,10 @@ class ReleaseInfo:
     # not ship — see module docstring). arch is the asset's CPU.
     source: str = "official"
     arch: str = "x86_64"
+    # Further checksum files to try, in order, when sha256_url does not list
+    # the asset. Releases ship several (SHA256SUMS, SHA256SUMS.linux-static,
+    # SHA256SUMS.txt — which in v1.1.4 lists only bootstrap.dat).
+    sha256_urls: tuple[str, ...] = ()
 
 
 def _parse_version(v: str) -> tuple[int, int, int]:
@@ -146,6 +150,16 @@ def _community_builds(arch: str, timeout: int) -> dict[str, tuple[str, str]]:
     return out
 
 
+def _sums_priority(name: str) -> int:
+    """Most complete checksum manifest first: SHA256SUMS, then Linux-specific
+    ones, then anything else (e.g. SHA256SUMS.txt)."""
+    if name == "SHA256SUMS":
+        return 0
+    if "linux" in name:
+        return 1
+    return 2
+
+
 def list_releases(include_prerelease: bool = False,
                    timeout: int = 15, arch: str | None = None) -> list[ReleaseInfo]:
     """Installable releases for this CPU, newest first. Upstream's release
@@ -168,19 +182,22 @@ def list_releases(include_prerelease: bool = False,
         if not tag:
             continue
         asset_url = ""
-        sha_url = ""
+        sums: list[tuple[int, str]] = []
         for a in rel.get("assets") or []:
             name = str(a.get("name") or "")
             if name.endswith(_asset_suffix(arch)):
                 asset_url = str(a.get("browser_download_url") or "")
-            elif name in ("SHA256SUMS", "SHA256SUMS.txt"):
-                sha_url = str(a.get("browser_download_url") or "")
+            elif name.startswith("SHA256SUMS"):
+                sums.append((_sums_priority(name), str(a.get("browser_download_url") or "")))
+        sums_urls = [u for _, u in sorted(sums) if u]
+        sha_url = sums_urls[0] if sums_urls else ""
         source = "official"
         if not asset_url and arch != "x86_64":
             if community is None:
                 community = _community_builds(arch, timeout)
             if tag in community:
                 asset_url, sha_url = community[tag]
+                sums_urls = [sha_url]
                 source = "community"
         if not asset_url:
             continue
@@ -190,7 +207,7 @@ def list_releases(include_prerelease: bool = False,
             tag=tag, version=version, url=asset_url, sha256_url=sha_url,
             prerelease=prerelease,
             published=str(rel.get("published_at") or ""),
-            source=source, arch=arch,
+            source=source, arch=arch, sha256_urls=tuple(sums_urls[1:]),
         ))
     out.sort(key=lambda r: _parse_version(r.version), reverse=True)
     return out
@@ -276,12 +293,14 @@ def install_version(release: ReleaseInfo, daemon_dir: str,
     blob = _fetch_bytes(release.url, timeout=timeout)
     expected_sha = _expected_sha256(release, timeout=timeout)
     actual_sha = hashlib.sha256(blob).hexdigest()
-    if not expected_sha and release.source == "community":
-        # Not built by upstream: the checksum published with it is the only
-        # thing tying these bytes to this project's CI run. No checksum, no
-        # install.
-        raise RuntimeError("community build has no verifiable SHA256 — refusing to install")
-    if expected_sha and actual_sha != expected_sha:
+    if not expected_sha:
+        # No checksum (missing SHA256SUMS, asset not listed in it, or the
+        # sums file could not be fetched) means nothing ties these bytes to
+        # the release — never install an unverified daemon binary, official
+        # or community.
+        raise RuntimeError(
+            f"no verifiable SHA256 for {release.tag} ({release.source}) — refusing to install")
+    if actual_sha != expected_sha:
         raise RuntimeError(
             f"SHA256 mismatch: expected {expected_sha}, got {actual_sha}")
     staging = Path(tempfile.mkdtemp(prefix="b3daemon-"))
@@ -344,17 +363,18 @@ def release_from_url(url: str, sha256: str, label: str = "dev") -> ReleaseInfo:
 def _expected_sha256(release: ReleaseInfo, timeout: int = 15) -> str:
     if release.sha256:
         return release.sha256.lower()
-    if not release.sha256_url:
-        return ""
-    try:
-        sums = _fetch_bytes(release.sha256_url, timeout=timeout).decode("utf-8")
-    except Exception:
-        return ""
     asset_name = release.url.rsplit("/", 1)[-1]
-    for line in sums.splitlines():
-        parts = line.split()
-        if len(parts) >= 2 and parts[-1].lstrip("*") == asset_name:
-            return parts[0].lower()
+    for url in (release.sha256_url, *release.sha256_urls):
+        if not url:
+            continue
+        try:
+            sums = _fetch_bytes(url, timeout=timeout).decode("utf-8")
+        except Exception:
+            continue
+        for line in sums.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[-1].lstrip("*") == asset_name:
+                return parts[0].lower()
     return ""
 
 

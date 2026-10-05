@@ -157,3 +157,64 @@ def test_installed_source_unknown_before_this_existed(tmp_path):
     vf = tmp_path / ".installed_version"
     vf.write_text("v1.1.4")
     assert daemon_release.read_installed_source(str(vf)) == {"source": "", "arch": ""}
+
+
+def _official_release(sha256_url="https://x/SHA256SUMS") -> ReleaseInfo:
+    return ReleaseInfo(tag="v1.1.4", version="1.1.4",
+                       url="https://x/b3-hive-v1.1.4-unsigned-linux-x86_64-static-headless.tar.gz",
+                       sha256_url=sha256_url, prerelease=False, published="")
+
+
+@pytest.mark.parametrize("sums", [None, b"deadbeef  some-other-file.tar.gz\n", OSError])
+def test_official_release_without_verifiable_checksum_is_refused(tmp_path, monkeypatch, sums):
+    """Missing SHA256SUMS, asset not listed in it, or the sums fetch failing
+    all mean an unverified binary — refused for official releases too."""
+    blob = _tarball()
+
+    def fetch(url, timeout=0):
+        if url.endswith("SHA256SUMS"):
+            if sums is OSError:
+                raise OSError("network down")
+            return sums
+        return blob
+    monkeypatch.setattr(daemon_release, "_fetch_bytes", fetch)
+    rel = _official_release(sha256_url="" if sums is None else "https://x/SHA256SUMS")
+    with pytest.raises(RuntimeError, match="SHA256"):
+        daemon_release.install_version(rel, str(tmp_path / "daemon"), str(tmp_path / "ver"))
+    assert not (tmp_path / "daemon" / "b3coind").exists()
+
+
+def test_official_release_checksum_mismatch_is_refused(tmp_path, monkeypatch):
+    blob = _tarball()
+    name = "b3-hive-v1.1.4-unsigned-linux-x86_64-static-headless.tar.gz"
+    monkeypatch.setattr(daemon_release, "_fetch_bytes",
+                        lambda url, timeout=0: (("0" * 64 + "  " + name + "\n").encode()
+                                                if url.endswith("SHA256SUMS") else blob))
+    with pytest.raises(RuntimeError, match="mismatch"):
+        daemon_release.install_version(_official_release(), str(tmp_path / "daemon"),
+                                       str(tmp_path / "ver"))
+
+
+def test_checksum_found_when_another_sums_file_lists_it(tmp_path, monkeypatch):
+    """Regression (v1.1.4): the release ships SHA256SUMS (lists the tarball)
+    AND SHA256SUMS.txt (lists only bootstrap.dat), with .txt last in the
+    asset list. Picking whichever came last left the daemon unverified."""
+    name = "b3-hive-v1.1.4-unsigned-linux-x86_64-static-headless.tar.gz"
+    upstream = [{"tag_name": "v1.1.4", "prerelease": False, "assets": [
+        _asset(name), _asset("SHA256SUMS"), _asset("SHA256SUMS.linux-static"),
+        _asset("SHA256SUMS.txt")]}]
+    monkeypatch.setattr(daemon_release, "_fetch_json", lambda url, timeout=15: upstream)
+    (rel,) = daemon_release.list_releases(arch="x86_64")
+    assert rel.sha256_url.endswith("/SHA256SUMS")
+    assert [u.rsplit("/", 1)[1] for u in rel.sha256_urls] == [
+        "SHA256SUMS.linux-static", "SHA256SUMS.txt"]
+
+    blob = _tarball()
+    digest = hashlib.sha256(blob).hexdigest()
+    files = {"SHA256SUMS": b"", "SHA256SUMS.linux-static": f"{digest}  {name}\n".encode(),
+             "SHA256SUMS.txt": b"47f8  bootstrap.dat\n"}
+    monkeypatch.setattr(daemon_release, "_fetch_bytes",
+                        lambda url, timeout=0: files.get(url.rsplit("/", 1)[1], blob))
+    # Even with the first manifest unhelpful, a later one verifies it.
+    daemon_release.install_version(rel, str(tmp_path / "daemon"), str(tmp_path / "ver"))
+    assert (tmp_path / "daemon" / "b3coind").exists()
