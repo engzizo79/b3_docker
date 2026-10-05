@@ -200,12 +200,20 @@ export const wizardMixin = {
 
    /* ---------------------------------- v0.6.0 daemon mode picker */
 
+  /** Version picker text. A community build (this project's CI build for a
+   *  CPU upstream doesn't ship, e.g. arm64) is always labelled as such. */
+  releaseLabel(r) {
+    return r.tag + (r.source === 'community' ? ' — community ' + r.arch + ' build' : '');
+  },
+
  async loadDaemonReleases() {
  if (this.wizard.daemonReleasesBusy) return;
  this.wizard.daemonReleasesBusy = true; this.wizard.daemonReleasesErr = '';
  try {
  const r = await this.api('/api/setup/daemon/releases');
  this.wizard.daemonReleases = (r.releases || []).filter((x) => x.meets_minimum);
+ // Empty on a CPU nobody builds for yet: say so instead of an empty picker.
+ if (!this.wizard.daemonReleases.length && r.error) this.wizard.daemonReleasesErr = r.error;
  if (!this.wizard.daemonVersion) {
  this.wizard.daemonVersion = (r.installed || '') || ((r.releases || [])[0] || {}).tag || '';
  }
@@ -737,6 +745,7 @@ export const installMixin = {
     try {
       const r = await this.api('/api/setup/daemon/releases');
       this.install.releases = (r.releases || []).filter(x => x.meets_minimum);
+      if (!this.install.releases.length && r.error) this.install.releasesErr = r.error;
       if (!this.install.version && this.install.releases.length) {
         this.install.version = this.install.releases[0].tag || '';
       }

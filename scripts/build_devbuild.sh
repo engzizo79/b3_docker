@@ -79,8 +79,10 @@ docker cp "${CID}:/out/." "${OUT}/"
 docker rm -f "${CID}" >/dev/null 2>&1 || true
 trap - EXIT
 
-# Name matches docker/Dockerfile.devbuild's packaging step exactly.
-TARBALL="${OUT}/b3-hive-${LABEL}-unsigned-linux-x86_64-static-headless-devbuild.tar.gz"
+# Name matches docker/Dockerfile.devbuild's packaging step exactly; the
+# CPU part is whatever the build container ran on (x86_64 or aarch64 —
+# not necessarily this host's own `uname -m`, e.g. arm64 on macOS).
+TARBALL="$(ls "${OUT}"/b3-hive-"${LABEL}"-unsigned-linux-*-static-headless-devbuild.tar.gz 2>/dev/null | head -n1)"
 SHA_FILE="${TARBALL}.sha256"
 if [ ! -f "${TARBALL}" ] || [ ! -f "${SHA_FILE}" ]; then
     echo "error: expected output not found in ${OUT}" >&2
@@ -93,7 +95,7 @@ echo "    tarball: ${TARBALL}"
 echo "    sha256:  ${SHA256}"
 echo
 echo "    POST /api/system/upgrade body (once served — see --serve):"
-echo "    {\"url\": \"http://<this-machine>:${SERVE_PORT}/$(basename "${TARBALL}")\", \"sha256\": \"${SHA256}\", \"label\": \"${LABEL}\"}"
+echo "    {\"url\": \"http://<this-machine>:${SERVE_PORT}/$(basename "${TARBALL}")\", \"sha256\": \"${SHA256}\", \"tag\": \"${LABEL}\"}"
 
 if [ -n "${SERVE}" ]; then
     echo

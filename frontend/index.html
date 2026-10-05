@@ -485,7 +485,7 @@
  <span class="help" x-show="wizard.daemonMode === 'managed' && wizard.daemonReleases.length">
  Daemon version: <select class="input select-auto" x-model="wizard.daemonVersion">
  <template x-for="r in wizard.daemonReleases" :key="r.tag">
- <option :value="r.tag" x-text="r.tag"></option>
+ <option :value="r.tag" x-text="releaseLabel(r)"></option>
  </template></select>
  </span>
  <span class="help bad" x-show="wizard.daemonReleasesErr" x-text="wizard.daemonReleasesErr"></span>
@@ -2876,7 +2876,7 @@
                 <span class="label">Node</span>
                 <h2 class="mt-1" x-text="nodeDown() ? 'Not responding' : (synced() ? 'Healthy and synced' : 'Catching up')"></h2>
                 <p class="muted t-sm mt-1"
-                   x-text="node.info && node.info.daemon ? node.info.daemon.subversion : 'Version unknown while the node is down.'"></p>
+                   x-text="node.info && node.info.daemon ? node.info.daemon.subversion + daemonSourceNote() : 'Version unknown while the node is down.'"></p>
               </div>
               <span class="badge nowrap" :class="nodeDown() ? 'badge-danger' : (synced() ? 'badge-success' : 'badge-warning')">
                 <span class="dot" :class="!nodeDown() && !synced() ? 'dot-pulse' : ''"></span>
@@ -4206,7 +4206,7 @@
                 <span class="dval mono" x-text="node.info ? node.info.app_version : '—'"></span></div>
               <div class="drow"><span class="dkey">Node version</span>
                 <span class="dval mono"
-                      x-text="node.info && node.info.daemon ? node.info.daemon.subversion : 'Not running'"></span></div>
+                      x-text="node.info && node.info.daemon ? node.info.daemon.subversion + daemonSourceNote() : 'Not running'"></span></div>
               <div class="drow"><span class="dkey">Node status</span>
                 <span class="dval">
                   <span class="badge" :class="node.info && node.info.node_up ? 'badge-success' : 'badge-warning'"
@@ -5018,7 +5018,7 @@
                   :disabled="install.busy || install.releasesBusy">
             <option value="" disabled>Select a version</option>
             <template x-for="r in install.releases" :key="r.tag">
-              <option :value="r.tag" x-text="r.tag"></option>
+              <option :value="r.tag" x-text="releaseLabel(r)"></option>
             </template>
           </select>
           <p class="t-sm muted mt-2" x-show="install.releasesBusy">Loading available versions...</p>
@@ -5084,7 +5084,7 @@
                         :disabled="nodeConn.busy || install.releasesBusy">
                   <option value="" disabled>Select a version</option>
                   <template x-for="r in install.releases" :key="r.tag">
-                    <option :value="r.tag" x-text="r.tag"></option>
+                    <option :value="r.tag" x-text="releaseLabel(r)"></option>
                   </template>
                 </select>
                 <p class="t-sm muted mt-2" x-show="install.releasesBusy">Loading available versions…</p>

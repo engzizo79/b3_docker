@@ -1,0 +1,86 @@
+# Build a COMMUNITY static b3coind for a CPU upstream does not publish
+# (today: arm64 — Raspberry Pi and similar) from a pinned B3-CoinV2 release
+# tag, and publish it as release `daemon-<tag>` in this repo.
+# backend/app/daemon_release.py falls back to these on that CPU when the
+# upstream release has no official asset for it; an official one always wins.
+#
+# Run by hand: Actions → daemon-build → Run workflow → e.g. v1.1.4.
+# Uses docker/Dockerfile.devbuild, which mirrors upstream's own
+# linux-x86_64-static job (native musl build in Alpine) and smoke-tests the
+# result on regtest before anything is packaged.
+name: daemon-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: "B3-CoinV2 release tag to build (e.g. v1.1.4)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    env:
+      # Never interpolate the input straight into a shell line.
+      TAG: ${{ inputs.upstream_tag }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - name: Validate tag
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: $TAG" >&2; exit 1; }
+          [ "$(uname -m)" = "$ARCH" ] || { echo "runner is $(uname -m), expected $ARCH" >&2; exit 1; }
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: B3-Coin/B3-CoinV2
+          ref: ${{ inputs.upstream_tag }}
+          path: upstream
+
+      - name: Record upstream commit
+        id: src
+        run: echo "commit=$(git -C upstream rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and smoke-test
+        run: |
+          docker build -f docker/Dockerfile.devbuild \
+            --build-arg "B3_BUILD_LABEL=${TAG}" -t b3-devbuild upstream
+          mkdir -p out
+          cid="$(docker create b3-devbuild)"
+          docker cp "$cid:/out/." out/
+          docker rm "$cid"
+
+      - name: Package
+        env:
+          COMMIT: ${{ steps.src.outputs.commit }}
+        run: |
+          src="$(ls out/b3-hive-*-unsigned-linux-${ARCH}-static-headless-devbuild.tar.gz)"
+          name="b3-hive-${TAG}-community-linux-${ARCH}-static-headless.tar.gz"
+          mkdir -p dist
+          cp "$src" "dist/${name}"
+          (cd dist && sha256sum "${name}" > SHA256SUMS)
+          cat > dist/BUILD-INFO.json <<EOF
+          {"upstream_repo": "B3-Coin/B3-CoinV2", "upstream_tag": "${TAG}",
+           "upstream_commit": "${COMMIT}", "arch": "${ARCH}",
+           "recipe": "docker/Dockerfile.devbuild", "workflow_run": "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"}
+          EOF
+          cat dist/SHA256SUMS
+
+      - name: Publish release daemon-${{ inputs.upstream_tag }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ steps.src.outputs.commit }}
+        run: |
+          gh release create "daemon-${TAG}" dist/* \
+            --repo "$GITHUB_REPOSITORY" --latest=false \
+            --title "Community b3coind ${TAG} (${ARCH})" \
+            --notes "Unofficial static build of B3-CoinV2 ${TAG} (commit ${COMMIT}) for ${ARCH}, which upstream does not publish. Built by this repository's CI from docker/Dockerfile.devbuild; see BUILD-INFO.json. B3 Hive installs it only on ${ARCH} and only when the upstream release has no official ${ARCH} build."

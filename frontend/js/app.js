@@ -308,6 +308,13 @@ function b3app() {
  } catch (e) { this.sysMode.checked = true; }
  },
 
+       /** ' · community arm64 build' when the installed daemon is this
+        *  project's CI build rather than an official B3-CoinV2 binary. */
+       daemonSourceNote() {
+         const s = this.sysMode.installed_source;
+         return s && s.source === 'community' ? ' · community ' + s.arch + ' build' : '';
+       },
+
  init() {
         this.setTheme(this.theme);
         this.setMode(this.mode);

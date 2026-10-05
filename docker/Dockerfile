@@ -16,13 +16,24 @@ ENV PYTHONUNBUFFERED=1
 # from pkgs.tailscale.com/stable. Userspace networking: no /dev/net/tun,
 # no extra capabilities. Node identity lives under /data/ts (persistent),
 # so container recreation never loses the tailnet identity.
+# Multi-arch: TARGETARCH (set by buildx / docker build) picks the tarball;
+# each architecture has its own pinned digest. Unknown arch = build fails.
+ARG TARGETARCH=amd64
 ARG TAILSCALE_VERSION=1.102.4
-ARG TAILSCALE_SHA256=50748df1045e60b5b695f19f4c56b0da36c019948b440fb456b6584a50f0d8b9
-RUN curl -fsSL -o /tmp/tailscale.tgz https://pkgs.tailscale.com/stable/tailscale_${TAILSCALE_VERSION}_amd64.tgz \
- && echo "${TAILSCALE_SHA256}  /tmp/tailscale.tgz" | sha256sum -c - \
- && tar -xzf /tmp/tailscale.tgz -C /tmp tailscale_${TAILSCALE_VERSION}_amd64/tailscaled tailscale_${TAILSCALE_VERSION}_amd64/tailscale \
- && mv /tmp/tailscale_${TAILSCALE_VERSION}_amd64/tailscaled /tmp/tailscale_${TAILSCALE_VERSION}_amd64/tailscale /usr/local/bin/ \
- && rm -rf /tmp/tailscale.tgz /tmp/tailscale_${TAILSCALE_VERSION}_amd64
+ARG TAILSCALE_SHA256_AMD64=50748df1045e60b5b695f19f4c56b0da36c019948b440fb456b6584a50f0d8b9
+ARG TAILSCALE_SHA256_ARM64=9dd1e6a592a014bbaea0103167ffe299adeda4ba14e078ce9c2895364f6c4c3f
+RUN set -eu; \
+    case "${TARGETARCH}" in \
+      amd64) ts_sha="${TAILSCALE_SHA256_AMD64}" ;; \
+      arm64) ts_sha="${TAILSCALE_SHA256_ARM64}" ;; \
+      *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    ts="tailscale_${TAILSCALE_VERSION}_${TARGETARCH}"; \
+    curl -fsSL -o /tmp/tailscale.tgz "https://pkgs.tailscale.com/stable/${ts}.tgz"; \
+    echo "${ts_sha}  /tmp/tailscale.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/tailscale.tgz -C /tmp "${ts}/tailscaled" "${ts}/tailscale"; \
+    mv "/tmp/${ts}/tailscaled" "/tmp/${ts}/tailscale" /usr/local/bin/; \
+    rm -rf /tmp/tailscale.tgz "/tmp/${ts}"
 
 # Non-root daemon user
 RUN groupadd -g 1000 b3coin \

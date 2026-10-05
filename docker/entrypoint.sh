@@ -324,7 +324,7 @@ if want:
         print(f"ERROR: B3_DAEMON_VERSION={want} not found (or below {minimum})", file=sys.stderr); sys.exit(1)
 else:
     if not rels:
-        print("ERROR: no suitable release found", file=sys.stderr); sys.exit(1)
+        print(f"ERROR: {daemon_release.no_release_hint()}", file=sys.stderr); sys.exit(1)
     rel = rels[0]  # list_releases sorts newest first
 try:
     daemon_release.install_version(rel, os.environ["DAEMON_DIR"],
@@ -577,7 +577,7 @@ else:
         print(f"ERROR: {exc}", file=sys.stderr); sys.exit(1)
     release = next((r for r in rels if r.tag == tag or r.version == version), None)
     if release is None:
-        print(f"ERROR: {tag} not found", file=sys.stderr); sys.exit(1)
+        print(f"ERROR: {tag} not found for this CPU ({daemon_release.daemon_arch()})", file=sys.stderr); sys.exit(1)
 try:
     daemon_release.install_version(release, daemon_dir, version_file, timeout=300)
     print(f"Upgraded to {release.tag}")

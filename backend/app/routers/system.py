@@ -92,6 +92,7 @@ async def system_mode(request: Request):
         "mode": s.daemon_mode,
         "min_daemon_version": s.min_daemon_version,
         "installed_version": installed,
+        "installed_source": daemon_release.read_installed_source(s.daemon_version_file),
         "managed": managed,
         # Capability flags are TOP-LEVEL: the frontend Object.assigns this
         # whole body into sysMode and gates UI with sysMode.node_restart etc.

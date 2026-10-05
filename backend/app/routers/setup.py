@@ -595,8 +595,15 @@ async def daemon_releases(request: Request):
             "version": r.version,
             "meets_minimum": daemon_release.meets_minimum(r.version, minimum),
             "published": getattr(r, "published", ""),
+            # "community" = this project's CI build for a CPU upstream does
+            # not ship (arm64); the UI labels it so it is never mistaken for
+            # an official binary.
+            "source": r.source,
+            "arch": r.arch,
         })
-    return {"releases": out, "min_version": minimum,
+    arch = daemon_release.daemon_arch()
+    return {"releases": out, "min_version": minimum, "arch": arch,
+            "error": None if out else daemon_release.no_release_hint(arch),
             "installed": daemon_release.read_installed_version(
                 s.settings.daemon_version_file)}
 

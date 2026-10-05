@@ -13,7 +13,9 @@ from app.main import create_app
 from app.session import SessionStore
 from tests.conftest import LOCAL, login
 
-_Rel = namedtuple("_Rel", "tag version prerelease published")
+# Mirrors the ReleaseInfo fields the setup endpoint reads.
+_Rel = namedtuple("_Rel", "tag version prerelease published source arch",
+                  defaults=("official", "x86_64"))
 
 FAKE_RELEASES = [
     _Rel("v1.1.5", "1.1.5", True, "2026-01-01"),
